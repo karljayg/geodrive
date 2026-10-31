@@ -6,6 +6,7 @@ import { AUDIO_PRESETS, engineCutoff, engineIntensity, layerMix, roadLevel, wind
 import { newGearbox, stepGearbox } from '../public/js/gearbox.js';
 import { BODY_SHAPES, buildCarGlb, carPicture, colorFactor, DEFAULT_COLOR } from '../public/js/carModel.js';
 import { clockText, darknessAt, tintAt } from '../public/js/daylight.js';
+import { beamBrightness, beamPools, tailPools } from '../public/js/headlights.js';
 
 const sport = CAR_PROFILES.sport, layers = sport.sound.layers;
 
@@ -91,4 +92,31 @@ test('time of day: clear by day, dark at night, warm at dusk', () => {
   assert.deepEqual(tintAt(24), tintAt(0));
   assert.equal(clockText(0), '12:00 AM');
   assert.equal(clockText(13.5), '1:30 PM');
+});
+
+test('headlights: dim at the nose, brightest 1-2 car lengths ahead, gone by 4, narrow, nothing behind', () => {
+  const L = 4, W = 1.8;
+  assert.ok(beamBrightness(0.1, L) < 0.3);
+  assert.equal(beamBrightness(1.5 * L, L), 1);
+  assert.ok(beamBrightness(1 * L, L) > 0.7 && beamBrightness(2 * L, L) > 0.7);
+  assert.ok(beamBrightness(3.5 * L, L) < 0.15);
+  assert.equal(beamBrightness(4 * L, L), 0);
+  assert.equal(beamBrightness(-1, L), 0);
+  const pools = beamPools(L, W);
+  for (const p of pools) {
+    assert.ok(p.f - p.ry >= L / 2 - 1e-9, 'no light behind the nose');
+    assert.ok(Math.abs(p.r) + p.rx < W * 1.3 + (p.f - L / 2) * 0.2, 'little sideways spill');
+    assert.ok(p.f <= L / 2 + 4 * L);
+  }
+  const twice = beamPools(L * 2, W * 2);
+  assert.ok(Math.abs(twice[10].f - pools[10].f * 2) < 1e-9, 'scales with the car');
+});
+
+test('tail lights: off, faint with lights, bright when braking, small and at the back', () => {
+  assert.equal(tailPools(4, 2, false, false)[0].strength, 0);
+  assert.equal(tailPools(4, 2, true, false)[0].strength, 0.3);
+  assert.equal(tailPools(4, 2, true, true)[1].strength, 1);
+  assert.equal(tailPools(4, 2, false, true)[0].strength, 1);
+  assert.equal(tailPools(4, 2, true, false)[0].f, -2);
+  assert.ok(tailPools(4, 2, true, false)[0].rx < 0.3);
 });

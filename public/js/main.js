@@ -3,7 +3,8 @@ import { distance, easeAngle, leadDistance, move } from './camera.js';
 import { FLAG_ONEWAY, RoadNet } from './road.js';
 import { Path } from './route.js';
 import { CAR_PROFILES, hornFor, profileFor } from './cars.js';
-import { buildCarGlb, carPicture } from './carModel.js';
+import { BODY_SHAPES, buildCarGlb, carPicture } from './carModel.js';
+import { beamPools, drawPools, tailPools } from './headlights.js';
 import { clockText, darknessAt, tintAt } from './daylight.js';
 import { drawGauge, drawNav, revRange, speedRange, speedStep } from './dash.js';
 import { EngineAudio } from './engineSound.js';
@@ -474,6 +475,7 @@ function frame(t) {
 
     const guide = currentGuide();
     applySpeed(controls, guide);
+    braking = car.speed > 0.5 && (controls.reverse || controls.handbrake || controls.brake > 0 || arriving);
     // Pull up at the destination, unless the driver has already taken over.
     if (arriving && (controls.throttle || controls.reverse || controls.steer || car.speed <= 0)) arriving = false;
     if (arriving) controls.brake = PLAN_DECEL;
@@ -749,37 +751,63 @@ function applyCarLook() {
   }, carLookKey ? 150 : 0);
 }
 
-// The tint covers the map, with a pool of light cut out ahead of the car when the headlights are on. The car's place
-// on screen is fixed, and the pool shrinks with zoom like everything else.
-let lightKey = '';
+// The tint covers the map, and the headlight beams are cut out of it and lightly added on top. The car's place on
+// screen is fixed; the beams are sized from the car, zoom with the map and turn with the car against the camera.
+let lightKey = '', braking = false;
 function applyDaylight() {
   const dark = darknessAt(settings.hour), lit = settings.headlights;
   el('lightsButton').setAttribute('aria-pressed', String(lit));
-  const box = el('map');
-  const carY = box.clientHeight * (0.5 + CAR_BELOW_CENTRE / 2);
-  // Pixels per metre of road at the car, and how much the camera's tilt foreshortens it.
-  const perMetre = box.clientHeight / (2 * Math.tan(rad(FOV_Y / 2)) * Math.max(range, 1));
-  const foreshorten = Math.cos(rad(tilt));
-  const noseAhead = 2.3 * settings.carScale * perMetre * foreshorten;
-  const key = `${settings.hour}|${lit}|${Math.round(range / 4)}|${Math.round(tilt)}|${settings.carScale}|${box.clientHeight}`;
+  const box = el('map'), width = box.clientWidth, height = box.clientHeight;
+  const angle = ((car.heading - camHeading + 540) % 360) - 180;
+  const key = `${settings.hour}|${lit}|${Math.round(range)}|${Math.round(tilt)}|${settings.carScale}|${settings.carProfile}|${width}x${height}|${angle.toFixed(1)}|${braking}`;
   if (key === lightKey) return;
   lightKey = key;
-  // A pool of light on the road, starting at the nose. Size is in metres, so it zooms with the map.
-  const w = HEADLIGHT_WIDTH * perMetre, h = HEADLIGHT_LENGTH * perMetre * foreshorten;
-  const y = carY - noseAhead - h * 0.8;
-  const pool = `radial-gradient(ellipse ${w}px ${h}px at 50% ${y}px`;
-  // The car itself stays visible at night.
-  const glow = `radial-gradient(ellipse ${noseAhead * 1.5}px ${noseAhead * 1.5}px at 50% ${carY}px, transparent 40%, black 100%)`;
   const night = el('night'), beam = el('beam');
+  for (const canvas of [night, beam]) {
+    if (canvas.width !== width || canvas.height !== height) { canvas.width = width; canvas.height = height; }
+  }
   night.style.display = dark > 0.005 ? 'block' : 'none';
-  night.style.background = `rgb(${tintAt(settings.hour).join(',')})`;
-  const mask = lit ? `${pool}, transparent 35%, black 100%), ${glow}` : 'none';
-  night.style.maskImage = mask;
-  night.style.webkitMaskImage = mask;
-  night.style.maskComposite = 'intersect';
-  night.style.webkitMaskComposite = 'source-in';
-  beam.style.display = lit ? 'block' : 'none';
-  beam.style.background = `${pool}, rgba(255,240,190,${0.06 + dark * 0.1}), transparent 100%)`;
+  beam.style.display = lit || braking ? 'block' : 'none';
+  const shape = BODY_SHAPES[settings.carProfile] || BODY_SHAPES.sport;
+  const length = shape.l * 2 * settings.carScale, carWidth = shape.w * 2 * settings.carScale;
+  const view = {
+    x: width / 2,
+    y: height * (0.5 + CAR_BELOW_CENTRE / 2),
+    perMetre: height / (2 * Math.tan(rad(FOV_Y / 2)) * Math.max(range, 1)),
+    foreshorten: Math.cos(rad(tilt)),
+    angle,
+  };
+  const pools = beamPools(length, carWidth);
+  const tint = night.getContext('2d');
+  tint.globalCompositeOperation = 'source-over';
+  tint.fillStyle = `rgb(${tintAt(settings.hour).join(',')})`;
+  tint.fillRect(0, 0, width, height);
+  const light = beam.getContext('2d');
+  light.clearRect(0, 0, width, height);
+  if (lit) {
+    tint.globalCompositeOperation = 'destination-out';
+    drawPools(tint, pools, view, 0.32);
+    // The car's own body, so it can be seen at night. Only the body: this isn't light on the road.
+    tint.save();
+    tint.translate(view.x, view.y);
+    tint.scale(view.perMetre, view.perMetre * view.foreshorten);
+    tint.rotate(rad(angle));
+    tint.scale(carWidth * 0.6, length * 0.55);
+    tint.fillStyle = 'rgba(0,0,0,0.55)';
+    tint.beginPath();
+    tint.arc(0, 0, 1, 0, Math.PI * 2);
+    tint.fill();
+    tint.restore();
+    light.globalCompositeOperation = 'lighter';
+    drawPools(light, pools, view, 0.03 + dark * 0.05, '255,240,190');
+  }
+  if (lit || braking) {
+    const tails = tailPools(length, carWidth, lit, braking);
+    tint.globalCompositeOperation = 'destination-out';
+    drawPools(tint, tails, view, 1);
+    light.globalCompositeOperation = 'lighter';
+    drawPools(light, tails, view, 1, '255,30,20');
+  }
 }
 
 function setHeadlights(on) {

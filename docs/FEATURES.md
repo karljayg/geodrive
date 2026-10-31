@@ -44,7 +44,7 @@ A full-width panel below the map, which is sized to end above it.
 ## Car look, lights, horn and time of day
 - Car type and colour are built in the browser (`carModel.js`), with a matching side-view picture in Settings.
 - Time of day (Settings, or T for +1 hour) is a colour tint over the map (`daylight.js`). Google's 3D map is a photograph with fixed lighting and no lighting controls, so shadows don't move, and buildings and streets don't light up.
-- Headlights (J or Lights button) cut a small pool of light out of the tint, starting at the car's nose, sized in metres so it zooms with the map. It's a screen effect, so it doesn't fall on buildings or follow hills.
+- Headlights (J or Lights button) are two forward beams (`headlights.js`) cut out of the tint: dim at the nose, brightest 1-2 car lengths ahead, fading out by 4, with little side spill and nothing behind. They scale with the car's size and shape and turn with it. The car's body is also lifted slightly so it stays visible at night. Two small tail lights glow faintly with the lights on and brightly when braking, including with the lights off. It's a screen effect, so it doesn't fall on buildings or follow hills.
 - Horn (hold B or the Horn button) is synthesised, with notes set per car in `cars.js`.
 
 ## Radio

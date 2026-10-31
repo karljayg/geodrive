@@ -8,8 +8,8 @@ html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background:
 /* The camera belongs to the car, so mouse drags and wheel never reach the map. */
 #shield { z-index: 1; }
 #hud { z-index: 2; pointer-events: none; }
-/* Evening and headlights: a tint over the map with a lit pool cut out ahead of the car. */
-#night, #beam { position: absolute; inset: 0 0 var(--dash) 0; pointer-events: none; display: none; }
+/* Evening and headlights: a tint over the map with the beams cut out of it. */
+#night, #beam { position: absolute; left: 0; top: 0; width: 100%; height: calc(100% - var(--dash)); pointer-events: none; display: none; }
 #night { mix-blend-mode: multiply; z-index: 1; }
 #beam { mix-blend-mode: screen; z-index: 1; }
 

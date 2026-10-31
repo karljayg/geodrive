@@ -45,6 +45,7 @@ Google usage and spend can only be seen in Google Cloud Console; the API key can
 | `radio.js` | Station search, bands, tuning, playback | Parsing yes, playback browser |
 | `carModel.js` | Builds car models and pictures by type and colour | Yes |
 | `daylight.js` | Time-of-day tint | Yes |
+| `headlights.js` | Headlight beam pattern | Yes |
 | `dash.js` | Draws the gauges and nav screen | Browser |
 
 ## Saved data
