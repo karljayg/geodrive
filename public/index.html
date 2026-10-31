@@ -15,14 +15,12 @@
 <div id="hud">
   <header>
     <div class="brand">GEO<b>DRIVE</b></div>
-    <button id="changeStart">Start</button>
     <button id="changeDest">Destination</button>
     <button id="openSettings">Settings</button>
     <button id="pauseButton">Pause</button>
     <button id="helpButton">Keys</button>
     <div class="where" id="where"></div>
   </header>
-  <div class="pill" id="nav"><div id="navState"></div><div id="navWhere"></div></div>
   <div id="notice"></div>
   <div id="signalLeft">◀</div>
   <div id="signalRight">▶</div>
@@ -58,8 +56,11 @@
     </div>
   </div>
   <div class="centre">
-    <div class="navTop"><span id="eta"></span><span id="clock"></span></div>
-    <canvas id="navScreen" title="Click to change the range" aria-label="Navigation screen"></canvas>
+    <div class="navTop"><span id="eta"></span><span id="perf" title="Frames per second, the slowest frame in the last second, and JavaScript memory"></span><span id="clock"></span></div>
+    <div class="navBox">
+      <canvas id="navScreen" title="Click to change the range" aria-label="Navigation screen"></canvas>
+      <div id="nav"><div id="navState"></div><div id="navWhere"></div></div>
+    </div>
     <div class="trip">
       <span>TIME <b id="hud-elapsed">0:00</b></span>
       <span>MILES <b id="hud-miles">0.00 mi</b></span>
@@ -128,6 +129,11 @@
 <div id="settings" role="dialog" aria-label="Settings">
   <h2>Settings</h2>
   <section>
+    <h3>Start location</h3>
+    <div id="settingsStart"></div>
+    <button class="link" id="changeStart" type="button">Change start location</button>
+  </section>
+  <section>
     <h3>Car</h3>
     <label for="carProfile">Car profile</label>
     <select id="carProfile" data-setting="carProfile"></select>
@@ -166,11 +172,19 @@
     <input id="signalVolume" data-setting="signalVolume" type="range" min="0" max="1" step="0.05">
   </section>
   <section>
+    <h3>Graphics</h3>
+    <label for="mapQuality">Map quality</label>
+    <select id="mapQuality" data-setting="mapQuality"><option value="PERFORMANCE">Smoother</option><option value="FIDELITY">More detail</option></select>
+    <label for="mapMemory">Map memory limit <span data-value="mapMemory"></span></label>
+    <input id="mapMemory" data-setting="mapMemory" type="range" min="256" max="2048" step="128">
+  </section>
+  <section>
     <h3>Driving</h3>
     <label class="check"><input id="roadFollow" data-setting="roadFollow" type="checkbox"> Follow the road when not steering</label>
     <button class="link" id="newTrip" type="button">Reset trip stats</button>
   </section>
   <button class="link" id="settingsReset" type="button">Reset all to defaults</button>
+  <button class="link" id="settingsCopy" type="button">Copy settings (to make them the new-player defaults)</button>
   <button class="primary wide" id="settingsDone" type="button">Done</button>
 </div>
 <div id="dest">

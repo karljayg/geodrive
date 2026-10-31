@@ -179,3 +179,13 @@ test('a side street counts even without a shared point on the straight road', ()
   assert.ok(found.points.at(-1).lat < LAT - E / 2);
   assert.equal(n.findTurn(n.match(LAT, LNG + 0.1 * E, 90), -1, 1000), null, 'and nothing on the left');
 });
+
+test('clearing the network releases everything and it can load again', () => {
+  const n = new RoadNet();
+  const w = way('c', 0, [1, 2], [[LAT, LNG], [LAT, LNG + E]]);
+  n.add([w]);
+  n.clear();
+  assert.equal(n.ways.size + n.grid.size + n.atNode.size, 0);
+  n.add([w]);
+  assert.ok(n.match(LAT, LNG + E / 2, 90));
+});

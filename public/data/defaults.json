@@ -1,0 +1,20 @@
+{
+  "carScale": 1,
+  "carProfile": "sport",
+  "masterVolume": 1,
+  "muted": false,
+  "engineVolume": 0.2,
+  "enginePitch": 0.6,
+  "radioVolume": 0.35,
+  "signalVolume": 0.5,
+  "engineSound": "recorded",
+  "audioPreset": "sport",
+  "roadVolume": 0.05,
+  "windVolume": 0.1,
+  "roadFollow": true,
+  "carColor": "#bf0d16",
+  "hour": 7.75,
+  "headlights": false,
+  "mapQuality": "PERFORMANCE",
+  "mapMemory": 512
+}

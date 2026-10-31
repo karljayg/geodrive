@@ -17,7 +17,21 @@ export const DEFAULTS = {
   carColor: '#0dbf8c',
   hour: 12, // time of day, 0..24
   headlights: false,
+  mapQuality: 'PERFORMANCE', // or 'FIDELITY': Google's 3D map detail
+  mapMemory: 512, // MB the 3D map may keep
+  radioOn: true,
+  radioStation: { id: 'a4d806b2-8d6a-4cd1-9000-3224e106a0bb', name: 'HOT 995 - WIHT-FM 99.5 Washington', url: 'https://stream.revma.ihrhls.com/zc2509', band: 'FM', frequency: 99.5, local: true },
 };
+
+// Defaults for new players, tuned by the owner: data/defaults.json overrides the built-in values above.
+if (typeof window !== 'undefined') {
+  try {
+    const res = await fetch('data/defaults.json');
+    if (res.ok) Object.assign(DEFAULTS, await res.json());
+  } catch (err) {
+    console.warn('defaults:', err);
+  }
+}
 
 function load() {
   try {

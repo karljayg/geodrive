@@ -5,7 +5,7 @@ import { SynthEngine } from './synthEngine.js';
 
 const UPDATE_EVERY = 0.03; // s; the audio engine smooths in between, so this needn't match the frame rate
 const ATTACK = 0.03, RELEASE = 0.08, RATE_GLIDE = 0.05, BLEND_GLIDE = 0.08;
-const ENGINE_TRIM = 2.2;   // loops are normalised quiet, this brings them up to the mix
+const ENGINE_TRIM = 4;     // loops are normalised quiet, this brings them up to the mix
 
 export class EngineAudio {
   constructor() {
@@ -73,8 +73,8 @@ export class EngineAudio {
     const now = this.ctx.currentTime;
     this.master.gain.setTargetAtTime(s.muted ? 0 : s.masterVolume, now, 0.02);
     this.engineBus.gain.setTargetAtTime(s.engineVolume, now, 0.02);
-    this.roadBus.gain.setTargetAtTime(s.roadVolume, now, 0.02);
-    this.windBus.gain.setTargetAtTime(s.windVolume, now, 0.02);
+    this.roadBus.gain.setTargetAtTime(s.roadVolume * 2, now, 0.02);
+    this.windBus.gain.setTargetAtTime(s.windVolume * 2, now, 0.02);
     this.fxBus.gain.setTargetAtTime(s.signalVolume, now, 0.02);
   }
 

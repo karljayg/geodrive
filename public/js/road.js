@@ -21,12 +21,21 @@ export class RoadNet {
     this.ways = new Map();
     this.atNode = new Map(); // node id -> [{ way, index }]
     this.grid = new Map();   // cell -> [{ way, i }]
+    this.serial = 0;
+  }
+
+  // Forgets everything, to release memory on long drives. Nearby tiles load again straight after.
+  clear() {
+    this.ways.clear();
+    this.atNode.clear();
+    this.grid.clear();
   }
 
   add(list) {
     for (const way of list) {
       if (this.ways.has(way.id)) continue;
       this.ways.set(way.id, way);
+      way.serial = this.serial++;
       way.n.forEach((node, index) => {
         if (!this.atNode.has(node)) this.atNode.set(node, []);
         this.atNode.get(node).push({ way, index });
@@ -203,7 +212,7 @@ export class RoadNet {
     for (let y = cy - span; y <= cy + span; y++) {
       for (let x = cx - spanLng; x <= cx + spanLng; x++) {
         for (const { way, i } of this.grid.get(`${y}_${x}`) || []) {
-          const key = `${way.id}:${i}`;
+          const key = way.serial * 100000 + i; // a number: this runs thousands of times per draw
           if (seen.has(key)) continue;
           seen.add(key);
           fn(way, i);

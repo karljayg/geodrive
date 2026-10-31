@@ -72,7 +72,7 @@ const SOUND_THROTTLE_RISE = 1.1; // s for a held W to reach full throttle in the
 const SAVE_EVERY = 2000; // ms between saving the trip
 const gearbox = newGearbox();
 const radio = new Radio(renderRadio);
-let speedMax = 200, navDrawnAt = 0, navRadius = 1500, signalWasLit = false, radioArea = null;
+let gaugesDrawnAt = 0, speedMax = 200, navDrawnAt = 0, navRadius = 1500, signalWasLit = false, radioArea = null;
 const NAV_RANGES = [800, 1500, 3000, 6000]; // m from the car to the top of the nav screen
 const TUNE_STEP = 12; // px of knob turn per station
 const RADIO_RESEARCH = 50000; // m driven before looking for stations again
@@ -362,6 +362,8 @@ function updateHud(t) {
 }
 
 function drawDash(t) {
+  if (t - gaugesDrawnAt < 40) return; // 25 times a second is plenty for needles
+  gaugesDrawnAt = t;
   const profile = profileFor(settings.carProfile);
   const mph = Math.abs(car.speed) * MPS_TO_MPH;
   speedMax = speedRange(mph, speedMax);
@@ -379,9 +381,9 @@ function drawDash(t) {
   el('fuel').classList.toggle('low', trip.fuel < 15);
   el('fuelBar').style.width = `${trip.fuel}%`;
   el('fuelValue').textContent = `${charge}%`;
-  if (t - navDrawnAt > 200) {
+  if (t - navDrawnAt > 333) {
     navDrawnAt = t;
-    drawNav(el('navScreen'), { roads, pos, heading: car.heading, route: fsd || destination ? route : null, routeIndex, radius: navRadius });
+    drawNav(el('navScreen'), { roads, pos, heading: car.heading, route: fsd || destination ? route : null, routeIndex, radius: navRadius, hour: settings.hour, clock: clockText(settings.hour) });
     const now = new Date();
     const time = (d) => d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
     el('clock').textContent = time(now);
@@ -418,6 +420,10 @@ async function refreshStations() {
 }
 
 function renderRadio() {
+  if (radio.current && radio.current.id !== settings.radioStation?.id) {
+    settings.radioStation = radio.current; // the driver's own choice replaces the default
+    saveSettings();
+  }
   const power = el('radioPower');
   power.setAttribute('aria-pressed', String(radio.on));
   for (const b of document.querySelectorAll('.bands button')) b.classList.toggle('on', b.dataset.band === radio.band);
@@ -444,6 +450,8 @@ function renderRadio() {
 }
 
 function setRadioPower(on) {
+  settings.radioOn = on;
+  saveSettings();
   engine.start();
   applySound();
   radio.setPower(on);
@@ -461,6 +469,7 @@ function applySound() {
 }
 
 function frame(t) {
+  measureFrame(t);
   const dt = Math.min((t - last) / 1000 || 0, 0.06);
   last = t;
   if (map && !debug.hold && !dialogOpen && !paused) {
@@ -557,7 +566,6 @@ async function placeCar(where) {
 function saveTrip() {
   saveSession({
     pos, heading: car.heading, zoom, camIndex, destination, fsd, fsdBoost, trip, lane, navRadius, label: el('where').textContent,
-    radio: { on: radio.on, band: radio.band, stationId: radio.current?.id ?? null },
   });
 }
 
@@ -578,10 +586,6 @@ async function restoreTrip(saved) {
   lane = saved.lane;
   navRadius = saved.navRadius;
   el('where').textContent = saved.label;
-  radio.band = saved.radio.band;
-  radio.resumeId = saved.radio.stationId;
-  radioResume = saved.radio.on; // browsers need a click or key press before sound can start
-  renderRadio();
   tiles.ensure(pos.lat, pos.lng, car.heading, 0);
   await sampleGround();
   ground = groundTarget;
@@ -675,7 +679,10 @@ el('startForm').addEventListener('submit', async (e) => {
     el('startGo').disabled = el('useDefault').disabled = false;
   }
 });
-el('changeStart').addEventListener('click', () => { if (!dialogOpen) openDialog('start'); });
+el('changeStart').addEventListener('click', () => {
+  closeSettings();
+  openDialog('start');
+});
 
 el('destForm').addEventListener('submit', async (e) => {
   e.preventDefault();
@@ -759,7 +766,9 @@ function applyDaylight() {
   el('lightsButton').setAttribute('aria-pressed', String(lit));
   const box = el('map'), width = box.clientWidth, height = box.clientHeight;
   const angle = ((car.heading - camHeading + 540) % 360) - 180;
-  const key = `${settings.hour}|${lit}|${Math.round(range)}|${Math.round(tilt)}|${settings.carScale}|${settings.carProfile}|${width}x${height}|${angle.toFixed(1)}|${braking}`;
+  // Only the headlights and brake lights depend on the view, so with neither on nothing redraws while driving.
+  const moving = lit || braking ? `${Math.round(range / 2)}|${Math.round(tilt)}|${Math.round(angle * 2)}` : '';
+  const key = `${settings.hour}|${lit}|${braking}|${settings.carScale}|${settings.carProfile}|${width}x${height}|${moving}`;
   if (key === lightKey) return;
   lightKey = key;
   const night = el('night'), beam = el('beam');
@@ -808,6 +817,31 @@ function applyDaylight() {
   drawDots(dots, tailDots(view, length, carWidth, lit, braking));
 }
 
+function applyGraphics() {
+  if (!map) return;
+  if (map.qualityMode !== settings.mapQuality) map.qualityMode = settings.mapQuality;
+  if (map.maxMemoryMegabytes !== settings.mapMemory) map.maxMemoryMegabytes = settings.mapMemory;
+}
+
+// Frames per second, the slowest frame in the last second, and JavaScript memory where the browser reports it
+// (Chrome). That memory excludes the 3D map's graphics, which is usually most of what a tab uses.
+let perfFrames = 0, perfSince = 0, perfSlowest = 0, perfLast = 0;
+function measureFrame(t) {
+  perfSlowest = Math.max(perfSlowest, t - perfLast);
+  perfLast = t;
+  perfFrames++;
+  if (t - perfSince < 1000) return;
+  const fps = Math.round((perfFrames * 1000) / (t - perfSince));
+  const heap = performance.memory ? ` · JS ${Math.round(performance.memory.usedJSHeapSize / 1048576)} MB` : '';
+  const box = el('perf');
+  box.textContent = `${fps} FPS · slowest ${Math.round(perfSlowest)} ms${heap}`;
+  box.classList.toggle('slow', fps < 30 || perfSlowest > 100);
+  debug.perf = { fps, slowest: Math.round(perfSlowest) };
+  perfFrames = 0;
+  perfSince = t;
+  perfSlowest = 0;
+}
+
 function setHeadlights(on) {
   settings.headlights = on;
   applyDaylight();
@@ -833,6 +867,7 @@ function hornUp(button = el('hornButton')) {
 const settingText = {
   carScale: (v) => `${v.toFixed(1)}× real size`,
   hour: clockText,
+  mapMemory: (v) => `${v} MB`,
   enginePitch: (v) => `${Math.round(v * 100)}%`,
 };
 const percent = (v) => `${Math.round(v * 100)}%`;
@@ -848,6 +883,8 @@ function showSettings() {
   el('carPreview').innerHTML = carPicture(settings.carProfile, settings.carColor);
   applyCarLook();
   applyDaylight();
+  applyGraphics();
+  el('settingsStart').textContent = el('where').textContent || start.label;
   if (model) model.scale = settings.carScale; // fixed in world units, so the car shrinks with the map when zooming out
   applySound();
 }
@@ -959,19 +996,58 @@ el('navScreen').addEventListener('click', () => {
 el('helpButton').addEventListener('click', () => el('help').classList.toggle('open'));
 // Browsers only allow sound after the first click or key press.
 for (const kind of ['pointerdown', 'keydown']) {
-  document.addEventListener(kind, () => {
+  document.addEventListener(kind, (event) => {
     engine.start();
     applySound();
-    if (radioResume) { radioResume = false; setRadioPower(true); }
+    if (radioResume) {
+      radioResume = false;
+      if (!(kind === 'pointerdown' && el('radioPower').contains(event.target))) setRadioPower(true);
+    }
   }, { capture: true });
 }
 window.addEventListener('pagehide', () => { if (map) saveTrip(); });
+
+// --- Dismissing popups ----------------------------------------------------------------------------------------
+
+// Escape or a click outside closes any popup. The first start dialog can't just vanish, because the game
+// needs a start, so there it takes the default.
+function dismissStart() {
+  if (el('useDefault').disabled) return; // an address is being looked up
+  if (map) finishDialog();
+  else el('useDefault').click();
+}
+
+function dismissPopup() {
+  if (openId === 'dest') { finishDialog(); return true; }
+  if (openId === 'start') { dismissStart(); return true; }
+  if (el('help').classList.contains('open')) { el('help').classList.remove('open'); return true; }
+  if (el('notice').style.display === 'block') { el('notice').style.display = 'none'; return true; }
+  return false;
+}
+
+el('start').addEventListener('click', (e) => { if (e.target === el('start')) dismissStart(); });
+el('dest').addEventListener('click', (e) => { if (e.target === el('dest')) finishDialog(); });
+el('pause').addEventListener('click', (e) => { if (e.target === el('pause')) setPaused(false); });
+document.addEventListener('pointerdown', (e) => {
+  if (el('help').classList.contains('open') && !el('help').contains(e.target) && !el('helpButton').contains(e.target)) el('help').classList.remove('open');
+}, { capture: true });
+
+el('settingsCopy').addEventListener('click', async () => {
+  const text = JSON.stringify(settings);
+  try {
+    await navigator.clipboard.writeText(text);
+    notice('Settings copied. Paste them to Claude to make them the new-player defaults.', 5000);
+  } catch (err) {
+    window.prompt('Copy these settings:', text);
+  }
+});
 
 // --- Input ----------------------------------------------------------------------------------------------------
 
 const DRIVE_KEYS = new Set(['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', ' ', 'z', 'shift']);
 document.addEventListener('keydown', (e) => {
   if (el('settings').classList.contains('open') && (e.key === 'Escape' || e.key.toLowerCase() === 'o')) { e.preventDefault(); return closeSettings(); }
+  if (e.key === 'Escape' && dismissPopup()) { e.preventDefault(); return; }
   if (dialogOpen) return; // the keys belong to the open dialog
   const k = e.key.toLowerCase();
   if (e.metaKey || e.ctrlKey || e.altKey) return;
@@ -1060,6 +1136,7 @@ async function boot() {
     else await openDialog('start'); // the map itself loads only once the start is chosen
     map = new maps3d.Map3DElement({ center: { ...pos, altitude: ground }, heading: car.heading, tilt, range, fov: FOV_Y, mode: 'HYBRID', defaultUIHidden: true });
     map.style.width = map.style.height = '100%';
+    applyGraphics();
     el('map').replaceChildren(map);
     if (maps3d.Model3DElement) {
       model = new maps3d.Model3DElement({ position: { ...pos, altitude: 0 }, altitudeMode: 'RELATIVE_TO_GROUND', orientation: { heading: car.heading, tilt: 0, roll: 0 }, scale: settings.carScale });
@@ -1070,7 +1147,7 @@ async function boot() {
     applyDaylight();
     if (saved) {
       if (destination) requestRoute(true);
-      notice(`Trip restored${destination ? `, heading to ${destination.label}` : ''}. Press L for a new start.${radioResume ? ' The radio comes back at your first key press.' : ''}`, 6000);
+      notice(`Trip restored${destination ? `, heading to ${destination.label}` : ''}. Press L for a new start.`, 6000);
     }
     window.__geodrive = Object.assign(debug, {
       settings, gearbox, saveTrip, engine, radio, map, model, ground: () => ground, match: () => match, onBridge: () => onBridge, placeCar, pressSignal,
@@ -1081,6 +1158,9 @@ async function boot() {
   }
 }
 
+// The saved or default station, ready to play at the first click or key press, as browsers require.
+radio.restore(settings.radioStation);
+radioResume = settings.radioOn;
 applySound();
 renderRadio();
 requestAnimationFrame(frame);

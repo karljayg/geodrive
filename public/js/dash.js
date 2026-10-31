@@ -75,7 +75,7 @@ export function drawGauge(canvas, { value, max, step, scale = 1, redFrom = null,
 
 // The navigation screen: a map from very high up, drawn from the road data already loaded, so it adds no map charges.
 // options: { roads, pos, heading, route, routeIndex, radius (m from the car to the top of the screen) }
-export function drawNav(canvas, { roads, pos, heading, route, routeIndex, radius }) {
+export function drawNav(canvas, { roads, pos, heading, route, routeIndex, radius, hour, clock }) {
   const { ctx, w, h } = fit(canvas);
   ctx.fillStyle = '#0a1420';
   ctx.fillRect(0, 0, w, h);
@@ -117,6 +117,28 @@ export function drawNav(canvas, { roads, pos, heading, route, routeIndex, radius
     ctx.fillStyle = '#ff5a48';
     ctx.beginPath(); ctx.arc(Math.max(4, Math.min(w - 4, ex)), Math.max(4, Math.min(h - 4, ey)), 4, 0, Math.PI * 2); ctx.fill();
   }
+
+  // A quiet clock face on the right, showing the game's time of day, in the screen's own colours.
+  const faceR = Math.min(22, h * 0.17), fx = w - faceR - 10, fy = h / 2 - 6;
+  ctx.fillStyle = '#0a1420cc';
+  ctx.beginPath(); ctx.arc(fx, fy, faceR + 3, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = '#8fa6b880';
+  ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.arc(fx, fy, faceR, 0, Math.PI * 2); ctx.stroke();
+  const hand = (turns, length, width) => {
+    const a = turns * Math.PI * 2;
+    ctx.lineWidth = width;
+    ctx.beginPath(); ctx.moveTo(fx, fy); ctx.lineTo(fx + Math.sin(a) * length, fy - Math.cos(a) * length); ctx.stroke();
+  };
+  ctx.strokeStyle = '#8fa6b8';
+  ctx.lineCap = 'round';
+  hand((hour % 12) / 12, faceR * 0.52, 1.6);
+  hand(hour % 1, faceR * 0.8, 1.1);
+  ctx.fillStyle = '#8fa6b8';
+  ctx.font = '600 9px system-ui, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'top';
+  ctx.fillText(clock, fx, fy + faceR + 5);
 
   // The car always points up, and the map turns under it. N shows which way north is.
   ctx.fillStyle = '#5cf0c0';

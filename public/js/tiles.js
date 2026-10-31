@@ -7,6 +7,7 @@ const TILEJSON = 'https://tiles.openfreemap.org/planet';
 const RETRY_AFTER = 15000; // ms before a tile that failed is tried again
 const AROUND = [-1, 0, 1];
 const RING = 2500;         // m out from the car that should always be loaded
+const MAX_TILES = 60;      // road tiles kept before older ones are released
 const LOOK = 20;           // seconds of driving ahead to load
 
 export class RoadTiles {
@@ -70,6 +71,10 @@ export class RoadTiles {
 
   // Keeps the tiles around the car loaded, plus where it will be soon.
   ensure(lat, lng, heading, speed) {
+    if (this.loaded.size > MAX_TILES && !this.loading.size) {
+      this.net.clear();
+      this.loaded.clear();
+    }
     const keys = new Set([this.keyAt(lat, lng)]);
     for (const bearing of [0, 45, 90, 135, 180, 225, 270, 315]) {
       const p = move(lat, lng, bearing, RING);

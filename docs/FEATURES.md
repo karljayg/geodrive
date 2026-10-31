@@ -29,6 +29,7 @@ One press takes the next non-service road on that side, far enough ahead to brak
 A full-width panel below the map, which is sized to end above it.
 - Left: speedometer, tachometer with gear, fuel bar, lights and horn. The speedometer tops out at 200 until past 150 mph, then steps to 300, 400 and 500, keeping the needle at or under 3/4 of the dial. Tachometers end at the round thousand above each car's redline. Electric cars show battery charge instead.
 - Fuel and charge are placeholders: 4 hours of running from full to empty, saved with the trip, with no effect on the car. A new start refills.
+- The nav screen carries FSD status and destination top left, and on the right a muted analog clock with digital time showing the game's time of day (which only moves when changed).
 - Centre: real-time clock, ETA when there's a destination (from Google's route times, assuming FSD cruise), trip figures, and the navigation screen.
 - Right: radio with an LCD, PWR, bands, and volume and tune knobs (drag or scroll). Clicking the LCD opens the station list.
 - Navigation screen: heading-up view from very high: the arrow points up and the map turns under it. It's drawn from the road data already loaded rather than a second Google map, which would add map charges. Click it to change the range.
@@ -48,18 +49,24 @@ A full-width panel below the map, which is sized to end above it.
 - Horn (hold B or the Horn button) is synthesised, with notes set per car in `cars.js`.
 
 ## Radio
-- Off by default. Stations come from Radio Browser: within about 150 km of the car first, then the rest of the state. It searches again after about 50 km of driving.
+- On by default at 35% on HOT 99.5 (WIHT Washington), starting at the first click or key press, as browsers require. Choosing another station or turning it off is remembered in that browser. Stations come from Radio Browser: within about 150 km of the car first, then the rest of the state. It searches again after about 50 km of driving.
 - These are internet streams, so band and frequency are read from each station's name and tags. Stations that don't state one are listed under WEB, and tuning only reaches listed stations.
 - Browsers block plain `http` streams on an `https` page, so only `https` stations are listed, which leaves out about half of them.
 
 ## Settings (O)
-Clicking outside the panel closes it, and changes save as they're made. Car size, car profile, engine sound (recorded or synth), sound mix (Quiet, Balanced, Sport), master volume, mute, volumes for engine, radio, road, wind and effects, engine pitch, and road following on or off. Saved in the browser.
+Clicking outside the panel closes it, and changes save as they're made. New players start from `public/data/defaults.json`; **Copy settings** produces the text for it. Start location, car size, car profile, engine sound (recorded or synth), sound mix (Quiet, Balanced, Sport), master volume, mute, volumes for engine, radio, road, wind and effects, engine pitch, and road following on or off. Saved in the browser.
 
 ## Pause and trip stats (P)
 Pausing stops the car and the clock. The pause screen shows elapsed and moving time, miles, average and top speed, FSD miles, share and time, takeovers, signals, bridges and miles off road. A new start or R begins a new trip.
 
 ## Saved trip
 Position, heading, destination, FSD state and speed offset, trip stats, zoom, camera, nav range and radio station save to the browser's `localStorage` every 2 seconds and on leaving the page. A refresh skips the start dialog and carries on with the car stopped, and FSD drives on if it was on (getting one new route, which is billed). The radio comes back at the first click or key press, as browsers require. L or R starts a new trip. Saved per browser, not across devices.
+
+## Performance
+The dashboard shows FPS, the slowest frame in the last second, and JavaScript memory (Chrome only). Settings has map quality and a limit on the memory Google's 3D map keeps. Road data is released after 60 tiles.
+
+## Popups
+Escape or a click outside closes every popup: start, destination, pause, settings, key list and notices. On first load the start dialog takes the default, because the game needs a start.
 
 ## All keys
 | Key | Action |

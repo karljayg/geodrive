@@ -23,11 +23,11 @@ header button:hover { background: #ffffff1f; color: #fff; }
 .brand { font-weight: 800; letter-spacing: .08em; font-size: 11px; margin: 0 6px 0 2px; }
 .where { font-size: 10px; color: #8fa2b0; margin-left: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .brand b { color: #69d9ba; }
-#notice { position: absolute; top: 86px; left: 8px; max-width: 420px; padding: 10px 15px; border-radius: 9px; background: #923822e0; font-size: 13px; line-height: 1.4; display: none; }
+#notice { position: absolute; top: 44px; left: 8px; max-width: 420px; padding: 10px 15px; border-radius: 9px; background: #923822e0; font-size: 13px; line-height: 1.4; display: none; }
 
 kbd { display: inline-flex; min-width: 24px; justify-content: center; border: 1px solid #607080; border-bottom-width: 3px; border-radius: 5px; background: #ffffff13; color: #fff; padding: 0 5px; line-height: 20px; font: inherit; font-size: 11px; margin-right: 3px; }
 
-#nav { position: absolute; top: 44px; left: 8px; max-width: min(380px, calc(100% - 16px)); display: none; }
+#nav { position: absolute; top: 5px; left: 5px; max-width: calc(100% - 90px); display: none; padding: 3px 7px; border-radius: 5px; background: #0a1420d9; border: 1px solid #ffffff1f; pointer-events: none; }
 #nav.active { display: block; }
 #nav.engaged { border-color: #2f9bff; }
 #navState { font-weight: 800; letter-spacing: .06em; font-size: 10px; color: #9baebb; }
@@ -94,15 +94,19 @@ kbd { display: inline-flex; min-width: 24px; justify-content: center; border: 1p
 .carButtons button:hover { background: #ffffff2b; }
 #lightsButton[aria-pressed=true] { background: #ffe680; color: #1b1a0c; }
 #hornButton.on { background: #ff8a3c; }
-#carPreview { margin-bottom: 8px; padding: 4px; border-radius: 8px; background: #0a1420; }
-#carPreview svg { display: block; width: 100%; height: auto; }
+#carPreview { margin: 6px 0; }
+#carPreview svg { display: block; width: 72px; height: auto; }
 #settings input[type=color] { width: 100%; height: 34px; margin: 8px 0 12px; padding: 2px; background: #07131e; border: 1px solid #456074; border-radius: 8px; cursor: pointer; }
 
 .centre { min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: 3px; }
 .navTop { display: flex; justify-content: space-between; gap: 8px; font-size: 11px; color: #bcd; min-height: 15px; white-space: nowrap; font-variant-numeric: tabular-nums; }
 #eta { color: #6fbcff; font-weight: 650; overflow: hidden; text-overflow: ellipsis; }
 #clock { color: #fff; font-weight: 700; }
-#navScreen { flex: 1; width: 100%; min-height: 0; border-radius: 8px; border: 1px solid #ffffff26; cursor: pointer; display: block; }
+#perf { color: #8fa2b0; font-size: 10px; margin-left: auto; }
+#perf.slow { color: #ffb060; }
+#settingsStart { font-size: 12px; color: #c8d6e0; margin-bottom: 6px; }
+.navBox { position: relative; flex: 1; min-height: 0; }
+#navScreen { position: absolute; inset: 0; width: 100%; height: 100%; border-radius: 8px; border: 1px solid #ffffff26; cursor: pointer; display: block; }
 .trip { display: flex; flex-wrap: nowrap; justify-content: space-between; gap: 8px; overflow: hidden; font-size: 9px; letter-spacing: .03em; color: #8fa2b0; white-space: nowrap; }
 .trip b { color: #fff; font-size: 10px; font-weight: 600; letter-spacing: 0; font-variant-numeric: tabular-nums; }
 
