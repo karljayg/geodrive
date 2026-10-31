@@ -11,5 +11,7 @@ export const CAR_PROFILES = {
   truck: { name: 'Truck', sound: recorded('truck', { idle: 650, load: 710, mid: 1149 }), idle: 650, redline: 3800, gearTops: [25, 45, 70, 105, 150, 220, 340, 500], cylinders: 6, brightness: 0.55, rumble: 1, roar: 0.5, whine: 0 },
   electric: { name: 'Electric', idle: 0, redline: 18000, gearTops: [500], cylinders: 0, brightness: 1, rumble: 0, roar: 0.08, whine: 1 },
 };
+// Horn notes in Hz: two together, as real horns have.
+export const hornFor = (id) => ({ truck: [185, 233], muscle: [330, 415], electric: [523, 659] }[id] || [415, 523]);
 export const DEFAULT_PROFILE = 'sport';
 export const profileFor = (id) => CAR_PROFILES[id] || CAR_PROFILES[DEFAULT_PROFILE];

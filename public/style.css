@@ -8,6 +8,10 @@ html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background:
 /* The camera belongs to the car, so mouse drags and wheel never reach the map. */
 #shield { z-index: 1; }
 #hud { z-index: 2; pointer-events: none; }
+/* Evening and headlights: a tint over the map with a lit pool cut out ahead of the car. */
+#night, #beam { position: absolute; inset: 0 0 var(--dash) 0; pointer-events: none; display: none; }
+#night { mix-blend-mode: multiply; z-index: 1; }
+#beam { mix-blend-mode: screen; z-index: 1; }
 
 .pill, .panel { background: #101923dd; border: 1px solid #ffffff26; box-shadow: 0 8px 30px #0004; backdrop-filter: blur(18px); border-radius: 14px; }
 header { position: absolute; top: 22px; left: 24px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; max-width: calc(100% - 48px); }
@@ -77,6 +81,14 @@ kbd { display: inline-flex; min-width: 24px; justify-content: center; border: 1p
 #dash { position: absolute; left: 0; right: 0; bottom: 0; height: var(--dash); z-index: 2; display: grid; grid-template-columns: auto minmax(280px, 1fr) minmax(170px, 210px) minmax(190px, 300px); gap: 10px; padding: 8px 12px; background: linear-gradient(#17222e, #0b121b); border-top: 1px solid #ffffff2b; }
 .gauges { display: flex; gap: 6px; align-items: center; }
 .gauges canvas { width: 154px; height: 154px; }
+.carButtons { display: flex; flex-direction: column; gap: 6px; }
+.carButtons button { font: inherit; font-size: 12px; font-weight: 650; color: #fff; padding: 9px 10px; background: #ffffff17; border: 1px solid #ffffff24; border-radius: 8px; cursor: pointer; touch-action: none; }
+.carButtons button:hover { background: #ffffff2b; }
+#lightsButton[aria-pressed=true] { background: #ffe680; color: #1b1a0c; }
+#hornButton.on { background: #ff8a3c; }
+#carPreview { margin-bottom: 8px; padding: 4px; border-radius: 8px; background: #0a1420; }
+#carPreview svg { display: block; width: 100%; height: auto; }
+#settings input[type=color] { width: 100%; height: 34px; margin: 8px 0 12px; padding: 2px; background: #07131e; border: 1px solid #456074; border-radius: 8px; cursor: pointer; }
 #navScreen { width: 100%; height: 100%; min-height: 0; border-radius: 10px; border: 1px solid #ffffff26; cursor: pointer; display: block; }
 
 .radio { min-width: 0; display: flex; flex-direction: column; gap: 5px; justify-content: center; padding: 6px 10px; border-radius: 10px; background: #060c13; border: 1px solid #ffffff1f; }
@@ -111,10 +123,14 @@ kbd { display: inline-flex; min-width: 24px; justify-content: center; border: 1p
   .trip { display: none; }
   .gauges canvas { width: 130px; height: 130px; }
 }
+@media (max-width: 820px) {
+  #dash { grid-template-columns: auto minmax(0, 1fr) minmax(90px, 140px); }
+  .gauges canvas { width: 88px; height: 88px; }
+  .carButtons button { padding: 6px; font-size: 11px; }
+}
 @media (max-width: 820px) and (min-height: 700px) {
   :root { --dash: 290px; }
   #dash { grid-template-columns: auto minmax(0, 1fr); grid-template-rows: 136px minmax(0, 1fr); gap: 6px; padding: 6px 8px; }
-  .gauges canvas { width: 104px; height: 104px; }
   .gauges { grid-row: 1; }
   #navScreen { grid-row: 1; grid-column: 2; }
   .radio { grid-row: 2; grid-column: 1 / 3; }

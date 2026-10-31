@@ -40,6 +40,12 @@ A full-width panel below the map, which is sized to end above it.
 - Profiles in `cars.js`: sports car, muscle V8, normal car, truck (recorded), electric (synth). "Classic synth" is an option for any car, and the fallback if recordings fail. They change sound and gearing only, not handling.
 - Audio can only start after a click or key press, as browsers require.
 
+## Car look, lights, horn and time of day
+- Car type and colour are built in the browser (`carModel.js`), with a matching side-view picture in Settings.
+- Time of day (Settings, or T for +1 hour) is a colour tint over the map (`daylight.js`). Google's 3D map is a photograph with fixed lighting and no lighting controls, so shadows don't move, and buildings and streets don't light up.
+- Headlights (J or Lights button) cut a soft pool of light out of the tint ahead of the car. It's a screen effect, so it doesn't fall on buildings or follow hills.
+- Horn (hold B or the Horn button) is synthesised, with notes set per car in `cars.js`.
+
 ## Radio
 - Off by default. Stations come from Radio Browser: within about 150 km of the car first, then the rest of the state. It searches again after about 50 km of driving.
 - These are internet streams, so band and frequency are read from each station's name and tags. Stations that don't state one are listed under WEB, and the frequency dial is only as complete as that data.
@@ -69,6 +75,9 @@ Position, heading, destination, FSD state and speed offset, trip stats, zoom, ca
 | N | Radio on / off |
 | [ / ] | Previous / next station |
 | M | Mute all sound |
+| J | Headlights on / off |
+| B | Horn (hold) |
+| T | Time of day +1 hour |
 | C | Camera |
 | R | Back to the start |
 | L | Change the start point |

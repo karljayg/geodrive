@@ -14,6 +14,9 @@ export const DEFAULTS = {
   roadVolume: 0.5,
   windVolume: 0.5,
   roadFollow: true,
+  carColor: '#0dbf8c',
+  hour: 12, // time of day, 0..24
+  headlights: false,
 };
 
 function load() {

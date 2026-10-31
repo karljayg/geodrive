@@ -4,6 +4,8 @@ import { readFileSync } from 'node:fs';
 import { CAR_PROFILES } from '../public/js/cars.js';
 import { AUDIO_PRESETS, engineCutoff, engineIntensity, layerMix, roadLevel, windLevel } from '../public/js/engineMix.js';
 import { newGearbox, stepGearbox } from '../public/js/gearbox.js';
+import { BODY_SHAPES, buildCarGlb, carPicture, colorFactor, DEFAULT_COLOR } from '../public/js/carModel.js';
+import { clockText, darknessAt, tintAt } from '../public/js/daylight.js';
 
 const sport = CAR_PROFILES.sport, layers = sport.sound.layers;
 
@@ -62,4 +64,31 @@ test('every recorded layer a car names exists', () => {
     if (!car.sound) continue;
     for (const layer of Object.keys(car.sound.layers)) readFileSync(new URL(`../public/audio/samples/${car.sound.set}/${layer}.flac`, import.meta.url));
   }
+});
+
+test('every car type builds a valid model in any colour, and bad colours fall back', () => {
+  for (const type of Object.keys(CAR_PROFILES)) {
+    const glb = buildCarGlb(type, '#ff0000');
+    const view = new DataView(glb.buffer);
+    assert.equal(view.getUint32(0, true), 0x46546c67);
+    assert.equal(view.getUint32(8, true), glb.length);
+    const len = view.getUint32(12, true);
+    const gltf = JSON.parse(new TextDecoder().decode(glb.subarray(20, 20 + len)));
+    assert.equal(gltf.materials[0].pbrMetallicRoughness.baseColorFactor[0], 1);
+    assert.ok(carPicture(type, '#ff0000').includes('#ff0000'));
+    assert.ok(BODY_SHAPES[type], `${type} has a shape`);
+  }
+  assert.notDeepEqual(buildCarGlb('truck', '#fff'), buildCarGlb('sport', '#fff'));
+  assert.deepEqual(colorFactor('nonsense'), colorFactor(DEFAULT_COLOR));
+});
+
+test('time of day: clear by day, dark at night, warm at dusk', () => {
+  assert.deepEqual(tintAt(12), [255, 255, 255]);
+  assert.equal(darknessAt(12), 0);
+  assert.ok(darknessAt(23) > 0.85 && darknessAt(2) > 0.85);
+  const dusk = tintAt(18);
+  assert.ok(dusk[0] > dusk[2], 'dusk is warm');
+  assert.deepEqual(tintAt(24), tintAt(0));
+  assert.equal(clockText(0), '12:00 AM');
+  assert.equal(clockText(13.5), '1:30 PM');
 });

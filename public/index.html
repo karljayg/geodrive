@@ -8,6 +8,8 @@
 </head>
 <body>
 <div id="map"></div>
+<div id="night"></div>
+<div id="beam"></div>
 <div id="shield"></div>
 <div id="hud">
   <header>
@@ -37,6 +39,7 @@
     <div><kbd>G</kbd> Destination · <kbd>F</kbd> FSD on/off</div>
     <div><kbd>-</kbd><kbd>=</kbd> FSD speed</div>
     <div><kbd>N</kbd> Radio · <kbd>[</kbd><kbd>]</kbd> Station · <kbd>M</kbd> Mute</div>
+    <div><kbd>J</kbd> Headlights · <kbd>B</kbd> Horn · <kbd>T</kbd> Time +1 hour</div>
     <div><kbd>C</kbd> Camera · <kbd>R</kbd> Reset · <kbd>L</kbd> Start</div>
     <div><kbd>P</kbd> Pause · <kbd>O</kbd> Settings · <kbd>H</kbd> Keys</div>
   </div>
@@ -45,6 +48,10 @@
   <div class="gauges">
     <canvas id="speedGauge" aria-label="Speedometer"></canvas>
     <canvas id="revGauge" aria-label="Tachometer"></canvas>
+    <div class="carButtons">
+      <button id="lightsButton" aria-pressed="false">Lights</button>
+      <button id="hornButton">Horn</button>
+    </div>
   </div>
   <section class="radio" aria-label="Radio">
     <div class="radioTop">
@@ -118,8 +125,17 @@
     <h3>Car</h3>
     <label for="carProfile">Car profile</label>
     <select id="carProfile" data-setting="carProfile"></select>
+    <div id="carPreview"></div>
+    <label for="carColor">Colour</label>
+    <input id="carColor" data-setting="carColor" type="color">
     <label for="carScale">Size <span data-value="carScale"></span></label>
     <input id="carScale" data-setting="carScale" type="range" min="0.3" max="5" step="0.1">
+  </section>
+  <section>
+    <h3>Time of day</h3>
+    <label for="hour">Time <span data-value="hour"></span></label>
+    <input id="hour" data-setting="hour" type="range" min="0" max="24" step="0.25">
+    <label class="check"><input id="headlights" data-setting="headlights" type="checkbox"> Headlights on</label>
   </section>
   <section>
     <h3>Sound</h3>

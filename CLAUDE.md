@@ -11,7 +11,6 @@ Deploy with `npm run deploy` when a change is done, without being asked, so the 
 - Local: `npm start`, then http://localhost:8765/ (the `geodrive` entry in `.claude/launch.json`). Don't open it from `file://`; it has to fetch `config.json`.
 - Tests: `npm test` (physics, camera helpers and roads, no browser).
 - Deploy: `npm run deploy` rsyncs `public/` to the server. Needs no service and no Apache change.
-- Rebuild the car: `npm run car` writes `public/assets/car.glb` from code.
 
 ## Server
 - SSH: `ssh -i ~/Downloads/"karl ptfs aws.pem" ec2-user@psistorm.com`. `scripts/deploy.sh` uses that key; override with `GEODRIVE_SSH_KEY`.
@@ -51,4 +50,4 @@ The dialog on load keeps the default or overrides it with an address (Google Geo
 - `public/js/trip.js`: trip stats for the HUD and the pause screen (`P`). A new start or `R` begins a new trip. Pure, tested.
 - `public/js/settings.js`: preferences saved in the browser. The panel is in `index.html`; new settings (the owner plans a choice of cars) go in `DEFAULTS` plus a `<section>` there. The car's `scale` is 1 for real size, 0.9 by default.
 - `public/js/main.js`: input, game loop, map setup, HUD. Tune cameras, zoom and the start point here.
-- `scripts/make-car.mjs`: the low-poly car, built from code so there is no asset licence.
+- `public/js/carModel.js`: the low-poly cars, built from code so there is no asset licence.

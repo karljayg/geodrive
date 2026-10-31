@@ -2,7 +2,9 @@ import { newCar, stepCar } from './physics.js';
 import { distance, easeAngle, leadDistance, move } from './camera.js';
 import { FLAG_ONEWAY, RoadNet } from './road.js';
 import { Path } from './route.js';
-import { CAR_PROFILES, profileFor } from './cars.js';
+import { CAR_PROFILES, hornFor, profileFor } from './cars.js';
+import { buildCarGlb, carPicture } from './carModel.js';
+import { clockText, darknessAt, tintAt } from './daylight.js';
 import { drawGauge, drawNav } from './dash.js';
 import { EngineAudio } from './engineSound.js';
 import { newGearbox, stepGearbox } from './gearbox.js';
@@ -319,6 +321,7 @@ function syncScene(dt) {
   map.tilt = tilt;
   map.range = range;
   map.center = { lat: center.lat, lng: center.lng, altitude: ground };
+  applyDaylight();
   if (model) {
     model.position = { lat: pos.lat, lng: pos.lng, altitude: 0 };
     model.orientation = { heading: car.heading, tilt: 0, roll: 0 };
@@ -704,12 +707,74 @@ el('tripReset').addEventListener('click', () => {
   updateHud(0);
 });
 
+// --- Car look, time of day, lights, horn -----------------------------------------------------------------------
+
+// The model is rebuilt only when the type or colour changes, and a colour drag settles before it swaps.
+let carLookKey = '', carLookTimer = null;
+function applyCarLook() {
+  if (!model) return;
+  clearTimeout(carLookTimer);
+  const key = settings.carProfile + settings.carColor;
+  if (key === carLookKey) return;
+  carLookTimer = setTimeout(() => {
+    carLookKey = key;
+    // A data: URL, because the map doesn't load models from blob: URLs.
+    const glb = buildCarGlb(settings.carProfile, settings.carColor);
+    let text = '';
+    for (let i = 0; i < glb.length; i += 8192) text += String.fromCharCode.apply(null, glb.subarray(i, i + 8192));
+    model.src = `data:model/gltf-binary;base64,${btoa(text)}`;
+  }, carLookKey ? 150 : 0);
+}
+
+// The tint covers the map, with a pool of light cut out ahead of the car when the headlights are on. The car's place
+// on screen is fixed, and the pool shrinks with zoom like everything else.
+let lightKey = '';
+function applyDaylight() {
+  const dark = darknessAt(settings.hour), lit = settings.headlights;
+  el('lightsButton').setAttribute('aria-pressed', String(lit));
+  const box = el('map');
+  const carY = box.clientHeight * (0.5 + CAR_BELOW_CENTRE / 2);
+  const size = Math.min(1.4, CAMERAS[0].range / Math.max(range, 1)) * Math.min(box.clientWidth, box.clientHeight);
+  const key = `${settings.hour}|${lit}|${Math.round(size / 6)}|${box.clientHeight}`;
+  if (key === lightKey) return;
+  lightKey = key;
+  const w = size * 0.42, h = size * 0.5, y = carY - h * 0.62;
+  const pool = `radial-gradient(ellipse ${w}px ${h}px at 50% ${y}px`;
+  const night = el('night'), beam = el('beam');
+  night.style.display = dark > 0.005 ? 'block' : 'none';
+  night.style.background = `rgb(${tintAt(settings.hour).join(',')})`;
+  const mask = lit ? `${pool}, transparent 35%, black 100%)` : 'none';
+  night.style.maskImage = mask;
+  night.style.webkitMaskImage = mask;
+  beam.style.display = lit ? 'block' : 'none';
+  beam.style.background = `${pool}, rgba(255,240,190,${0.06 + dark * 0.1}), transparent 100%)`;
+}
+
+function setHeadlights(on) {
+  settings.headlights = on;
+  applyDaylight();
+  saveSettings();
+}
+
+function hornDown(button = el('hornButton')) {
+  engine.start();
+  applySound();
+  engine.hornOn(hornFor(settings.carProfile));
+  button.classList.add('on');
+}
+
+function hornUp(button = el('hornButton')) {
+  engine.hornOff();
+  button.classList.remove('on');
+}
+
 // --- Settings -------------------------------------------------------------------------------------------------
 
 // The game pauses while the panel is open, and the panel leaves the map in view so changes can be seen as they're made.
 // Every control marked data-setting edits the setting of that name.
 const settingText = {
   carScale: (v) => `${v.toFixed(1)}× real size`,
+  hour: clockText,
   enginePitch: (v) => `${Math.round(v * 100)}%`,
 };
 const percent = (v) => `${Math.round(v * 100)}%`;
@@ -722,6 +787,9 @@ function showSettings() {
     const label = document.querySelector(`[data-value="${name}"]`);
     if (label) label.textContent = (settingText[name] || percent)(settings[name]);
   }
+  el('carPreview').innerHTML = carPicture(settings.carProfile, settings.carColor);
+  applyCarLook();
+  applyDaylight();
   if (model) model.scale = settings.carScale; // fixed in world units, so the car shrinks with the map when zooming out
   applySound();
 }
@@ -783,6 +851,9 @@ el('openSettings').addEventListener('click', () => { if (!dialogOpen) openSettin
 
 // --- Dashboard ------------------------------------------------------------------------------------------------
 
+el('lightsButton').addEventListener('click', () => setHeadlights(!settings.headlights));
+el('hornButton').addEventListener('pointerdown', (e) => { e.preventDefault(); e.currentTarget.setPointerCapture(e.pointerId); hornDown(); });
+for (const kind of ['pointerup', 'pointercancel']) el('hornButton').addEventListener(kind, () => hornUp());
 el('radioPower').addEventListener('click', () => setRadioPower(!radio.on));
 for (const b of document.querySelectorAll('.bands button')) b.addEventListener('click', () => radio.setBand(b.dataset.band));
 el('radioPrev').addEventListener('click', () => radio.seek(-1));
@@ -831,6 +902,14 @@ document.addEventListener('keydown', (e) => {
   if (k === 'g') { e.preventDefault(); openDialog('dest'); }
   if (k === 'o') { e.preventDefault(); openSettings(); }
   if (k === 'n') setRadioPower(!radio.on);
+  if (k === 'j') setHeadlights(!settings.headlights);
+  if (k === 'b') hornDown();
+  if (k === 't') {
+    settings.hour = (settings.hour + 1) % 24;
+    applyDaylight();
+    saveSettings();
+    notice(clockText(settings.hour), 1500);
+  }
   if (k === '[') radio.seek(-1);
   if (k === ']') radio.seek(1);
   if (k === 'h') el('help').classList.toggle('open');
@@ -841,8 +920,11 @@ document.addEventListener('keydown', (e) => {
   if (k === '=' || k === '+') fsdBoost += FSD_SPEED_STEP;
   if (k === '-') fsdBoost -= FSD_SPEED_STEP;
 }, { capture: true });
-document.addEventListener('keyup', (e) => keys.delete(e.key.toLowerCase()), { capture: true });
-window.addEventListener('blur', () => keys.clear());
+document.addEventListener('keyup', (e) => {
+  keys.delete(e.key.toLowerCase());
+  if (e.key.toLowerCase() === 'b') hornUp();
+}, { capture: true });
+window.addEventListener('blur', () => { keys.clear(); hornUp(); });
 for (const b of document.querySelectorAll('#touch button[data-key]')) {
   const k = b.dataset.key;
   b.addEventListener('pointerdown', (e) => { e.preventDefault(); keys.add(k); b.setPointerCapture(e.pointerId); });
@@ -894,16 +976,18 @@ async function boot() {
     map.style.width = map.style.height = '100%';
     el('map').replaceChildren(map);
     if (maps3d.Model3DElement) {
-      model = new maps3d.Model3DElement({ src: new URL('assets/car.glb', location.href).href, position: { ...pos, altitude: 0 }, altitudeMode: 'RELATIVE_TO_GROUND', orientation: { heading: car.heading, tilt: 0, roll: 0 }, scale: settings.carScale });
+      model = new maps3d.Model3DElement({ position: { ...pos, altitude: 0 }, altitudeMode: 'RELATIVE_TO_GROUND', orientation: { heading: car.heading, tilt: 0, roll: 0 }, scale: settings.carScale });
       map.append(model);
     }
+    applyCarLook();
     syncScene(0);
+    applyDaylight();
     if (saved) {
       if (destination) requestRoute(true);
       notice(`Trip restored${destination ? `, heading to ${destination.label}` : ''}. Press L for a new start.${radioResume ? ' The radio comes back at your first key press.' : ''}`, 6000);
     }
     window.__geodrive = Object.assign(debug, {
-      gearbox, saveTrip, engine, radio, map, model, ground: () => ground, match: () => match, onBridge: () => onBridge, placeCar, pressSignal,
+      settings, gearbox, saveTrip, engine, radio, map, model, ground: () => ground, match: () => match, onBridge: () => onBridge, placeCar, pressSignal,
       trip: () => trip, paused: () => paused, nav: () => ({ fsd, destination, route, routeIndex, signal, lane, laneNow }),
     });
   } catch (err) {

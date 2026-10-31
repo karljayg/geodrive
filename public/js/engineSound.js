@@ -141,6 +141,37 @@ export class EngineAudio {
     this.wind.gain.setTargetAtTime(running ? windLevel(speedMph) : 0, now, 0.2);
   }
 
+  // The horn: two reedy notes through the effects bus, on until hornOff.
+  hornOn(notes) {
+    if (!this.ctx || this.horn) return;
+    const ctx = this.ctx, now = ctx.currentTime;
+    const gain = ctx.createGain(), filter = ctx.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.frequency.value = notes[1] * 2.2;
+    filter.Q.value = 0.7;
+    gain.gain.setValueAtTime(0, now);
+    gain.gain.linearRampToValueAtTime(0.5, now + 0.015);
+    filter.connect(gain).connect(this.fxBus);
+    const oscillators = notes.map((f) => {
+      const osc = ctx.createOscillator();
+      osc.type = 'sawtooth';
+      osc.frequency.value = f;
+      osc.connect(filter);
+      osc.start();
+      return osc;
+    });
+    this.horn = { gain, oscillators, filter };
+  }
+
+  hornOff() {
+    if (!this.horn) return;
+    const { gain, oscillators, filter } = this.horn, now = this.ctx.currentTime;
+    this.horn = null;
+    gain.gain.setTargetAtTime(0, now, 0.015);
+    for (const osc of oscillators) osc.stop(now + 0.1);
+    setTimeout(() => { filter.disconnect(); gain.disconnect(); }, 200);
+  }
+
   // One tick of the turn signal.
   tick() {
     if (!this.ctx) return;
