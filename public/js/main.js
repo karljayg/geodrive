@@ -12,6 +12,7 @@ import { newGearbox, stepGearbox } from './gearbox.js';
 import { frequencyText, Radio } from './radio.js';
 import { loadSession, saveSession } from './session.js';
 import { DEFAULTS, saveSettings, settings } from './settings.js';
+import { decodeShare, encodeShare, packShare } from './share.js';
 import { RoadTiles } from './tiles.js';
 import { burnFuel, newTrip, tripFigures, updateTrip } from './trip.js';
 
@@ -563,9 +564,11 @@ async function placeCar(where) {
 
 // --- Saved trip -----------------------------------------------------------------------------------------------
 
+const tripState = () => ({ pos, heading: car.heading, zoom, camIndex, destination, fsd, fsdBoost, trip, lane, navRadius, label: el('where').textContent });
+
 function saveTrip() {
   saveSession({
-    pos, heading: car.heading, zoom, camIndex, destination, fsd, fsdBoost, trip, lane, navRadius, label: el('where').textContent,
+    ...tripState(),
   });
 }
 
@@ -589,6 +592,42 @@ async function restoreTrip(saved) {
   tiles.ensure(pos.lat, pos.lng, car.heading, 0);
   await sampleGround();
   ground = groundTarget;
+}
+
+// Copies a link to this drive and these settings. Everything is in the link's # part, which browsers don't send to servers.
+async function shareDrive() {
+  if (!map) return;
+  const code = await encodeShare(packShare({ settings, defaults: DEFAULTS, session: tripState(), start, defaultStart: ORIGINAL_START }));
+  const link = `${location.origin}${location.pathname}#d=${code}`;
+  debug.lastShare = link;
+  try {
+    await navigator.clipboard.writeText(link);
+    notice('Link copied. Whoever opens it gets this drive and these settings.', 4000);
+  } catch (err) {
+    window.prompt('Copy this link:', link);
+  }
+}
+
+// Opening a shared link replaces this browser's settings and trip with the shared ones. The link is then
+// taken out of the address bar, so a refresh carries on from the saved copy rather than starting over.
+async function openSharedLink() {
+  const code = location.hash.match(/^#d=([\w-]+)/)?.[1];
+  if (!code) return false;
+  history.replaceState(null, '', location.pathname + location.search);
+  const shared = await decodeShare(code);
+  if (!shared) {
+    notice('That share link is damaged, so it was ignored.', 5000);
+    return false;
+  }
+  Object.assign(settings, DEFAULTS, shared.settings);
+  saveSettings();
+  if (shared.start) saveStart(shared.start);
+  saveSession(shared.session);
+  radio.restore(settings.radioStation);
+  radioResume = settings.radioOn;
+  applySound();
+  renderRadio();
+  return true;
 }
 
 function reset() {
@@ -993,6 +1032,9 @@ el('navScreen').addEventListener('click', () => {
   navRadius = NAV_RANGES[(NAV_RANGES.indexOf(navRadius) + 1) % NAV_RANGES.length];
   navDrawnAt = 0;
 });
+el('shareButton').addEventListener('click', shareDrive);
+// A link opened in a tab already on the game changes only the # part, which wouldn't otherwise reload the page.
+window.addEventListener('hashchange', () => { if (location.hash.startsWith('#d=')) location.reload(); });
 el('helpButton').addEventListener('click', () => el('help').classList.toggle('open'));
 // Browsers only allow sound after the first click or key press.
 for (const kind of ['pointerdown', 'keydown']) {
@@ -1131,6 +1173,7 @@ async function boot() {
     elevation = new (await google.maps.importLibrary('elevation')).ElevationService();
     geocoder = new (await google.maps.importLibrary('geocoding')).Geocoder();
     routesLib = await google.maps.importLibrary('routes');
+    const fromLink = await openSharedLink();
     const saved = loadSession();
     if (saved) await restoreTrip(saved);
     else await openDialog('start'); // the map itself loads only once the start is chosen
@@ -1147,7 +1190,7 @@ async function boot() {
     applyDaylight();
     if (saved) {
       if (destination) requestRoute(true);
-      notice(`Trip restored${destination ? `, heading to ${destination.label}` : ''}. Press L for a new start.`, 6000);
+      notice(`${fromLink ? 'Shared drive loaded' : 'Trip restored'}${destination ? `, heading to ${destination.label}` : ''}. Press L for a new start.`, 6000);
     }
     window.__geodrive = Object.assign(debug, {
       settings, gearbox, saveTrip, engine, radio, map, model, ground: () => ground, match: () => match, onBridge: () => onBridge, placeCar, pressSignal,

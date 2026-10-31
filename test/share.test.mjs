@@ -1,0 +1,53 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { decodeShare, encodeShare, packShare, unpackShare } from '../public/js/share.js';
+
+const defaults = { carScale: 1, carColor: '#bf0d16', hour: 7.75, muted: false, radioStation: { id: 'x' } };
+const startA = { label: 'Default', lat: 1, lng: 2, heading: 0 };
+const session = {
+  pos: { lat: 38.123456789, lng: -77.987654321 }, heading: 123.456, label: 'Home', camIndex: 1, zoom: 2.5, fsdBoost: 10, navRadius: 3000, lane: 0,
+  destination: { lat: 39.1, lng: -77.2, label: 'Town Center' }, fsd: true,
+  trip: { elapsed: 100, moving: 90, meters: 5000, fsdMeters: 1000, offRoadMeters: 0, fsdSeconds: 50, topSpeed: 60, bridges: 2, takeovers: 1, signals: 3, fuel: 80 },
+};
+const pack = packShare({ settings: { ...defaults, carColor: '#112233', hour: 20 }, defaults, session, start: { label: 'Mine', lat: 5, lng: 6, heading: 90 }, defaultStart: startA });
+
+test('a drive survives the round trip through a link', async () => {
+  const code = await encodeShare(pack);
+  assert.match(code, /^[\w-]+$/, 'safe in a URL');
+  const out = await decodeShare(code);
+  assert.deepEqual(out.settings, { carColor: '#112233', hour: 20 });
+  assert.equal(out.session.pos.lat, 38.12346);
+  assert.equal(out.session.destination.label, 'Town Center');
+  assert.equal(out.session.fsd, true);
+  assert.equal(out.session.trip.fuel, 80);
+  assert.equal(out.session.navRadius, 3000);
+  assert.equal(out.start.label, 'Mine');
+});
+
+test('only differences from the defaults go in', () => {
+  assert.deepEqual(Object.keys(pack.s).sort(), ['carColor', 'hour']);
+  const plain = packShare({ settings: defaults, defaults, session: { ...session, destination: null }, start: startA, defaultStart: startA });
+  assert.equal(plain.s, undefined);
+  assert.equal(plain.o, undefined);
+  assert.equal(plain.d, undefined);
+});
+
+test('a hostile or damaged link is cleaned or refused', async () => {
+  assert.equal(await decodeShare('not-a-real-link'), null);
+  assert.equal(unpackShare({ p: [999, 0] }), null);
+  assert.equal(unpackShare({}), null);
+  const out = unpackShare({
+    p: [1, 2, 'x'], l: '<img src=x>'.repeat(50), c: 99, z: 1e9, n: 7,
+    s: { evil: 1, masterVolume: 50, carColor: 'red;', carProfile: 'tank', muted: 'yes', radioStation: { id: 'a', url: 'http://x' }, hour: 30 },
+    d: [1000, 2, 'x'], f: 1, t: ['a', -5],
+  });
+  assert.deepEqual(out.settings, { masterVolume: 1, hour: 24 });
+  assert.equal(out.session.heading, 0);
+  assert.equal(out.session.camIndex, 2);
+  assert.equal(out.session.zoom, 8);
+  assert.equal(out.session.navRadius, 1500);
+  assert.equal(out.session.destination, null);
+  assert.equal(out.session.fsd, false);
+  assert.ok(out.session.label.length <= 200);
+  assert.equal(out.session.trip.moving, 0);
+});

@@ -41,6 +41,7 @@ Google usage and spend can only be seen in Google Cloud Console; the API key can
 | `engineSound.js` | Audio buses, recorded engine, road, wind, effects | Browser, by ear |
 | `engineMix.js` | Layer blends and loudness by revs and load | Yes |
 | `synthEngine.js` | Synth engine: electric, option, fallback | Browser, by ear |
+| `share.js` | Share links | Yes |
 | `session.js` | Saves the trip across a refresh | Browser |
 | `radio.js` | Station search, bands, tuning, playback | Parsing yes, playback browser |
 | `carModel.js` | Builds car models and pictures by type and colour | Yes |

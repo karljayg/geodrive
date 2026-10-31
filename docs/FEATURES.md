@@ -65,6 +65,9 @@ Position, heading, destination, FSD state and speed offset, trip stats, zoom, ca
 ## Performance
 The dashboard shows FPS, the slowest frame in the last second, and JavaScript memory (Chrome only). Settings has map quality and a limit on the memory Google's 3D map keeps. Road data is released after 60 tiles.
 
+## Sharing
+The Share button copies a link holding the drive and settings: position, destination and FSD, trip stats, camera, start location, and any settings that differ from the defaults. It's compressed into the URL's # part, so no server stores it. Opening a link replaces that browser's settings and trip, with the car stopped. Links are checked on opening (`share.js`), because anyone can make one.
+
 ## Popups
 Escape or a click outside closes every popup: start, destination, pause, settings, key list and notices. On first load the start dialog takes the default, because the game needs a start.
 
