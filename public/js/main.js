@@ -4,7 +4,7 @@ import { FLAG_ONEWAY, RoadNet } from './road.js';
 import { Path } from './route.js';
 import { CAR_PROFILES, hornFor, profileFor } from './cars.js';
 import { BODY_SHAPES, buildCarGlb, carPicture } from './carModel.js';
-import { beamPools, drawPools, tailPools } from './headlights.js';
+import { beamPools, drawDots, drawPools, tailDots } from './headlights.js';
 import { clockText, darknessAt, tintAt } from './daylight.js';
 import { drawGauge, drawNav, revRange, speedRange, speedStep } from './dash.js';
 import { EngineAudio } from './engineSound.js';
@@ -767,7 +767,7 @@ function applyDaylight() {
     if (canvas.width !== width || canvas.height !== height) { canvas.width = width; canvas.height = height; }
   }
   night.style.display = dark > 0.005 ? 'block' : 'none';
-  beam.style.display = lit || braking ? 'block' : 'none';
+  beam.style.display = lit ? 'block' : 'none';
   const shape = BODY_SHAPES[settings.carProfile] || BODY_SHAPES.sport;
   const length = shape.l * 2 * settings.carScale, carWidth = shape.w * 2 * settings.carScale;
   const view = {
@@ -801,13 +801,11 @@ function applyDaylight() {
     light.globalCompositeOperation = 'lighter';
     drawPools(light, pools, view, 0.03 + dark * 0.05, '255,240,190');
   }
-  if (lit || braking) {
-    const tails = tailPools(length, carWidth, lit, braking);
-    tint.globalCompositeOperation = 'destination-out';
-    drawPools(tint, tails, view, 1);
-    light.globalCompositeOperation = 'lighter';
-    drawPools(light, tails, view, 1, '255,30,20');
-  }
+  const tails = el('tails');
+  if (tails.width !== width || tails.height !== height) { tails.width = width; tails.height = height; }
+  const dots = tails.getContext('2d');
+  dots.clearRect(0, 0, width, height);
+  drawDots(dots, tailDots(view, length, carWidth, lit, braking));
 }
 
 function setHeadlights(on) {

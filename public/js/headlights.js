@@ -1,10 +1,10 @@
 // The headlight pattern on the road: two beams from the lamps, made of many soft overlapping pools. All sizes come
 // from the car's own length and width. Pure apart from drawing, and tested in node.
-const SLICES = 26;
-const REACH = 4;          // car lengths ahead of the nose where the outer beam has faded out
-const PEAK = 1.5;         // car lengths ahead of the nose where the beam is brightest
-const NEAR = 0.2;         // brightness just ahead of the nose, against 1 at the peak
-const SPREAD = 0.16;      // how much a beam widens per metre ahead
+const SLICES = 36;
+const REACH = 6;          // car lengths ahead of the nose where the outer beam has faded out
+const PEAK = 3.5;         // car lengths ahead of the nose where the beam is brightest
+const NEAR = 0.08;        // brightness just ahead of the nose, against 1 at the peak
+const SPREAD = 0.11;      // how much a beam widens per metre ahead
 
 export function beamBrightness(ahead, length) {
   const d = ahead / length;
@@ -28,10 +28,38 @@ export function beamPools(length, width) {
   return pools;
 }
 
-// Two very small tail lights at the back of the car: faint with the lights on, bright under braking.
-export function tailPools(length, width, lit, braking) {
-  const strength = braking ? 1 : lit ? 0.3 : 0;
-  return [-1, 1].map((side) => ({ f: -length / 2, r: side * width * 0.32, rx: width * 0.13, ry: width * 0.13, strength }));
+// Tail lights as small lit dots on screen, kept a fixed size in pixels so they stay visible at any zoom: clearly on
+// with the lights on, bigger and brighter under braking. view is as in drawPools.
+export function tailDots(view, length, width, lit, braking) {
+  if (!lit && !braking) return [];
+  const a = (view.angle * Math.PI) / 180, cos = Math.cos(a), sin = Math.sin(a);
+  const spread = Math.max(width * 0.32 * view.perMetre, 3.5);
+  const lift = 0.6 * (width / 1.9) * view.perMetre * Math.sqrt(Math.max(0, 1 - view.foreshorten ** 2));
+  const backX = (length / 2) * sin * view.perMetre * -1, backY = (length / 2) * cos * view.perMetre * view.foreshorten;
+  return [-1, 1].map((side) => ({
+    x: view.x + backX + side * spread * cos,
+    y: view.y + backY + side * spread * sin * view.foreshorten - lift,
+    radius: braking ? 3 : 2,
+    halo: braking ? 9 : 4,
+    color: braking ? '#ff2a1a' : '#e0301f',
+    haloAlpha: braking ? 0.8 : 0.35,
+  }));
+}
+
+export function drawDots(ctx, dots) {
+  for (const d of dots) {
+    const glow = ctx.createRadialGradient(d.x, d.y, 0, d.x, d.y, d.halo);
+    glow.addColorStop(0, `rgba(255,40,25,${d.haloAlpha})`);
+    glow.addColorStop(1, 'rgba(255,40,25,0)');
+    ctx.fillStyle = glow;
+    ctx.beginPath();
+    ctx.arc(d.x, d.y, d.halo, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = d.color;
+    ctx.beginPath();
+    ctx.arc(d.x, d.y, d.radius, 0, Math.PI * 2);
+    ctx.fill();
+  }
 }
 
 // Draws the pools using the current composite mode. view: { x, y (car on screen), perMetre, foreshorten, angle (degrees
