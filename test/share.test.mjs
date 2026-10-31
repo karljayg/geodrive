@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { decodeShare, encodeShare, packShare, unpackShare } from '../public/js/share.js';
+import { decodeShare, encodeShare, packShare, shareSummary, unpackShare } from '../public/js/share.js';
 
 const defaults = { carScale: 1, carColor: '#bf0d16', hour: 7.75, muted: false, radioStation: { id: 'x' } };
 const startA = { label: 'Default', lat: 1, lng: 2, heading: 0 };
@@ -50,4 +50,18 @@ test('a hostile or damaged link is cleaned or refused', async () => {
   assert.equal(out.session.fsd, false);
   assert.ok(out.session.label.length <= 200);
   assert.equal(out.session.trip.moving, 0);
+});
+
+test('the dialog says what a link will do', () => {
+  const helpers = { carName: (id) => `car ${id}`, clock: (h) => `${h}h` };
+  const base = { carProfile: 'sport', hour: 8, radioOn: true, muted: false, radioVolume: 0.5, masterVolume: 0.8, radioStation: { name: 'HOT 99.5' } };
+  const shared = unpackShare({ p: [1, 2, 3], l: 'Home', d: [3, 4, 'Mall'], f: 1, t: [10, 10, 1609.344, 0, 0, 0, 44.704], s: { hour: 20 } });
+  const rows = Object.fromEntries(shareSummary(shared, base, helpers));
+  assert.equal(rows.Location, 'Home');
+  assert.match(rows.Destination, /Mall.*FSD/);
+  assert.equal(rows['Time of day'], '20h');
+  assert.match(rows['Trip so far'], /1\.0 mi.*100 mph/);
+  assert.match(rows.Radio, /HOT 99\.5.*Music starts.*40%/);
+  assert.match(Object.fromEntries(shareSummary(shared, { ...base, radioOn: false }, helpers)).Radio, /^Off/);
+  assert.match(Object.fromEntries(shareSummary(shared, { ...base, muted: true }, helpers)).Radio, /muted/);
 });

@@ -12,7 +12,7 @@ import { newGearbox, stepGearbox } from './gearbox.js';
 import { frequencyText, Radio } from './radio.js';
 import { loadSession, saveSession } from './session.js';
 import { DEFAULTS, saveSettings, settings } from './settings.js';
-import { decodeShare, encodeShare, packShare } from './share.js';
+import { decodeShare, encodeShare, packShare, shareSummary } from './share.js';
 import { RoadTiles } from './tiles.js';
 import { burnFuel, newTrip, tripFigures, updateTrip } from './trip.js';
 
@@ -608,15 +608,49 @@ async function shareDrive() {
   }
 }
 
-// Opening a shared link replaces this browser's settings and trip with the shared ones. The link is then
-// taken out of the address bar, so a refresh carries on from the saved copy rather than starting over.
+// Says what a link will load and waits for an answer. Nothing changes unless they accept.
+let answerShared = null;
+function askAboutShare(shared) {
+  const rows = shareSummary(shared, DEFAULTS, { carName: (id) => CAR_PROFILES[id]?.name || id, clock: clockText });
+  el('sharedStats').replaceChildren(...rows.map(([label, value]) => {
+    const row = document.createElement('div'), dt = document.createElement('dt'), dd = document.createElement('dd');
+    dt.textContent = label;
+    dd.textContent = value;
+    row.append(dt, dd);
+    return row;
+  }));
+  dialogOpen = true;
+  el('shared').classList.add('open');
+  el('sharedYes').focus();
+  return new Promise((resolve) => {
+    answerShared = (yes) => {
+      answerShared = null;
+      el('shared').classList.remove('open');
+      dialogOpen = false;
+      document.activeElement?.blur();
+      resolve(yes);
+    };
+  });
+}
+el('sharedYes').addEventListener('click', () => answerShared?.(true));
+el('sharedNo').addEventListener('click', () => answerShared?.(false));
+el('shared').addEventListener('click', (e) => { if (e.target === el('shared')) answerShared?.(false); });
+
+// An accepted link replaces this browser's settings and trip. The link is taken out of the address bar either way,
+// so a refresh carries on from the saved copy rather than asking again.
 async function openSharedLink() {
   const code = location.hash.match(/^#d=([\w-]+)/)?.[1];
   if (!code) return false;
   history.replaceState(null, '', location.pathname + location.search);
+  radioResume = false; // the answer below decides what plays
   const shared = await decodeShare(code);
   if (!shared) {
+    radioResume = settings.radioOn;
     notice('That share link is damaged, so it was ignored.', 5000);
+    return false;
+  }
+  if (!(await askAboutShare(shared))) {
+    radioResume = settings.radioOn;
     return false;
   }
   Object.assign(settings, DEFAULTS, shared.settings);
@@ -624,7 +658,6 @@ async function openSharedLink() {
   if (shared.start) saveStart(shared.start);
   saveSession(shared.session);
   radio.restore(settings.radioStation);
-  radioResume = settings.radioOn;
   applySound();
   renderRadio();
   return true;
@@ -1060,6 +1093,7 @@ function dismissStart() {
 }
 
 function dismissPopup() {
+  if (answerShared) { answerShared(false); return true; }
   if (openId === 'dest') { finishDialog(); return true; }
   if (openId === 'start') { dismissStart(); return true; }
   if (el('help').classList.contains('open')) { el('help').classList.remove('open'); return true; }
@@ -1177,6 +1211,8 @@ async function boot() {
     const saved = loadSession();
     if (saved) await restoreTrip(saved);
     else await openDialog('start'); // the map itself loads only once the start is chosen
+    // Accepting was the click browsers require, so a shared drive's radio can start straight away.
+    if (fromLink && settings.radioOn) setRadioPower(true);
     map = new maps3d.Map3DElement({ center: { ...pos, altitude: ground }, heading: car.heading, tilt, range, fov: FOV_Y, mode: 'HYBRID', defaultUIHidden: true });
     map.style.width = map.style.height = '100%';
     applyGraphics();

@@ -39,8 +39,8 @@ kbd { display: inline-flex; min-width: 24px; justify-content: center; border: 1p
 #signalLeft.on, #signalRight.on { opacity: 1; }
 #attribution { position: absolute; right: 8px; bottom: 3px; font-size: 10px; color: #ffffffb0; text-shadow: 0 1px 2px #000; }
 
-#start, #dest, #pause { position: absolute; inset: 0; z-index: 3; display: none; place-items: center; padding: 16px; background: #07121fb8; pointer-events: auto; }
-#start.open, #dest.open, #pause.open { display: grid; }
+#start, #dest, #pause, #shared { position: absolute; inset: 0; z-index: 3; display: none; place-items: center; padding: 16px; background: #07121fb8; pointer-events: auto; }
+#start.open, #dest.open, #pause.open, #shared.open { display: grid; }
 .startBox { width: min(460px, 100%); padding: 26px; border-radius: 18px; background: #162333; border: 1px solid #ffffff2b; box-shadow: 0 30px 90px #0009; }
 .startBox h1 { margin: 0 0 6px; font-size: 22px; }
 .startBox p { margin: 0 0 14px; color: #b5c6d2; font-size: 14px; line-height: 1.45; }
@@ -57,12 +57,14 @@ kbd { display: inline-flex; min-width: 24px; justify-content: center; border: 1p
 #startStatus.bad, #destStatus.bad { color: #ffb3a1; }
 .startBox .row { display: flex; gap: 8px; margin-top: 8px; }
 #destClear { display: none; }
+#sharedStats dt { flex: none; }
+#sharedStats dd { text-align: right; overflow-wrap: anywhere; }
 #resetDefault { display: none; margin-top: 8px; padding: 0; background: none; color: #82e0c5; font-weight: 400; font-size: 13px; text-decoration: underline; }
 
-#tripStats { margin: 12px 0 8px; font-size: 14px; }
-#tripStats div { display: flex; justify-content: space-between; gap: 12px; padding: 5px 0; border-bottom: 1px solid #ffffff14; }
-#tripStats dt { color: #b5c6d2; }
-#tripStats dd { margin: 0; font-weight: 650; font-variant-numeric: tabular-nums; }
+#tripStats, #sharedStats { margin: 12px 0 8px; font-size: 14px; }
+#tripStats div, #sharedStats div { display: flex; justify-content: space-between; gap: 12px; padding: 5px 0; border-bottom: 1px solid #ffffff14; }
+#tripStats dt, #sharedStats dt { color: #b5c6d2; }
+#tripStats dd, #sharedStats dd { margin: 0; font-weight: 650; font-variant-numeric: tabular-nums; }
 #settings { position: absolute; z-index: 3; top: 8px; right: 8px; width: min(320px, calc(100% - 32px)); padding: 18px; display: none; border-radius: 14px; background: #162333f2; border: 1px solid #ffffff2b; box-shadow: 0 12px 40px #0008; pointer-events: auto; }
 #settings.open { display: block; }
 #settings h2 { margin: 0 0 12px; font-size: 17px; }

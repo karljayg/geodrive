@@ -95,3 +95,17 @@ export async function decodeShare(code) {
     return null; // a damaged link
   }
 }
+
+// Plain-language rows saying what a link will load. All values have already been checked by unpackShare.
+export function shareSummary({ settings, session }, defaults, { carName, clock }) {
+  const s = { ...defaults, ...settings };
+  const t = session.trip, rows = [['Location', session.label]];
+  if (session.destination) rows.push(['Destination', `${session.destination.label}${session.fsd ? ' (the car drives itself there in FSD)' : ''}`]);
+  rows.push(['Car', carName(s.carProfile)], ['Time of day', clock(s.hour)]);
+  if (t.meters > 0) rows.push(['Trip so far', `${(t.meters / 1609.344).toFixed(1)} mi, top speed ${Math.round(t.topSpeed * 2.23694)} mph`]);
+  const station = s.radioStation?.name || 'a radio station';
+  if (!s.radioOn) rows.push(['Radio', `Off (tuned to ${station})`]);
+  else if (s.muted) rows.push(['Radio', `${station}, but sound is muted`]);
+  else rows.push(['Radio', `${station}. Music starts when you continue, at ${Math.round(s.radioVolume * s.masterVolume * 100)}% volume`]);
+  return rows;
+}
