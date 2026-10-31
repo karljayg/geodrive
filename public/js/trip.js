@@ -4,7 +4,7 @@ const MILE = 1609.344, MPS_TO_MPH = 2.23694;
 
 export const newTrip = () => ({
   elapsed: 0, moving: 0, meters: 0, fsdMeters: 0, offRoadMeters: 0, fsdSeconds: 0,
-  topSpeed: 0, bridges: 0, takeovers: 0, signals: 0, onBridge: false,
+  topSpeed: 0, bridges: 0, takeovers: 0, signals: 0, onBridge: false, fuel: 100,
 });
 
 // state: { speed (m/s), fsd, onRoad, onBridge }. The clock starts at the first movement, not at page load.
@@ -23,6 +23,10 @@ export function updateTrip(trip, dt, meters, state) {
   if (state.onBridge && !trip.onBridge) trip.bridges++;
   trip.onBridge = state.onBridge;
 }
+
+// A made-up tank or battery for now: 4 hours of running from full to empty, with no effect on the car yet.
+const FUEL_HOURS = 4;
+export const burnFuel = (trip, dt) => { trip.fuel = Math.max(0, trip.fuel - (dt * 100) / (FUEL_HOURS * 3600)); };
 
 export function formatTime(seconds) {
   const s = Math.floor(seconds);
@@ -47,5 +51,6 @@ export function tripFigures(trip) {
     signals: String(trip.signals),
     bridges: String(trip.bridges),
     offRoad: miles(trip.offRoadMeters),
+    fuel: Math.round(trip.fuel) + '%',
   };
 }

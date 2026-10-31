@@ -5,14 +5,14 @@ import { Path } from './route.js';
 import { CAR_PROFILES, hornFor, profileFor } from './cars.js';
 import { buildCarGlb, carPicture } from './carModel.js';
 import { clockText, darknessAt, tintAt } from './daylight.js';
-import { drawGauge, drawNav } from './dash.js';
+import { drawGauge, drawNav, revRange, speedRange, speedStep } from './dash.js';
 import { EngineAudio } from './engineSound.js';
 import { newGearbox, stepGearbox } from './gearbox.js';
 import { frequencyText, Radio } from './radio.js';
 import { loadSession, saveSession } from './session.js';
 import { DEFAULTS, saveSettings, settings } from './settings.js';
 import { RoadTiles } from './tiles.js';
-import { newTrip, tripFigures, updateTrip } from './trip.js';
+import { burnFuel, newTrip, tripFigures, updateTrip } from './trip.js';
 
 const ORIGINAL_START = { label: 'Saarinen Circle, Dulles Airport, Virginia', lat: 38.9555, lng: -77.4475, heading: 270 };
 const START_STORE = 'geodrive_start_v1';
@@ -25,6 +25,8 @@ const ZOOM_OUT_MAX = 8;       // the furthest zoom, as a multiple of the camera'
 const ZOOM_OUT_TIME = 1.6;    // seconds of holding Space to get from no zoom to the maximum
 const FOLLOW_GAIN = 4;        // how hard the car turns toward the road, per second
 const FOLLOW_MAX_YAW = 1.6;   // rad/s
+const HEADLIGHT_WIDTH = 7;     // m, half width of the pool of light
+const HEADLIGHT_LENGTH = 11;   // m, half length
 const LANE_OFFSET = 3;        // m right of the centre line on two-way roads
 const LANE_WIDTH = 3.5;       // m; a lane change moves the car this far sideways
 const LANE_SHIFT_RATE = 2;    // m/s sideways during a lane change
@@ -69,8 +71,9 @@ const SOUND_THROTTLE_RISE = 1.1; // s for a held W to reach full throttle in the
 const SAVE_EVERY = 2000; // ms between saving the trip
 const gearbox = newGearbox();
 const radio = new Radio(renderRadio);
-let navDrawnAt = 0, navRadius = 1500, signalWasLit = false, radioArea = null;
+let speedMax = 200, navDrawnAt = 0, navRadius = 1500, signalWasLit = false, radioArea = null;
 const NAV_RANGES = [800, 1500, 3000, 6000]; // m from the car to the top of the nav screen
+const TUNE_STEP = 12; // px of knob turn per station
 const RADIO_RESEARCH = 50000; // m driven before looking for stations again
 const groundCache = new Map();
 const debug = { hold: false, car, pos, keys, roads, tiles }; // window.__geodrive, for checks from the console
@@ -351,23 +354,43 @@ function updateHud(t) {
   nav.classList.toggle('active', !!destination);
   nav.classList.toggle('engaged', fsd);
   if (destination) {
-    const remaining = route ? route.length - (routeIndex === null ? 0 : route.cum[routeIndex]) : null;
-    const miles = remaining === null ? '…' : (remaining / 1609.344).toFixed(1) + ' mi';
     const boost = fsdBoost ? ` · ${fsdBoost > 0 ? '+' : ''}${fsdBoost} mph` : '';
     el('navState').textContent = fsd ? `FSD ON${boost}` : 'FSD OFF · press F';
-    el('navWhere').textContent = `${destination.label} · ${miles}`;
+    el('navWhere').textContent = destination.label;
   }
 }
 
 function drawDash(t) {
   const profile = profileFor(settings.carProfile);
   const mph = Math.abs(car.speed) * MPS_TO_MPH;
-  drawGauge(el('speedGauge'), { value: mph, max: 500, step: 100, redFrom: null, big: String(Math.round(mph)), small: 'MPH' });
-  const revStep = profile.redline > 10000 ? 3000 : 1000;
-  drawGauge(el('revGauge'), { value: gearbox.rpm, max: profile.redline, step: revStep, scale: 1000, redFrom: profile.whine ? null : profile.redline * 0.9, big: gearbox.label, small: 'x1000 RPM' });
+  speedMax = speedRange(mph, speedMax);
+  drawGauge(el('speedGauge'), { value: mph, max: speedMax, step: speedStep(speedMax), big: String(Math.round(mph)), small: 'MPH' });
+  const electric = !profile.cylinders;
+  const charge = Math.round(trip.fuel);
+  if (electric) {
+    // Electric cars have no meaningful revs, so this dial is the battery.
+    drawGauge(el('revGauge'), { value: trip.fuel, max: 100, step: 25, big: `${charge}%`, small: 'CHARGE' });
+  } else {
+    const max = revRange(profile.redline);
+    drawGauge(el('revGauge'), { value: gearbox.rpm, max, step: max > 6000 ? 2000 : 1000, scale: 1000, redFrom: profile.redline, big: gearbox.label, small: 'x1000 RPM' });
+  }
+  el('fuel').style.visibility = electric ? 'hidden' : 'visible';
+  el('fuel').classList.toggle('low', trip.fuel < 15);
+  el('fuelBar').style.width = `${trip.fuel}%`;
+  el('fuelValue').textContent = `${charge}%`;
   if (t - navDrawnAt > 200) {
     navDrawnAt = t;
     drawNav(el('navScreen'), { roads, pos, heading: car.heading, route: fsd || destination ? route : null, routeIndex, radius: navRadius });
+    const now = new Date();
+    const time = (d) => d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    el('clock').textContent = time(now);
+    let eta = '';
+    if (destination && route) {
+      const at = routeIndex ?? 0, seconds = route.secondsToEnd[at], miles = (route.length - route.cum[at]) / 1609.344;
+      const left = seconds < 3600 ? `${Math.max(1, Math.round(seconds / 60))} min` : `${Math.floor(seconds / 3600)} h ${Math.round((seconds % 3600) / 60)} min`;
+      eta = `ETA ${time(new Date(now.getTime() + seconds * 1000))} · ${left} · ${miles.toFixed(1)} mi`;
+    }
+    el('eta').textContent = eta;
   }
 }
 
@@ -395,7 +418,6 @@ async function refreshStations() {
 
 function renderRadio() {
   const power = el('radioPower');
-  power.textContent = radio.on ? 'Radio on' : 'Radio off';
   power.setAttribute('aria-pressed', String(radio.on));
   for (const b of document.querySelectorAll('.bands button')) b.classList.toggle('on', b.dataset.band === radio.band);
   const list = radio.list();
@@ -418,11 +440,6 @@ function renderRadio() {
   if (current) select.value = current.id;
   select.disabled = !list.length;
 
-  const dial = el('radioDial');
-  const tunable = list.filter((s) => s.frequency);
-  dial.disabled = !tunable.length;
-  if (radio.band === 'AM') { dial.min = 530; dial.max = 1700; dial.step = 10; } else { dial.min = 87.5; dial.max = 108; dial.step = 0.2; }
-  if (current && current.frequency) dial.value = current.frequency;
 }
 
 function setRadioPower(on) {
@@ -432,10 +449,14 @@ function setRadioPower(on) {
   if (on) refreshStations();
 }
 
+function turnKnob(element, degrees) {
+  element.style.transform = `rotate(${degrees}deg)`;
+}
+
 function applySound() {
   radio.setVolume(settings.muted ? 0 : settings.radioVolume * settings.masterVolume);
   engine.applySettings(settings);
-  el('radioVolumeDash').value = settings.radioVolume;
+  turnKnob(el('volumeKnob'), -135 + settings.radioVolume * 270);
 }
 
 function frame(t) {
@@ -460,6 +481,7 @@ function frame(t) {
     followRoad(!!controls.steer, guide, dt);
     if (meters) Object.assign(pos, move(pos.lat, pos.lng, car.heading, meters));
     updateTrip(trip, dt, meters, { speed: car.speed, fsd, onRoad: !!match, onBridge });
+    burnFuel(trip, dt);
     const profile = profileFor(settings.carProfile);
     soundThrottle = controls.throttle > soundThrottle
       ? Math.min(controls.throttle, soundThrottle + dt / SOUND_THROTTLE_RISE)
@@ -610,6 +632,7 @@ function openDialog(id) {
 }
 
 function finishDialog() {
+  if (!openId) return; // already closed by a double click
   el(openId).classList.remove('open');
   dialogOpen = false;
   openId = null;
@@ -734,18 +757,27 @@ function applyDaylight() {
   el('lightsButton').setAttribute('aria-pressed', String(lit));
   const box = el('map');
   const carY = box.clientHeight * (0.5 + CAR_BELOW_CENTRE / 2);
-  const size = Math.min(1.4, CAMERAS[0].range / Math.max(range, 1)) * Math.min(box.clientWidth, box.clientHeight);
-  const key = `${settings.hour}|${lit}|${Math.round(size / 6)}|${box.clientHeight}`;
+  // Pixels per metre of road at the car, and how much the camera's tilt foreshortens it.
+  const perMetre = box.clientHeight / (2 * Math.tan(rad(FOV_Y / 2)) * Math.max(range, 1));
+  const foreshorten = Math.cos(rad(tilt));
+  const noseAhead = 2.3 * settings.carScale * perMetre * foreshorten;
+  const key = `${settings.hour}|${lit}|${Math.round(range / 4)}|${Math.round(tilt)}|${settings.carScale}|${box.clientHeight}`;
   if (key === lightKey) return;
   lightKey = key;
-  const w = size * 0.42, h = size * 0.5, y = carY - h * 0.62;
+  // A pool of light on the road, starting at the nose. Size is in metres, so it zooms with the map.
+  const w = HEADLIGHT_WIDTH * perMetre, h = HEADLIGHT_LENGTH * perMetre * foreshorten;
+  const y = carY - noseAhead - h * 0.8;
   const pool = `radial-gradient(ellipse ${w}px ${h}px at 50% ${y}px`;
+  // The car itself stays visible at night.
+  const glow = `radial-gradient(ellipse ${noseAhead * 1.5}px ${noseAhead * 1.5}px at 50% ${carY}px, transparent 40%, black 100%)`;
   const night = el('night'), beam = el('beam');
   night.style.display = dark > 0.005 ? 'block' : 'none';
   night.style.background = `rgb(${tintAt(settings.hour).join(',')})`;
-  const mask = lit ? `${pool}, transparent 35%, black 100%)` : 'none';
+  const mask = lit ? `${pool}, transparent 35%, black 100%), ${glow}` : 'none';
   night.style.maskImage = mask;
   night.style.webkitMaskImage = mask;
+  night.style.maskComposite = 'intersect';
+  night.style.webkitMaskComposite = 'source-in';
   beam.style.display = lit ? 'block' : 'none';
   beam.style.background = `${pool}, rgba(255,240,190,${0.06 + dark * 0.1}), transparent 100%)`;
 }
@@ -847,7 +879,16 @@ el('settingsReset').addEventListener('click', () => {
   saveSettings();
 });
 el('settingsDone').addEventListener('click', closeSettings);
-el('openSettings').addEventListener('click', () => { if (!dialogOpen) openSettings(); });
+el('openSettings').addEventListener('click', () => {
+  if (el('settings').classList.contains('open')) closeSettings();
+  else if (!dialogOpen) openSettings();
+});
+// Clicking anywhere outside the panel closes it; changes have already saved.
+document.addEventListener('pointerdown', (e) => {
+  const panel = el('settings');
+  if (!panel.classList.contains('open') || panel.contains(e.target) || el('openSettings').contains(e.target)) return;
+  closeSettings();
+}, { capture: true });
 
 // --- Dashboard ------------------------------------------------------------------------------------------------
 
@@ -856,16 +897,35 @@ el('hornButton').addEventListener('pointerdown', (e) => { e.preventDefault(); e.
 for (const kind of ['pointerup', 'pointercancel']) el('hornButton').addEventListener(kind, () => hornUp());
 el('radioPower').addEventListener('click', () => setRadioPower(!radio.on));
 for (const b of document.querySelectorAll('.bands button')) b.addEventListener('click', () => radio.setBand(b.dataset.band));
-el('radioPrev').addEventListener('click', () => radio.seek(-1));
-el('radioNext').addEventListener('click', () => radio.seek(1));
 el('radioList').addEventListener('change', () => { radio.tuneId(el('radioList').value); el('radioList').blur(); });
-el('radioDial').addEventListener('change', () => { radio.tuneFrequency(Number(el('radioDial').value)); el('radioDial').blur(); });
-el('radioVolumeDash').addEventListener('input', () => {
-  settings.radioVolume = Number(el('radioVolumeDash').value);
+// Knobs turn by dragging up and down, or with the scroll wheel. `onTurn` gets the change in pixels.
+function knob(element, onTurn) {
+  let lastY = null;
+  element.addEventListener('pointerdown', (e) => { e.preventDefault(); lastY = e.clientY; element.setPointerCapture(e.pointerId); });
+  element.addEventListener('pointermove', (e) => {
+    if (lastY === null) return;
+    onTurn(lastY - e.clientY);
+    lastY = e.clientY;
+  });
+  for (const kind of ['pointerup', 'pointercancel']) element.addEventListener(kind, () => { lastY = null; });
+  element.addEventListener('wheel', (e) => { e.preventDefault(); onTurn(-Math.sign(e.deltaY) * 12); }, { passive: false });
+}
+knob(el('volumeKnob'), (pixels) => {
+  settings.radioVolume = clamp(settings.radioVolume + pixels / 120, 0, 1);
   applySound();
   saveSettings();
 });
-el('radioVolumeDash').addEventListener('change', () => el('radioVolumeDash').blur());
+// Tune clicks from station to station, in frequency order.
+let tuneAngle = 0, tunePixels = 0;
+knob(el('tuneKnob'), (pixels) => {
+  tunePixels += pixels;
+  tuneAngle += pixels * 3;
+  turnKnob(el('tuneKnob'), tuneAngle);
+  while (Math.abs(tunePixels) >= TUNE_STEP) {
+    radio.seek(Math.sign(tunePixels));
+    tunePixels -= Math.sign(tunePixels) * TUNE_STEP;
+  }
+});
 el('navScreen').addEventListener('click', () => {
   navRadius = NAV_RANGES[(NAV_RANGES.indexOf(navRadius) + 1) % NAV_RANGES.length];
   navDrawnAt = 0;

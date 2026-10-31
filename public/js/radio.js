@@ -152,14 +152,6 @@ export class Radio {
     else { this.current = next; this.onChange(); }
   }
 
-  // The station nearest a frequency on the dial.
-  tuneFrequency(frequency) {
-    const list = this.list().filter((s) => s.frequency);
-    if (!list.length) return;
-    const best = list.reduce((a, b) => (Math.abs(b.frequency - frequency) < Math.abs(a.frequency - frequency) ? b : a));
-    if (this.on) { if (!this.current || best.id !== this.current.id) this.tune(best); } else { this.current = best; this.onChange(); }
-  }
-
   tuneId(id) {
     const station = this.stations.find((s) => s.id === id);
     if (station) { if (this.on) this.tune(station); else { this.current = station; this.onChange(); } }

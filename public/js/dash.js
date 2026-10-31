@@ -1,5 +1,26 @@
 // Drawing for the dashboard: round gauges and the navigation screen, both on canvas.
 
+// The speedometer's top mark: 200 until past 150, then larger so the needle stays at or under 3/4 of the dial.
+// It only comes back down once the needle is well under the smaller dial, so it doesn't flicker.
+const SPEED_RANGES = [200, 300, 400, 500];
+export function speedRange(mph, current = 200) {
+  let at = SPEED_RANGES.indexOf(current);
+  if (at < 0) at = 0;
+  while (at < SPEED_RANGES.length - 1 && mph > SPEED_RANGES[at] * 0.75) at++;
+  while (at > 0 && mph < SPEED_RANGES[at - 1] * 0.6) at--;
+  return SPEED_RANGES[at];
+}
+export const speedStep = (max) => (max <= 300 ? 50 : 100);
+
+// Tachometers end on a round thousand above the redline.
+export const revRange = (redline) => Math.ceil(redline / 1000) * 1000;
+
+// Where a point east/north of the car appears on a heading-up screen, in metres right of and up from the car.
+export function headingUp(east, north, heading) {
+  const a = (heading * Math.PI) / 180, cos = Math.cos(a), sin = Math.sin(a);
+  return [east * cos - north * sin, east * sin + north * cos];
+}
+
 function fit(canvas) {
   const dpr = Math.min(devicePixelRatio || 1, 2), w = canvas.clientWidth, h = canvas.clientHeight;
   if (canvas.width !== Math.round(w * dpr) || canvas.height !== Math.round(h * dpr)) {
@@ -45,7 +66,7 @@ export function drawGauge(canvas, { value, max, step, scale = 1, redFrom = null,
   ctx.lineCap = 'round';
   ctx.beginPath(); ctx.moveTo(cx - Math.cos(a) * 8, cy - Math.sin(a) * 8); ctx.lineTo(cx + Math.cos(a) * (r - 12), cy + Math.sin(a) * (r - 12)); ctx.stroke();
   ctx.fillStyle = '#fff';
-  ctx.font = `750 ${r * 0.42}px system-ui, sans-serif`;
+  ctx.font = `750 ${r * (big.length > 3 ? 0.3 : 0.42)}px system-ui, sans-serif`;
   ctx.fillText(big, cx, cy + r * 0.34);
   ctx.fillStyle = '#9baebb';
   ctx.font = `600 ${Math.max(8, r * 0.15)}px system-ui, sans-serif`;
@@ -61,10 +82,9 @@ export function drawNav(canvas, { roads, pos, heading, route, routeIndex, radius
   const carX = w / 2, carY = h * 0.68;
   const scale = (h * 0.68) / radius; // px per metre
   const k = Math.cos((pos.lat * Math.PI) / 180), M = 111320;
-  const a = (-heading * Math.PI) / 180, cos = Math.cos(a), sin = Math.sin(a);
   const toScreen = (lat, lng) => {
-    const x = (lng - pos.lng) * k * M, y = (lat - pos.lat) * M;
-    return [carX + (x * cos - y * sin) * scale, carY - (x * sin + y * cos) * scale];
+    const [x, y] = headingUp((lng - pos.lng) * k * M, (lat - pos.lat) * M, heading);
+    return [carX + x * scale, carY - y * scale];
   };
 
   const reach = Math.hypot(w, h) / scale;
@@ -98,17 +118,17 @@ export function drawNav(canvas, { roads, pos, heading, route, routeIndex, radius
     ctx.beginPath(); ctx.arc(Math.max(4, Math.min(w - 4, ex)), Math.max(4, Math.min(h - 4, ey)), 4, 0, Math.PI * 2); ctx.fill();
   }
 
-  // The car, always pointing up, and which way north is.
+  // The car always points up, and the map turns under it. N shows which way north is.
   ctx.fillStyle = '#5cf0c0';
   ctx.strokeStyle = '#0a1420';
   ctx.lineWidth = 1.5;
   ctx.beginPath();
   ctx.moveTo(carX, carY - 8); ctx.lineTo(carX - 6, carY + 6); ctx.lineTo(carX, carY + 3); ctx.lineTo(carX + 6, carY + 6);
   ctx.closePath(); ctx.fill(); ctx.stroke();
-  const nx = w - 14, ny = 14, na = a;
+  const [nx, ny] = headingUp(0, 1, heading);
   ctx.fillStyle = '#ff8a7a';
   ctx.font = '700 10px system-ui, sans-serif';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText('N', nx - Math.sin(-na) * 0 + Math.sin(na) * 8 * -1, ny - Math.cos(na) * 8 + 6);
+  ctx.fillText('N', w - 15 + nx * 9, 15 - ny * 9);
 }

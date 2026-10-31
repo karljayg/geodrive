@@ -3,6 +3,7 @@
 
 const M_PER_DEG = 111320;
 const SPACING = 8;      // m between points, so curve speeds don't depend on how sparse the source line is
+const DEFAULT_CRUISE = 15; // m/s, for ETAs where a route gives no speed
 const CURVE_WINDOW = 15; // m either side of a point to measure its curve over
 const rad = (d) => (d * Math.PI) / 180;
 const metersBetween = (a, b) => Math.hypot((b.lng - a.lng) * Math.cos(rad(a.lat)), b.lat - a.lat) * M_PER_DEG;
@@ -26,6 +27,10 @@ export class Path {
     this.cum = new Float64Array(n);
     for (let i = 1; i < n; i++) this.cum[i] = this.cum[i - 1] + metersBetween(this.points[i - 1], this.points[i]);
     this.length = this.cum[n - 1] || 0;
+
+    // Seconds from each point to the end at its cruise speed, for the ETA.
+    this.secondsToEnd = new Float64Array(n);
+    for (let i = n - 2; i >= 0; i--) this.secondsToEnd[i] = this.secondsToEnd[i + 1] + (this.cum[i + 1] - this.cum[i]) / (this.points[i + 1].cruise || DEFAULT_CRUISE);
 
     this.limit = new Float32Array(n).fill(1000);
     for (let i = 1; i < n - 1; i++) {

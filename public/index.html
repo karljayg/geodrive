@@ -13,13 +13,13 @@
 <div id="shield"></div>
 <div id="hud">
   <header>
-    <div class="pill brand">GEO<b>DRIVE</b></div>
-    <div class="pill where" id="where"></div>
-    <button class="pill" id="changeStart">Change start</button>
-    <button class="pill" id="changeDest">Destination</button>
-    <button class="pill" id="openSettings">Settings</button>
-    <button class="pill" id="pauseButton">Pause</button>
-    <button class="pill" id="helpButton">Keys</button>
+    <div class="brand">GEO<b>DRIVE</b></div>
+    <button id="changeStart">Start</button>
+    <button id="changeDest">Destination</button>
+    <button id="openSettings">Settings</button>
+    <button id="pauseButton">Pause</button>
+    <button id="helpButton">Keys</button>
+    <div class="where" id="where"></div>
   </header>
   <div class="pill" id="nav"><div id="navState"></div><div id="navWhere"></div></div>
   <div id="notice"></div>
@@ -47,40 +47,44 @@
 <div id="dash">
   <div class="gauges">
     <canvas id="speedGauge" aria-label="Speedometer"></canvas>
-    <canvas id="revGauge" aria-label="Tachometer"></canvas>
+    <div class="revs">
+      <canvas id="revGauge" aria-label="Tachometer or battery"></canvas>
+      <div id="fuel"><span id="fuelLabel">FUEL</span><i><b id="fuelBar"></b></i><span id="fuelValue">100%</span></div>
+    </div>
     <div class="carButtons">
       <button id="lightsButton" aria-pressed="false">Lights</button>
       <button id="hornButton">Horn</button>
     </div>
   </div>
-  <section class="radio" aria-label="Radio">
-    <div class="radioTop">
-      <button id="radioPower" aria-pressed="false">Radio off</button>
-      <div class="bands" role="group" aria-label="Band">
-        <button data-band="FM">FM</button><button data-band="AM">AM</button><button data-band="WEB">WEB</button>
-      </div>
-      <button id="radioPrev" aria-label="Previous station">◀</button>
-      <button id="radioNext" aria-label="Next station">▶</button>
-      <label class="radioVol">Vol <input id="radioVolumeDash" type="range" min="0" max="1" step="0.05" aria-label="Radio volume"></label>
+  <div class="centre">
+    <div class="navTop"><span id="eta"></span><span id="clock"></span></div>
+    <canvas id="navScreen" title="Click to change the range" aria-label="Navigation screen"></canvas>
+    <div class="trip">
+      <span>TIME <b id="hud-elapsed">0:00</b></span>
+      <span>MILES <b id="hud-miles">0.00 mi</b></span>
+      <span>TOP <b id="hud-top">0 mph</b></span>
+      <span>AVG <b id="hud-average">0 mph</b></span>
+      <span>HDG <b id="heading">000°</b></span>
+      <span>ROAD <b id="road">–</b></span>
+      <span>CAM <b id="cam">CHASE</b></span>
+      <span>START <b id="from">0.00 mi</b></span>
     </div>
-    <div class="radioDisplay">
+  </div>
+  <section class="radio" aria-label="Radio">
+    <div class="lcd">
       <span id="radioFreq">– – –</span>
       <span id="radioName">Off</span>
+      <select id="radioList" aria-label="Stations"></select>
     </div>
-    <input id="radioDial" type="range" aria-label="Frequency">
-    <select id="radioList" aria-label="Stations"></select>
+    <div class="radioControls">
+      <div class="knobBox"><div class="knob" id="volumeKnob" role="slider" aria-label="Radio volume" tabindex="-1"><i></i></div><small>VOL</small></div>
+      <div class="radioButtons">
+        <button id="radioPower" aria-pressed="false">PWR</button>
+        <div class="bands" role="group" aria-label="Band"><button data-band="FM">FM</button><button data-band="AM">AM</button><button data-band="WEB">NET</button></div>
+      </div>
+      <div class="knobBox"><div class="knob" id="tuneKnob" role="slider" aria-label="Tune" tabindex="-1"><i></i></div><small>TUNE</small></div>
+    </div>
   </section>
-  <div class="trip">
-    <div>ELAPSED<b id="hud-elapsed">0:00</b></div>
-    <div>MILES<b id="hud-miles">0.00 mi</b></div>
-    <div>TOP<b id="hud-top">0 mph</b></div>
-    <div>AVERAGE<b id="hud-average">0 mph</b></div>
-    <div>HEADING<b id="heading">000°</b></div>
-    <div>ROAD<b id="road">–</b></div>
-    <div>CAMERA<b id="cam">CHASE</b></div>
-    <div>FROM START<b id="from">0.00 mi</b></div>
-  </div>
-  <canvas id="navScreen" title="Click to change the range" aria-label="Navigation screen"></canvas>
 </div>
 <div id="start">
   <div class="startBox">
@@ -112,6 +116,7 @@
       <div><dt>Signals used</dt><dd data-stat="signals"></dd></div>
       <div><dt>Bridges crossed</dt><dd data-stat="bridges"></dd></div>
       <div><dt>Miles off road</dt><dd data-stat="offRoad"></dd></div>
+      <div><dt>Fuel or charge</dt><dd data-stat="fuel"></dd></div>
     </dl>
     <div class="row">
       <button class="primary" id="resume" type="button">Resume</button>

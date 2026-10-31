@@ -4,6 +4,9 @@ import { CAR_PROFILES, profileFor } from '../public/js/cars.js';
 import { newGearbox, stepGearbox } from '../public/js/gearbox.js';
 import { frequencyText, inBand, organise, parseBand } from '../public/js/radio.js';
 import { RoadNet } from '../public/js/road.js';
+import { Path } from '../public/js/route.js';
+import { burnFuel, newTrip } from '../public/js/trip.js';
+import { headingUp, revRange, speedRange } from '../public/js/dash.js';
 
 const MPH = 0.44704;
 function drive(car, from, to, seconds = 40, box = newGearbox()) {
@@ -105,4 +108,35 @@ test('the nav screen visits each nearby road piece once', () => {
   const seen = [];
   net.forEachSegmentNear(38.95, -77.445, 1500, (way, i) => seen.push(`${way.id}:${i}`));
   assert.deepEqual(seen, ['1:0']);
+});
+
+test('speedometer range: 200 to start, grows past 3/4, comes back without flicker', () => {
+  assert.equal(speedRange(0), 200);
+  assert.equal(speedRange(150, 200), 200);
+  assert.equal(speedRange(151, 200), 300);
+  assert.equal(speedRange(300, 200), 400);
+  assert.equal(speedRange(500, 400), 500);
+  assert.equal(speedRange(170, 300), 300, 'stays up just under the switch');
+  assert.equal(speedRange(100, 300), 200);
+  assert.equal(revRange(3800), 4000);
+  assert.equal(revRange(8000), 8000);
+});
+
+test('nav map turns the right way: what is ahead is up, and right is right', () => {
+  const near = (a, b) => a.every((v, i) => Math.abs(v - b[i]) < 1e-9);
+  assert.ok(near(headingUp(0, 1, 0), [0, 1]));
+  assert.ok(near(headingUp(1, 0, 90), [0, 1]), 'driving east, east is up');
+  assert.ok(near(headingUp(0, 1, 90), [-1, 0]), 'driving east, north is left');
+  assert.ok(near(headingUp(0, -1, 180), [0, 1]), 'driving south, south is up');
+});
+
+test('fuel lasts 4 hours and the ETA counts route time', () => {
+  const trip = newTrip();
+  burnFuel(trip, 2 * 3600);
+  assert.equal(trip.fuel, 50);
+  burnFuel(trip, 3 * 3600);
+  assert.equal(trip.fuel, 0);
+  const p = new Path([{ lat: 38, lng: -77, cruise: 20 }, { lat: 38.01, lng: -77, cruise: 20 }]);
+  assert.ok(Math.abs(p.secondsToEnd[0] - p.length / 20) < 1);
+  assert.equal(p.secondsToEnd[p.points.length - 1], 0);
 });

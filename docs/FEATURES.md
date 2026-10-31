@@ -27,10 +27,11 @@ One press takes the next non-service road on that side, far enough ahead to brak
 
 ## Dashboard
 A full-width panel below the map, which is sized to end above it.
-- Speedometer and tachometer with the current gear
-- Radio
-- Trip figures: elapsed, miles, top and average speed, heading, road status, camera
-- Navigation screen: heading-up view from very high. It's drawn from the road data already loaded rather than a second Google map, which would add map charges. Click it to change the range.
+- Left: speedometer, tachometer with gear, fuel bar, lights and horn. The speedometer tops out at 200 until past 150 mph, then steps to 300, 400 and 500, keeping the needle at or under 3/4 of the dial. Tachometers end at the round thousand above each car's redline. Electric cars show battery charge instead.
+- Fuel and charge are placeholders: 4 hours of running from full to empty, saved with the trip, with no effect on the car. A new start refills.
+- Centre: real-time clock, ETA when there's a destination (from Google's route times, assuming FSD cruise), trip figures, and the navigation screen.
+- Right: radio with an LCD, PWR, bands, and volume and tune knobs (drag or scroll). Clicking the LCD opens the station list.
+- Navigation screen: heading-up view from very high: the arrow points up and the map turns under it. It's drawn from the road data already loaded rather than a second Google map, which would add map charges. Click it to change the range.
 
 ## Engine sound and car profiles
 - Real recordings from the CC0 Muted.io pack, blended by revs and load (`engineMix.js`). Sources and limits are in `public/audio/samples/SOURCES.md`. The pack names no cars, so the sets are chosen by measured pitch and tone.
@@ -43,16 +44,16 @@ A full-width panel below the map, which is sized to end above it.
 ## Car look, lights, horn and time of day
 - Car type and colour are built in the browser (`carModel.js`), with a matching side-view picture in Settings.
 - Time of day (Settings, or T for +1 hour) is a colour tint over the map (`daylight.js`). Google's 3D map is a photograph with fixed lighting and no lighting controls, so shadows don't move, and buildings and streets don't light up.
-- Headlights (J or Lights button) cut a soft pool of light out of the tint ahead of the car. It's a screen effect, so it doesn't fall on buildings or follow hills.
+- Headlights (J or Lights button) cut a small pool of light out of the tint, starting at the car's nose, sized in metres so it zooms with the map. It's a screen effect, so it doesn't fall on buildings or follow hills.
 - Horn (hold B or the Horn button) is synthesised, with notes set per car in `cars.js`.
 
 ## Radio
 - Off by default. Stations come from Radio Browser: within about 150 km of the car first, then the rest of the state. It searches again after about 50 km of driving.
-- These are internet streams, so band and frequency are read from each station's name and tags. Stations that don't state one are listed under WEB, and the frequency dial is only as complete as that data.
+- These are internet streams, so band and frequency are read from each station's name and tags. Stations that don't state one are listed under WEB, and tuning only reaches listed stations.
 - Browsers block plain `http` streams on an `https` page, so only `https` stations are listed, which leaves out about half of them.
 
 ## Settings (O)
-Car size, car profile, engine sound (recorded or synth), sound mix (Quiet, Balanced, Sport), master volume, mute, volumes for engine, radio, road, wind and effects, engine pitch, and road following on or off. Saved in the browser.
+Clicking outside the panel closes it, and changes save as they're made. Car size, car profile, engine sound (recorded or synth), sound mix (Quiet, Balanced, Sport), master volume, mute, volumes for engine, radio, road, wind and effects, engine pitch, and road following on or off. Saved in the browser.
 
 ## Pause and trip stats (P)
 Pausing stops the car and the clock. The pause screen shows elapsed and moving time, miles, average and top speed, FSD miles, share and time, takeovers, signals, bridges and miles off road. A new start or R begins a new trip.
