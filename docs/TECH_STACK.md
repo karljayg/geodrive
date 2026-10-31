@@ -5,7 +5,7 @@ A plain static website with no framework, no build step and no backend of its ow
 ## Front end
 - Plain JavaScript (ES modules), HTML and CSS
 - No npm packages, in the game or its tooling
-- Web Audio API for engine sound, `<audio>` for radio, canvas for gauges and the nav screen
+- Web Audio API for engine, road and wind sound (FLAC loops from the CC0 Muted.io pack), `<audio>` for radio, canvas for gauges and the nav screen
 
 ## Map and car
 - 3D map: Google Maps JavaScript API, photorealistic 3D element (`Map3DElement`)
@@ -38,12 +38,15 @@ Google usage and spend can only be seen in Google Cloud Console; the API key can
 | `settings.js` | Preferences saved in the browser | Browser |
 | `cars.js` | Car profiles: gearing and engine sound | Yes |
 | `gearbox.js` | Speed to gear and revs | Yes |
-| `engineSound.js` | Synthesised engine and signal tick | Browser, by ear |
+| `engineSound.js` | Audio buses, recorded engine, road, wind, effects | Browser, by ear |
+| `engineMix.js` | Layer blends and loudness by revs and load | Yes |
+| `synthEngine.js` | Synth engine: electric, option, fallback | Browser, by ear |
+| `session.js` | Saves the trip across a refresh | Browser |
 | `radio.js` | Station search, bands, tuning, playback | Parsing yes, playback browser |
 | `dash.js` | Draws the gauges and nav screen | Browser |
 
 ## Saved data
-The browser's `localStorage` holds the start point and settings. There is no database, and trip stats reset on reload.
+The browser's `localStorage` holds the start point, settings and current trip. There is no database.
 
 ## Hosting and tools
 - Server: psistorm.com (Amazon Linux), Apache serving static files from `/var/www/html/psistorm/geodrive`

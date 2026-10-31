@@ -108,8 +108,14 @@ export class Radio {
     this.stations = organise(lists);
     this.area = state || 'Nearby';
     if (!this.list().length) this.band = ['FM', 'AM', 'WEB'].find((b) => inBand(this.stations, b).length) || 'FM';
+    if (this.resumeId) {
+      const saved = this.stations.find((s) => s.id === this.resumeId);
+      if (saved) { this.band = saved.band; this.current = saved; }
+      this.resumeId = null;
+    }
     if (!this.on) return this.onChange();
     if (!this.current || !this.stations.some((s) => s.id === this.current.id)) this.tune(this.firstStation());
+    else if (this.audio.paused) this.tune(this.current);
     else this.onChange();
   }
 

@@ -33,8 +33,11 @@ A full-width panel below the map, which is sized to end above it.
 - Navigation screen: heading-up view from very high. It's drawn from the road data already loaded rather than a second Google map, which would add map charges. Click it to change the range.
 
 ## Engine sound and car profiles
-- Synthesised, not recorded, and approximate. Pitch follows the revs, which drop at each gear change, and power cuts briefly during a shift.
-- Profiles in `cars.js`: sports car, muscle V8, small hatchback, diesel truck, electric. They change sound and gearing only, not handling.
+- Real recordings from the CC0 Muted.io pack, blended by revs and load (`engineMix.js`). Sources and limits are in `public/audio/samples/SOURCES.md`. The pack names no cars, so the sets are chosen by measured pitch and tone.
+- Designed to be quiet when cruising and strong only under real load. W eases up over about a second in the sound only; the car's acceleration doesn't change.
+- The gearbox is for sound and the tachometer only: it shifts early on a light throttle and late on a heavy one, and doesn't affect the car.
+- Road and wind are filtered noise that levels off at high speed.
+- Profiles in `cars.js`: sports car, muscle V8, normal car, truck (recorded), electric (synth). "Classic synth" is an option for any car, and the fallback if recordings fail. They change sound and gearing only, not handling.
 - Audio can only start after a click or key press, as browsers require.
 
 ## Radio
@@ -43,10 +46,13 @@ A full-width panel below the map, which is sized to end above it.
 - Browsers block plain `http` streams on an `https` page, so only `https` stations are listed, which leaves out about half of them.
 
 ## Settings (O)
-Car size, car profile, master volume, mute, engine volume and pitch, radio volume, signal tick volume. Saved in the browser.
+Car size, car profile, engine sound (recorded or synth), sound mix (Quiet, Balanced, Sport), master volume, mute, volumes for engine, radio, road, wind and effects, engine pitch, and road following on or off. Saved in the browser.
 
 ## Pause and trip stats (P)
 Pausing stops the car and the clock. The pause screen shows elapsed and moving time, miles, average and top speed, FSD miles, share and time, takeovers, signals, bridges and miles off road. A new start or R begins a new trip.
+
+## Saved trip
+Position, heading, destination, FSD state and speed offset, trip stats, zoom, camera, nav range and radio station save to the browser's `localStorage` every 2 seconds and on leaving the page. A refresh skips the start dialog and carries on with the car stopped, and FSD drives on if it was on (getting one new route, which is billed). The radio comes back at the first click or key press, as browsers require. L or R starts a new trip. Saved per browser, not across devices.
 
 ## All keys
 | Key | Action |

@@ -124,6 +124,10 @@
   <section>
     <h3>Sound</h3>
     <label class="check"><input id="muted" data-setting="muted" type="checkbox"> Mute all sound</label>
+    <label for="engineSound">Engine sound</label>
+    <select id="engineSound" data-setting="engineSound"><option value="recorded">Recorded engine</option><option value="synth">Classic synth</option></select>
+    <label for="audioPreset">Sound mix</label>
+    <select id="audioPreset" data-setting="audioPreset"><option value="quiet">Quiet</option><option value="balanced">Balanced</option><option value="sport">Sport</option></select>
     <label for="masterVolume">Master volume <span data-value="masterVolume"></span></label>
     <input id="masterVolume" data-setting="masterVolume" type="range" min="0" max="1" step="0.05">
     <label for="engineVolume">Engine volume <span data-value="engineVolume"></span></label>
@@ -132,8 +136,17 @@
     <input id="enginePitch" data-setting="enginePitch" type="range" min="0.5" max="1.5" step="0.05">
     <label for="radioVolume">Radio volume <span data-value="radioVolume"></span></label>
     <input id="radioVolume" data-setting="radioVolume" type="range" min="0" max="1" step="0.05">
-    <label for="signalVolume">Signal tick <span data-value="signalVolume"></span></label>
+    <label for="roadVolume">Road noise <span data-value="roadVolume"></span></label>
+    <input id="roadVolume" data-setting="roadVolume" type="range" min="0" max="1" step="0.05">
+    <label for="windVolume">Wind noise <span data-value="windVolume"></span></label>
+    <input id="windVolume" data-setting="windVolume" type="range" min="0" max="1" step="0.05">
+    <label for="signalVolume">Sound effects (signal tick) <span data-value="signalVolume"></span></label>
     <input id="signalVolume" data-setting="signalVolume" type="range" min="0" max="1" step="0.05">
+  </section>
+  <section>
+    <h3>Driving</h3>
+    <label class="check"><input id="roadFollow" data-setting="roadFollow" type="checkbox"> Follow the road when not steering</label>
+    <button class="link" id="newTrip" type="button">Reset trip stats</button>
   </section>
   <button class="link" id="settingsReset" type="button">Reset all to defaults</button>
   <button class="primary wide" id="settingsDone" type="button">Done</button>

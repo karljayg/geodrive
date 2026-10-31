@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "start": "node scripts/serve.mjs",
-    "test": "node --test test/physics.test.mjs test/road.test.mjs test/dash.test.mjs",
+    "test": "node --test test/physics.test.mjs test/road.test.mjs test/dash.test.mjs test/audio.test.mjs",
     "car": "node scripts/make-car.mjs",
     "deploy": "scripts/deploy.sh"
   }

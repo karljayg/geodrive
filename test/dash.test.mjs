@@ -40,6 +40,14 @@ test('slowing down shifts back down, without hunting between gears', () => {
   assert.equal(changes, 5);
 });
 
+test('changing to a car with fewer gears keeps the revs valid', () => {
+  const box = newGearbox();
+  box.gear = 8;
+  stepGearbox(box, CAR_PROFILES.electric, 40, 1, 0.1);
+  assert.equal(box.gear, 1);
+  assert.ok(Number.isFinite(box.rpm));
+});
+
 test('gear labels: neutral at rest, reverse backwards', () => {
   const car = CAR_PROFILES.sport, box = newGearbox();
   stepGearbox(box, car, 0, 0, 0.1);

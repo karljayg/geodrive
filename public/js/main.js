@@ -4,9 +4,10 @@ import { FLAG_ONEWAY, RoadNet } from './road.js';
 import { Path } from './route.js';
 import { CAR_PROFILES, profileFor } from './cars.js';
 import { drawGauge, drawNav } from './dash.js';
-import { EngineSound } from './engineSound.js';
+import { EngineAudio } from './engineSound.js';
 import { newGearbox, stepGearbox } from './gearbox.js';
 import { frequencyText, Radio } from './radio.js';
+import { loadSession, saveSession } from './session.js';
 import { DEFAULTS, saveSettings, settings } from './settings.js';
 import { RoadTiles } from './tiles.js';
 import { newTrip, tripFigures, updateTrip } from './trip.js';
@@ -60,7 +61,10 @@ let signal = null; // { side, path, index, until } while a turn signal is on
 let lane = 0, laneNow = LANE_OFFSET; // lane: metres chosen off the usual line; laneNow: the sideways offset right now
 let destination = null, route = null, routeIndex = null, routeLine = null, routing = false, routedAt = 0, fsd = false, fsdBoost = 0, arriving = false;
 let paused = false, trip = newTrip();
-const engine = new EngineSound();
+const engine = new EngineAudio();
+let soundThrottle = 0, savedAt = 0, radioResume = false;
+const SOUND_THROTTLE_RISE = 1.1; // s for a held W to reach full throttle in the sound; the car's acceleration doesn't change
+const SAVE_EVERY = 2000; // ms between saving the trip
 const gearbox = newGearbox();
 const radio = new Radio(renderRadio);
 let navDrawnAt = 0, navRadius = 1500, signalWasLit = false, radioArea = null;
@@ -289,7 +293,7 @@ function followRoad(steering, guide, dt) {
   laneNow += clamp(wanted - laneNow, -LANE_SHIFT_RATE * dt, LANE_SHIFT_RATE * dt);
 
   if (steering || car.speed <= 1) return;
-  const aim = guide ? guide.path.pointAt(guide.at.along + Math.max(8, car.speed * 0.45)) : look;
+  const aim = guide ? guide.path.pointAt(guide.at.along + Math.max(8, car.speed * 0.45)) : settings.roadFollow ? look : null;
   if (!aim) return;
   steerToward(laneNow ? move(aim.lat, aim.lng, aim.bearing + 90, laneNow) : aim, dt);
 }
@@ -336,7 +340,7 @@ function updateHud(t) {
   el('signalLeft').classList.toggle('on', !!signal && signal.side < 0 && blinkOn);
   el('signalRight').classList.toggle('on', !!signal && signal.side > 0 && blinkOn);
   const lit = !!signal && blinkOn;
-  if (lit !== signalWasLit && signal) engine.tick(settings.muted ? 0 : settings.signalVolume * settings.masterVolume);
+  if (lit !== signalWasLit && signal) engine.tick();
   signalWasLit = lit;
   drawDash(t);
 
@@ -427,6 +431,7 @@ function setRadioPower(on) {
 
 function applySound() {
   radio.setVolume(settings.muted ? 0 : settings.radioVolume * settings.masterVolume);
+  engine.applySettings(settings);
   el('radioVolumeDash').value = settings.radioVolume;
 }
 
@@ -453,8 +458,15 @@ function frame(t) {
     if (meters) Object.assign(pos, move(pos.lat, pos.lng, car.heading, meters));
     updateTrip(trip, dt, meters, { speed: car.speed, fsd, onRoad: !!match, onBridge });
     const profile = profileFor(settings.carProfile);
-    stepGearbox(gearbox, profile, car.speed, controls.throttle, dt);
-    engine.update({ rpm: gearbox.rpm, load: gearbox.load, car: profile, volume: settings.muted ? 0 : settings.engineVolume * settings.masterVolume, pitch: settings.enginePitch, running: true });
+    soundThrottle = controls.throttle > soundThrottle
+      ? Math.min(controls.throttle, soundThrottle + dt / SOUND_THROTTLE_RISE)
+      : Math.max(controls.throttle, soundThrottle - dt * 6);
+    stepGearbox(gearbox, profile, car.speed, soundThrottle, dt);
+    engine.update({ rpm: gearbox.rpm, load: gearbox.load, speedMph: Math.abs(car.speed) * MPS_TO_MPH, car: profile, running: true });
+    if (t - savedAt > SAVE_EVERY) {
+      savedAt = t;
+      saveTrip();
+    }
     if (radio.on) refreshStations();
     if (t - tilesCheckedAt > 1000) {
       tilesCheckedAt = t;
@@ -467,7 +479,7 @@ function frame(t) {
   } else if (map) {
     // Paused or in a dialog: the engine goes quiet and the radio carries on.
     const profile = profileFor(settings.carProfile);
-    engine.update({ rpm: gearbox.rpm, load: 0, car: profile, volume: 0, pitch: settings.enginePitch, running: false });
+    if (!previewing()) engine.update({ rpm: gearbox.rpm, load: 0, speedMph: 0, car: profile, running: false });
   }
   requestAnimationFrame(frame);
 }
@@ -511,6 +523,41 @@ async function placeCar(where) {
   await sampleGround();
   ground = groundTarget;
   if (map) syncScene(0);
+}
+
+// --- Saved trip -----------------------------------------------------------------------------------------------
+
+function saveTrip() {
+  saveSession({
+    pos, heading: car.heading, zoom, camIndex, destination, fsd, fsdBoost, trip, lane, navRadius, label: el('where').textContent,
+    radio: { on: radio.on, band: radio.band, stationId: radio.current?.id ?? null },
+  });
+}
+
+// Puts everything back as it was. The car is stopped, and FSD carries on if it was driving.
+async function restoreTrip(saved) {
+  Object.assign(pos, saved.pos);
+  Object.assign(car, newCar(), { heading: saved.heading });
+  camHeading = saved.heading;
+  zoom = saved.zoom;
+  camIndex = saved.camIndex;
+  tilt = CAMERAS[camIndex].tilt;
+  range = CAMERAS[camIndex].range * zoom;
+  el('cam').textContent = CAMERAS[camIndex].name;
+  destination = saved.destination;
+  fsd = saved.fsd;
+  fsdBoost = saved.fsdBoost;
+  trip = { ...newTrip(), ...saved.trip };
+  lane = saved.lane;
+  navRadius = saved.navRadius;
+  el('where').textContent = saved.label;
+  radio.band = saved.radio.band;
+  radio.resumeId = saved.radio.stationId;
+  radioResume = saved.radio.on; // browsers need a click or key press before sound can start
+  renderRadio();
+  tiles.ensure(pos.lat, pos.lng, car.heading, 0);
+  await sampleGround();
+  ground = groundTarget;
 }
 
 function reset() {
@@ -690,12 +737,14 @@ for (const control of document.querySelectorAll('[data-setting]')) {
     const name = control.dataset.setting;
     settings[name] = control.type === 'checkbox' ? control.checked : control.type === 'range' ? Number(control.value) : control.value;
     showSettings();
+    saveSettings();
     previewEngine();
   });
 }
 
 // Moving a sound control while paused should still let you hear the engine: a short blip of revs.
 let previewUntil = 0;
+const previewing = () => performance.now() < previewUntil;
 function previewEngine() {
   engine.start();
   previewUntil = performance.now() + 900;
@@ -703,11 +752,13 @@ function previewEngine() {
   const blip = () => {
     const left = previewUntil - performance.now();
     if (left <= 0 || !dialogOpen) return;
-    engine.update({ rpm: profile.redline * (0.3 + 0.35 * Math.sin((left / 900) * Math.PI)), load: 0.8, car: profile, volume: settings.muted ? 0 : settings.engineVolume * settings.masterVolume, pitch: settings.enginePitch, running: true });
+    engine.update({ rpm: profile.redline * (0.3 + 0.35 * Math.sin((left / 900) * Math.PI)), load: 0.8, speedMph: 0, car: profile, running: true });
     setTimeout(blip, 50);
   };
   blip();
 }
+
+el('newTrip').addEventListener('click', () => { trip = newTrip(); updateHud(0); });
 
 function openSettings() {
   dialogOpen = true;
@@ -725,6 +776,7 @@ function closeSettings() {
 el('settingsReset').addEventListener('click', () => {
   Object.assign(settings, DEFAULTS);
   showSettings();
+  saveSettings();
 });
 el('settingsDone').addEventListener('click', closeSettings);
 el('openSettings').addEventListener('click', () => { if (!dialogOpen) openSettings(); });
@@ -749,7 +801,14 @@ el('navScreen').addEventListener('click', () => {
 });
 el('helpButton').addEventListener('click', () => el('help').classList.toggle('open'));
 // Browsers only allow sound after the first click or key press.
-for (const kind of ['pointerdown', 'keydown']) document.addEventListener(kind, () => engine.start(), { capture: true });
+for (const kind of ['pointerdown', 'keydown']) {
+  document.addEventListener(kind, () => {
+    engine.start();
+    applySound();
+    if (radioResume) { radioResume = false; setRadioPower(true); }
+  }, { capture: true });
+}
+window.addEventListener('pagehide', () => { if (map) saveTrip(); });
 
 // --- Input ----------------------------------------------------------------------------------------------------
 
@@ -828,7 +887,9 @@ async function boot() {
     elevation = new (await google.maps.importLibrary('elevation')).ElevationService();
     geocoder = new (await google.maps.importLibrary('geocoding')).Geocoder();
     routesLib = await google.maps.importLibrary('routes');
-    await openDialog('start'); // the map itself loads only once the start is chosen
+    const saved = loadSession();
+    if (saved) await restoreTrip(saved);
+    else await openDialog('start'); // the map itself loads only once the start is chosen
     map = new maps3d.Map3DElement({ center: { ...pos, altitude: ground }, heading: car.heading, tilt, range, fov: FOV_Y, mode: 'HYBRID', defaultUIHidden: true });
     map.style.width = map.style.height = '100%';
     el('map').replaceChildren(map);
@@ -837,8 +898,12 @@ async function boot() {
       map.append(model);
     }
     syncScene(0);
+    if (saved) {
+      if (destination) requestRoute(true);
+      notice(`Trip restored${destination ? `, heading to ${destination.label}` : ''}. Press L for a new start.${radioResume ? ' The radio comes back at your first key press.' : ''}`, 6000);
+    }
     window.__geodrive = Object.assign(debug, {
-      gearbox, engine, radio, map, model, ground: () => ground, match: () => match, onBridge: () => onBridge, placeCar, pressSignal,
+      gearbox, saveTrip, engine, radio, map, model, ground: () => ground, match: () => match, onBridge: () => onBridge, placeCar, pressSignal,
       trip: () => trip, paused: () => paused, nav: () => ({ fsd, destination, route, routeIndex, signal, lane, laneNow }),
     });
   } catch (err) {

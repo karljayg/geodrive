@@ -9,6 +9,11 @@ export const DEFAULTS = {
   enginePitch: 1,
   radioVolume: 0.7,
   signalVolume: 0.5,
+  engineSound: 'recorded', // or 'synth'
+  audioPreset: 'balanced', // quiet, balanced or sport; sound only
+  roadVolume: 0.5,
+  windVolume: 0.5,
+  roadFollow: true,
 };
 
 function load() {
