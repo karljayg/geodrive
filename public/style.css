@@ -1,0 +1,130 @@
+:root { color-scheme: dark; font-family: Inter, system-ui, -apple-system, "Segoe UI", sans-serif; }
+* { box-sizing: border-box; }
+html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: #090f18; color: #fff; }
+/* The map ends where the dashboard starts, so the car and the road ahead are never under it. */
+:root { --dash: 172px; }
+#map, #shield, #hud { position: absolute; inset: 0 0 var(--dash) 0; }
+#map { background: radial-gradient(circle at center, #344e65, #0d1825); }
+/* The camera belongs to the car, so mouse drags and wheel never reach the map. */
+#shield { z-index: 1; }
+#hud { z-index: 2; pointer-events: none; }
+
+.pill, .panel { background: #101923dd; border: 1px solid #ffffff26; box-shadow: 0 8px 30px #0004; backdrop-filter: blur(18px); border-radius: 14px; }
+header { position: absolute; top: 22px; left: 24px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; max-width: calc(100% - 48px); }
+.pill { padding: 12px 15px; font-size: 12px; }
+.brand { font-weight: 800; letter-spacing: .1em; font-size: 13px; }
+.brand b { color: #69d9ba; }
+#notice { position: absolute; top: 132px; left: 24px; max-width: 420px; padding: 10px 15px; border-radius: 9px; background: #923822e0; font-size: 13px; line-height: 1.4; display: none; }
+
+kbd { display: inline-flex; min-width: 24px; justify-content: center; border: 1px solid #607080; border-bottom-width: 3px; border-radius: 5px; background: #ffffff13; color: #fff; padding: 0 5px; line-height: 20px; font: inherit; font-size: 11px; margin-right: 3px; }
+
+#nav { position: absolute; top: 76px; left: 24px; max-width: min(420px, calc(100% - 48px)); display: none; }
+#nav.active { display: block; }
+#nav.engaged { border-color: #2f9bff; }
+#navState { font-weight: 800; letter-spacing: .06em; font-size: 12px; color: #9baebb; }
+#nav.engaged #navState { color: #6fbcff; }
+#navWhere { margin-top: 2px; }
+#signalLeft, #signalRight { position: absolute; top: 50%; font-size: 44px; color: #5cf08c; text-shadow: 0 0 12px #000; opacity: 0; transform: translateY(-50%); }
+#signalLeft { left: 28%; }
+#signalRight { right: 28%; }
+#signalLeft.on, #signalRight.on { opacity: 1; }
+#attribution { position: absolute; right: 8px; bottom: 3px; font-size: 10px; color: #ffffffb0; text-shadow: 0 1px 2px #000; }
+#changeStart, #changeDest, #openSettings, #pauseButton, #helpButton { pointer-events: auto; cursor: pointer; font: inherit; font-size: 12px; color: #fff; }
+#changeStart:hover, #changeDest:hover, #openSettings:hover, #pauseButton:hover, #helpButton:hover { background: #24384cdd; }
+
+#start, #dest, #pause { position: absolute; inset: 0; z-index: 3; display: none; place-items: center; padding: 16px; background: #07121fb8; pointer-events: auto; }
+#start.open, #dest.open, #pause.open { display: grid; }
+.startBox { width: min(460px, 100%); padding: 26px; border-radius: 18px; background: #162333; border: 1px solid #ffffff2b; box-shadow: 0 30px 90px #0009; }
+.startBox h1 { margin: 0 0 6px; font-size: 22px; }
+.startBox p { margin: 0 0 14px; color: #b5c6d2; font-size: 14px; line-height: 1.45; }
+.startBox p b { color: #fff; font-weight: 650; }
+.startBox .or { margin: 20px 0 8px; font-size: 13px; color: #b5c6d2; }
+.startBox form { display: flex; gap: 8px; }
+.startBox input { flex: 1; min-width: 0; padding: 12px; font-size: 16px; color: #fff; background: #07131e; border: 1px solid #456074; border-radius: 10px; }
+.startBox button { padding: 12px 16px; font: inherit; font-size: 14px; font-weight: 700; border-radius: 10px; cursor: pointer; border: 0; }
+.startBox button:disabled { opacity: .5; cursor: default; }
+.primary { background: #5cd6b0; color: #0a1720; }
+.primary.wide { width: 100%; }
+.quiet { background: #ffffff19; color: #fff; }
+#startStatus, #destStatus { min-height: 18px; margin-top: 10px; font-size: 13px; color: #93cbb9; }
+#startStatus.bad, #destStatus.bad { color: #ffb3a1; }
+.startBox .row { display: flex; gap: 8px; margin-top: 8px; }
+#destClear { display: none; }
+#resetDefault { display: none; margin-top: 8px; padding: 0; background: none; color: #82e0c5; font-weight: 400; font-size: 13px; text-decoration: underline; }
+
+#tripStats { margin: 12px 0 8px; font-size: 14px; }
+#tripStats div { display: flex; justify-content: space-between; gap: 12px; padding: 5px 0; border-bottom: 1px solid #ffffff14; }
+#tripStats dt { color: #b5c6d2; }
+#tripStats dd { margin: 0; font-weight: 650; font-variant-numeric: tabular-nums; }
+#settings { position: absolute; z-index: 3; top: 76px; right: 24px; width: min(320px, calc(100% - 32px)); padding: 18px; display: none; border-radius: 14px; background: #162333f2; border: 1px solid #ffffff2b; box-shadow: 0 12px 40px #0008; pointer-events: auto; }
+#settings.open { display: block; }
+#settings h2 { margin: 0 0 12px; font-size: 17px; }
+#settings h3 { margin: 0 0 8px; font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: #9baebb; }
+#settings section { margin-bottom: 16px; }
+#settings label { display: flex; justify-content: space-between; font-size: 14px; }
+#settings label span { color: #9baebb; font-variant-numeric: tabular-nums; }
+#settings input[type=range] { width: 100%; margin: 10px 0 6px; accent-color: #5cd6b0; }
+#settings button { font: inherit; cursor: pointer; border: 0; border-radius: 10px; }
+#settings .primary { padding: 11px; font-size: 14px; font-weight: 700; }
+.link { padding: 0; background: none; color: #82e0c5; font-size: 13px; text-decoration: underline; }
+
+#touch { display: none; position: absolute; right: 8px; bottom: 8px; grid-template-columns: 1fr 1fr; gap: 5px; }
+#touch button { pointer-events: auto; width: 46px; height: 40px; background: #152637dc; border: 1px solid #ffffff55; border-radius: 11px; color: #fff; font-size: 18px; touch-action: none; }
+
+#help { position: absolute; left: 24px; bottom: 12px; display: none; padding: 12px 14px; font-size: 12px; color: #aec2cf; line-height: 2; }
+#help.open { display: block; }
+
+#dash { position: absolute; left: 0; right: 0; bottom: 0; height: var(--dash); z-index: 2; display: grid; grid-template-columns: auto minmax(280px, 1fr) minmax(170px, 210px) minmax(190px, 300px); gap: 10px; padding: 8px 12px; background: linear-gradient(#17222e, #0b121b); border-top: 1px solid #ffffff2b; }
+.gauges { display: flex; gap: 6px; align-items: center; }
+.gauges canvas { width: 154px; height: 154px; }
+#navScreen { width: 100%; height: 100%; min-height: 0; border-radius: 10px; border: 1px solid #ffffff26; cursor: pointer; display: block; }
+
+.radio { min-width: 0; display: flex; flex-direction: column; gap: 5px; justify-content: center; padding: 6px 10px; border-radius: 10px; background: #060c13; border: 1px solid #ffffff1f; }
+.radioTop { display: flex; align-items: center; gap: 5px; flex-wrap: nowrap; }
+.radio button { font: inherit; font-size: 12px; font-weight: 650; color: #fff; padding: 5px 9px; background: #ffffff17; border: 1px solid #ffffff24; border-radius: 7px; cursor: pointer; white-space: nowrap; }
+.radio button:hover { background: #ffffff2b; }
+#radioPower[aria-pressed=true] { background: #5cd6b0; color: #0a1720; }
+.bands { display: flex; }
+.bands button { border-radius: 0; margin-left: -1px; }
+.bands button:first-child { border-radius: 7px 0 0 7px; margin-left: 0; }
+.bands button:last-child { border-radius: 0 7px 7px 0; }
+.bands button.on { background: #2f9bff; }
+.radioVol { display: flex; align-items: center; gap: 5px; margin-left: auto; font-size: 11px; color: #9baebb; min-width: 0; }
+.radioVol input { width: 70px; min-width: 30px; accent-color: #5cd6b0; }
+.radioDisplay { display: flex; align-items: baseline; gap: 10px; min-width: 0; color: #7dffcf; font-variant-numeric: tabular-nums; }
+#radioFreq { font-size: 20px; font-weight: 750; white-space: nowrap; }
+#radioName { font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #b6f5dd; }
+#radioDial { width: 100%; margin: 0; accent-color: #ff8a3c; }
+#radioDial:disabled { opacity: .3; }
+#radioList { width: 100%; min-width: 0; padding: 4px 6px; font: inherit; font-size: 12px; color: #fff; background: #101923; border: 1px solid #ffffff24; border-radius: 7px; }
+
+.trip { display: grid; grid-template-columns: 1fr 1fr; align-content: center; gap: 7px 8px; font-size: 9px; letter-spacing: .05em; color: #9baebb; min-width: 0; }
+.trip b { display: block; margin-top: 1px; font-size: 13px; letter-spacing: 0; color: #fff; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+#settings { max-height: calc(100% - 96px); overflow: auto; }
+#settings select { width: 100%; margin: 8px 0 12px; padding: 8px; font: inherit; font-size: 14px; color: #fff; background: #07131e; border: 1px solid #456074; border-radius: 8px; }
+#settings label.check { justify-content: flex-start; gap: 8px; margin-bottom: 10px; }
+
+@media (max-width: 1080px) {
+  #dash { grid-template-columns: auto minmax(260px, 1fr) minmax(170px, 240px); }
+  .trip { display: none; }
+  .gauges canvas { width: 130px; height: 130px; }
+}
+@media (max-width: 820px) {
+  :root { --dash: 290px; }
+  #dash { grid-template-columns: auto minmax(0, 1fr); grid-template-rows: 136px minmax(0, 1fr); gap: 6px; padding: 6px 8px; }
+  .gauges canvas { width: 104px; height: 104px; }
+  .gauges { grid-row: 1; }
+  #navScreen { grid-row: 1; grid-column: 2; }
+  .radio { grid-row: 2; grid-column: 1 / 3; }
+}
+
+@media (max-width: 700px), (pointer: coarse) {
+  header { top: 12px; left: 12px; }
+  .where, #helpButton { display: none; }
+  #attribution { right: auto; left: 8px; bottom: 22px; max-width: 60%; }
+  #settings { top: 112px; right: 16px; }
+  #nav { top: 112px; left: 12px; max-width: calc(100% - 84px); }
+  #notice { top: 172px; left: 12px; right: 84px; }
+  #touch { display: grid; }
+}

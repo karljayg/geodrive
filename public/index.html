@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>GeoDrive</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="map"></div>
+<div id="shield"></div>
+<div id="hud">
+  <header>
+    <div class="pill brand">GEO<b>DRIVE</b></div>
+    <div class="pill where" id="where"></div>
+    <button class="pill" id="changeStart">Change start</button>
+    <button class="pill" id="changeDest">Destination</button>
+    <button class="pill" id="openSettings">Settings</button>
+    <button class="pill" id="pauseButton">Pause</button>
+    <button class="pill" id="helpButton">Keys</button>
+  </header>
+  <div class="pill" id="nav"><div id="navState"></div><div id="navWhere"></div></div>
+  <div id="notice"></div>
+  <div id="signalLeft">◀</div>
+  <div id="signalRight">▶</div>
+  <div id="attribution">Roads: OpenFreeMap © OpenMapTiles, © OpenStreetMap contributors</div>
+  <div id="touch">
+    <button data-key="a">◀</button><button data-key="w">▲</button><button data-key="s">▼</button><button data-key="d">▶</button><button data-key=" ">−</button><button data-key="z">+</button><button id="touchQ">Q</button><button id="touchE">E</button><button id="touchF">F</button><button id="touchPause">❚❚</button>
+  </div>
+  <div class="panel" id="help">
+    <div><kbd>W</kbd><kbd>↑</kbd> Accelerate</div>
+    <div><kbd>S</kbd><kbd>↓</kbd> Brake / reverse</div>
+    <div><kbd>A</kbd><kbd>D</kbd><kbd>←</kbd><kbd>→</kbd> Steer</div>
+    <div><kbd>SHIFT</kbd> Handbrake</div>
+    <div><kbd>SPACE</kbd> Zoom out · <kbd>Z</kbd> Zoom in</div>
+    <div><kbd>Q</kbd><kbd>E</kbd> Signal: next turn or lane change</div>
+    <div><kbd>G</kbd> Destination · <kbd>F</kbd> FSD on/off</div>
+    <div><kbd>-</kbd><kbd>=</kbd> FSD speed</div>
+    <div><kbd>N</kbd> Radio · <kbd>[</kbd><kbd>]</kbd> Station · <kbd>M</kbd> Mute</div>
+    <div><kbd>C</kbd> Camera · <kbd>R</kbd> Reset · <kbd>L</kbd> Start</div>
+    <div><kbd>P</kbd> Pause · <kbd>O</kbd> Settings · <kbd>H</kbd> Keys</div>
+  </div>
+</div>
+<div id="dash">
+  <div class="gauges">
+    <canvas id="speedGauge" aria-label="Speedometer"></canvas>
+    <canvas id="revGauge" aria-label="Tachometer"></canvas>
+  </div>
+  <section class="radio" aria-label="Radio">
+    <div class="radioTop">
+      <button id="radioPower" aria-pressed="false">Radio off</button>
+      <div class="bands" role="group" aria-label="Band">
+        <button data-band="FM">FM</button><button data-band="AM">AM</button><button data-band="WEB">WEB</button>
+      </div>
+      <button id="radioPrev" aria-label="Previous station">◀</button>
+      <button id="radioNext" aria-label="Next station">▶</button>
+      <label class="radioVol">Vol <input id="radioVolumeDash" type="range" min="0" max="1" step="0.05" aria-label="Radio volume"></label>
+    </div>
+    <div class="radioDisplay">
+      <span id="radioFreq">– – –</span>
+      <span id="radioName">Off</span>
+    </div>
+    <input id="radioDial" type="range" aria-label="Frequency">
+    <select id="radioList" aria-label="Stations"></select>
+  </section>
+  <div class="trip">
+    <div>ELAPSED<b id="hud-elapsed">0:00</b></div>
+    <div>MILES<b id="hud-miles">0.00 mi</b></div>
+    <div>TOP<b id="hud-top">0 mph</b></div>
+    <div>AVERAGE<b id="hud-average">0 mph</b></div>
+    <div>HEADING<b id="heading">000°</b></div>
+    <div>ROAD<b id="road">–</b></div>
+    <div>CAMERA<b id="cam">CHASE</b></div>
+    <div>FROM START<b id="from">0.00 mi</b></div>
+  </div>
+  <canvas id="navScreen" title="Click to change the range" aria-label="Navigation screen"></canvas>
+</div>
+<div id="start">
+  <div class="startBox">
+    <h1>Where do you want to start?</h1>
+    <p>Your default start is <b id="startDefault"></b>.</p>
+    <button class="primary wide" id="useDefault">Start there</button>
+    <div class="or">Or override it with an address. The car goes on the nearest road, and this becomes your new default.</div>
+    <form id="startForm">
+      <input id="startAddress" type="text" placeholder="Enter an address" autocomplete="street-address" aria-label="Starting address">
+      <button class="quiet" id="startGo" type="submit">Go</button>
+    </form>
+    <div id="startStatus"></div>
+    <button id="resetDefault" type="button">Go back to the original default</button>
+  </div>
+</div>
+<div id="pause" role="dialog" aria-label="Paused">
+  <div class="startBox">
+    <h1>Paused</h1>
+    <dl id="tripStats">
+      <div><dt>Elapsed time</dt><dd data-stat="elapsed"></dd></div>
+      <div><dt>Time moving</dt><dd data-stat="moving"></dd></div>
+      <div><dt>Miles driven</dt><dd data-stat="miles"></dd></div>
+      <div><dt>Average speed</dt><dd data-stat="average"></dd></div>
+      <div><dt>Top speed</dt><dd data-stat="top"></dd></div>
+      <div><dt>Miles in FSD</dt><dd data-stat="fsdMiles"></dd></div>
+      <div><dt>Share of miles in FSD</dt><dd data-stat="fsdShare"></dd></div>
+      <div><dt>Time in FSD</dt><dd data-stat="fsdTime"></dd></div>
+      <div><dt>FSD takeovers</dt><dd data-stat="takeovers"></dd></div>
+      <div><dt>Signals used</dt><dd data-stat="signals"></dd></div>
+      <div><dt>Bridges crossed</dt><dd data-stat="bridges"></dd></div>
+      <div><dt>Miles off road</dt><dd data-stat="offRoad"></dd></div>
+    </dl>
+    <div class="row">
+      <button class="primary" id="resume" type="button">Resume</button>
+      <button class="quiet" id="tripReset" type="button">Reset trip</button>
+    </div>
+  </div>
+</div>
+<div id="settings" role="dialog" aria-label="Settings">
+  <h2>Settings</h2>
+  <section>
+    <h3>Car</h3>
+    <label for="carProfile">Car profile</label>
+    <select id="carProfile" data-setting="carProfile"></select>
+    <label for="carScale">Size <span data-value="carScale"></span></label>
+    <input id="carScale" data-setting="carScale" type="range" min="0.3" max="5" step="0.1">
+  </section>
+  <section>
+    <h3>Sound</h3>
+    <label class="check"><input id="muted" data-setting="muted" type="checkbox"> Mute all sound</label>
+    <label for="masterVolume">Master volume <span data-value="masterVolume"></span></label>
+    <input id="masterVolume" data-setting="masterVolume" type="range" min="0" max="1" step="0.05">
+    <label for="engineVolume">Engine volume <span data-value="engineVolume"></span></label>
+    <input id="engineVolume" data-setting="engineVolume" type="range" min="0" max="1" step="0.05">
+    <label for="enginePitch">Engine pitch <span data-value="enginePitch"></span></label>
+    <input id="enginePitch" data-setting="enginePitch" type="range" min="0.5" max="1.5" step="0.05">
+    <label for="radioVolume">Radio volume <span data-value="radioVolume"></span></label>
+    <input id="radioVolume" data-setting="radioVolume" type="range" min="0" max="1" step="0.05">
+    <label for="signalVolume">Signal tick <span data-value="signalVolume"></span></label>
+    <input id="signalVolume" data-setting="signalVolume" type="range" min="0" max="1" step="0.05">
+  </section>
+  <button class="link" id="settingsReset" type="button">Reset all to defaults</button>
+  <button class="primary wide" id="settingsDone" type="button">Done</button>
+</div>
+<div id="dest">
+  <div class="startBox">
+    <h1>Where to?</h1>
+    <p>The car drives itself there in FSD. Steer or brake to take over any time, and press F to hand back.</p>
+    <form id="destForm">
+      <input id="destAddress" type="text" placeholder="Enter a destination" autocomplete="street-address" aria-label="Destination address">
+      <button class="primary" id="destGo" type="submit">Go</button>
+    </form>
+    <div id="destStatus"></div>
+    <div class="row">
+      <button class="quiet" id="destCancel" type="button">Cancel</button>
+      <button class="quiet" id="destClear" type="button">Clear destination</button>
+    </div>
+  </div>
+</div>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>

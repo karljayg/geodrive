@@ -1,0 +1,11 @@
+# The road tiles are large JSON files that compress well.
+<IfModule mod_deflate.c>
+  AddOutputFilterByType DEFLATE application/json text/javascript application/javascript text/css text/html
+</IfModule>
+
+# Browsers check for a newer copy on every load, so a deploy shows up without a hard refresh.
+<IfModule mod_headers.c>
+  <FilesMatch "\.(html|js|css|json)$">
+    Header set Cache-Control "no-cache"
+  </FilesMatch>
+</IfModule>
