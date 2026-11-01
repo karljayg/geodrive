@@ -1,6 +1,6 @@
 # GeoDrive tech stack
 
-A plain static website with no framework and no build step. All game logic runs in the browser. The only server code is `log.php`, which saves performance logs sent from the game.
+A plain static website with no framework and no build step. All game logic runs in the browser. The only server code is `nowplaying.php`, which reads song titles from radio streams, and `log.php`, which saves performance logs sent from the game.
 
 ## Front end
 - Plain JavaScript (ES modules), HTML and CSS
@@ -15,12 +15,14 @@ A plain static website with no framework and no build step. All game logic runs 
 ## Outside services
 | Service | Used for | Key | Cost |
 | --- | --- | --- | --- |
-| Google Map Tiles | The 3D map | Yes | Billed beyond the free allowance |
-| Google Elevation API | Ground height for the camera pivot | Yes | Billed beyond the free allowance |
-| Google Geocoding API | Addresses, the current town, and the state for the radio | Yes | Billed beyond the free allowance |
-| Google Routes API | FSD routes | Yes | Billed beyond the free allowance |
+| Google Maps JavaScript, 3D Maps (Immersive Maps SKU) | The 3D map | Yes | Per map load, so per page load: $7 per 1,000 after 5,000 free a month. Moving the camera isn't a billable event |
+| Terrain Tiles on AWS Open Data (Mapzen) | Ground height for the camera pivot | No | Free. Attribution on the HUD; full list at https://github.com/tilezen/joerd/blob/master/docs/attribution.md |
+| Google Elevation API | Fallback for the first height only, if terrain tiles aren't answering | Yes | $5 per 1,000 after 5,000 free a month |
+| Google Geocoding API | Addresses, the current town, and the state for the radio | Yes | $5 per 1,000 after 10,000 free a month |
+| Google Routes API | FSD routes (Compute Routes Essentials) | Yes | $5 per 1,000 after 10,000 free a month. Don't add traffic-aware routing, side-of-road or heading: they move it to Pro at $10 |
 | OpenFreeMap vector tiles (OpenStreetMap data) | Road shapes, one-way streets, bridges, nav screen | No | Free |
 | Radio Browser (radio-browser.info) | Station directory | No | Free |
+| Radio stations' own streams | Song titles, read by `nowplaying.php` (ICY metadata) | No | Free |
 
 Google usage and spend can only be seen in Google Cloud Console; the API key can't read them. Budgets there only send alerts, so a hard limit needs daily request limits per API.
 

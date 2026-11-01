@@ -124,6 +124,9 @@ function roadLayer(roads, pos, { radius, scale, half, margin, dpr }) {
   return layer;
 }
 
+// True while roads have come or gone that the screen hasn't drawn yet, which is held back a few seconds at a time.
+export const navBehind = (roads) => !!layer && layer.changes !== roads.changes;
+
 // The navigation screen: a map from very high up, drawn from the road data already loaded, so it adds no map charges.
 // options: { roads, pos, heading, route, routeIndex, radius (m from the car to the top of the screen) }
 export function drawNav(canvas, { roads, pos, heading, route, routeIndex, radius, hour, clock }) {
@@ -163,8 +166,8 @@ export function drawNav(canvas, { roads, pos, heading, route, routeIndex, radius
     ctx.beginPath(); ctx.arc(Math.max(4, Math.min(w - 4, ex)), Math.max(4, Math.min(h - 4, ey)), 4, 0, Math.PI * 2); ctx.fill();
   }
 
-  // A quiet clock face on the right, showing the game's time of day, in the screen's own colours.
-  const faceR = Math.min(22, h * 0.17), fx = w - faceR - 10, fy = h / 2 - 6;
+  // A quiet clock face at the bottom left, under the destination, showing the game's time of day in the screen's own colours.
+  const faceR = Math.min(33, h * 0.255), fx = faceR + 8, fy = h - faceR - 6;
   ctx.fillStyle = '#0a1420cc';
   ctx.beginPath(); ctx.arc(fx, fy, faceR + 3, 0, Math.PI * 2); ctx.fill();
   ctx.strokeStyle = '#8fa6b880';
@@ -180,10 +183,10 @@ export function drawNav(canvas, { roads, pos, heading, route, routeIndex, radius
   hand((hour % 12) / 12, faceR * 0.52, 1.6);
   hand(hour % 1, faceR * 0.8, 1.1);
   ctx.fillStyle = '#8fa6b8';
-  ctx.font = '600 9px system-ui, sans-serif';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'top';
-  ctx.fillText(clock, fx, fy + faceR + 5);
+  ctx.font = '600 13.5px system-ui, sans-serif';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(clock, fx + faceR + 8, fy);
 
   // The car always points up, and the map turns under it. N shows which way north is.
   ctx.fillStyle = '#5cf0c0';

@@ -1,21 +1,22 @@
 import { newCar, stepCar } from './physics.js';
 import { distance, easeAngle, leadDistance, move } from './camera.js';
 import { FLAG_ONEWAY, RoadNet } from './road.js';
-import { Path, brakeFor, pursuitYaw } from './route.js';
+import { Path, brakeFor, pursuitYaw, rerouteWait } from './route.js';
 import { CAR_PROFILES, hornFor, profileFor } from './cars.js';
 import { BODY_SHAPES, buildCarGlb, carPicture } from './carModel.js';
 import { beamPools, brakeLit, drawDots, drawPools, tailDots } from './headlights.js';
 import { clockText, darknessAt, tintAt } from './daylight.js';
-import { drawGauge, drawNav, revRange, speedRange, speedStep } from './dash.js';
+import { drawGauge, drawNav, navBehind, revRange, speedRange, speedStep } from './dash.js';
 import { EngineAudio } from './engineSound.js';
 import { describeMachine, observeBrowser, PerfLog } from './perflog.js';
 import { newGearbox, stepGearbox } from './gearbox.js';
 import { frequencyText, Radio } from './radio.js';
-import { loadSession, saveSession } from './session.js';
+import { clearRoute, loadRoute, loadSession, saveRoute, saveSession } from './session.js';
 import { DEFAULTS, saveSettings, settings } from './settings.js';
 import { decodeShare, encodeShare, packShare, shareSummary } from './share.js';
 import { RoadTiles } from './tiles.js';
-import { townFrom } from './town.js';
+import { Terrain } from './terrain.js';
+import { placeFrom } from './town.js';
 import { burnFuel, newTrip, tripFigures, updateTrip } from './trip.js';
 
 const ORIGINAL_START = { label: 'Saarinen Circle, Dulles Airport, Virginia', lat: 38.9555, lng: -77.4475, heading: 270 };
@@ -23,7 +24,7 @@ const START_STORE = 'geodrive_start_v1';
 const MPS_TO_MPH = 2.23694;
 const CAR_BELOW_CENTRE = 0.45; // where the car sits on screen: 0 = centre, 1 = bottom edge
 const FOV_Y = 35;             // the map's vertical field of view, degrees
-const GROUND_SAMPLE_EVERY = 250; // m driven between elevation lookups at normal speeds
+const GROUND_SAMPLE_EVERY = 250; // m driven between looking up the ground's height
 const BRIDGE_LIFT = 6;        // m the camera rises on a bridge, a typical deck height
 const ZOOM_OUT_MAX = 8;       // the furthest zoom, as a multiple of the camera's range
 const ZOOM_OUT_TIME = 1.6;    // seconds of holding Space to get from no zoom to the maximum
@@ -39,7 +40,7 @@ const SIGNAL_REACH = 12;      // seconds ahead, at the current speed, a signal l
 const SIGNAL_MIN_REACH = 300; // m
 const PLAN_DECEL = 8;         // m/s² the turn and route speed plans brake at, firm but not an emergency stop
 const OFF_PATH = 40;          // m from a path that counts as having left it
-const REROUTE_EVERY = 8000;   // ms at the least between route requests
+const REROUTE_CALM = 600000;  // ms after which a new route no longer counts as following the last one
 const FSD_SPEED_STEP = 10;    // mph per press of - or =
 const CRUISE_FACTOR = 1.4;    // a route's step times include stopping at lights, and FSD doesn't stop, so it runs above the average
 const CRUISE_MIN = 11;        // m/s (25 mph)
@@ -49,8 +50,8 @@ const SNAP_WAIT = 4000;       // ms a saved start will wait for road data
 const ADDRESS_WAIT = 12000;   // ms a new address will wait for road data
 const ROUTE_DRAWN = 8000;     // m of route drawn on the map ahead of the car
 const ROUTE_REDRAW = 2000;    // m driven before that stretch moves on
-const TOWN_EVERY = 2000;      // m driven between looking up the town, as each lookup is billed
-const TOWN_WAIT = 20000;      // ms at the least between lookups
+const TOWN_EVERY = 8000;      // m driven between looking up the town, as each lookup is billed
+const TOWN_WAIT = 60000;      // ms at the least between lookups
 const CAMERAS = [
   { name: 'CHASE', tilt: 62, range: 130 },
   { name: 'HIGH CHASE', tilt: 45, range: 320 },
@@ -68,22 +69,22 @@ const tiles = new RoadTiles(roads);
 let start = loadStart();
 let map = null, model = null, maps3d = null, camIndex = 0, camHeading = 0, zoom = 1, tilt = CAMERAS[0].tilt, range = CAMERAS[0].range;
 let last = 0, dialogOpen = false, pendingSnap = false, match = null, recentWays = null, onBridge = false, tilesCheckedAt = 0;
-let ground = 88, groundTarget = 88, elevation = null, geocoder = null, routesLib = null, sampledAt = null; // m above sea level
+let ground = 88, groundTarget = 88, groundKnown = false, geocoder = null, routesLib = null, sampledAt = null; // m above sea level
 let signal = null; // { side, path, index, until } while a turn signal is on
 let lane = 0, laneNow = LANE_OFFSET; // lane: metres chosen off the usual line; laneNow: the sideways offset right now
-let destination = null, route = null, routeIndex = null, routeLine = null, routing = false, routedAt = 0, fsd = false, fsdBoost = 0, arriving = false;
+let destination = null, route = null, routeIndex = null, routeLine = null, routing = false, routedAt = 0, reroutes = 0, fsd = false, fsdBoost = 0, arriving = false;
 let paused = false, trip = newTrip();
 const engine = new EngineAudio();
 let soundThrottle = 0, savedAt = 0, radioResume = false;
 const SOUND_THROTTLE_RISE = 1.1; // s for a held W to reach full throttle in the sound; the car's acceleration doesn't change
 const SAVE_EVERY = 2000; // ms between saving the trip
 const gearbox = newGearbox();
-const radio = new Radio(renderRadio);
+const radio = new Radio(renderRadio, showSong);
 let gaugesDrawnAt = 0, speedMax = 200, navDrawnAt = 0, navRadius = 1500, signalWasLit = false, radioArea = null;
 const NAV_RANGES = [800, 1500, 3000, 6000]; // m from the car to the top of the nav screen
 const TUNE_STEP = 12; // px of knob turn per station
 const RADIO_RESEARCH = 50000; // m driven before looking for stations again
-const groundCache = new Map();
+const terrain = new Terrain();
 function logStore() {
   try {
     return localStorage;
@@ -130,24 +131,32 @@ function input() {
 
 // Map3DElement's center altitude is above sea level, so at altitude 0 it orbits a point far underground and
 // the world swings past the car. Keeping it at ground height puts the pivot on the car, hence this lookup.
+// Google is only the fallback for a first height when terrain tiles aren't answering: the camera can't start without one,
+// and each Google lookup is billed. After that it keeps the last height until the tiles are back.
+async function googleGround(at) {
+  try {
+    if (!window.google?.maps) return null;
+    const service = new (await google.maps.importLibrary('elevation')).ElevationService();
+    perfLog.count('elevations');
+    const { results } = await service.getElevationForLocations({ locations: [at] });
+    return results[0].elevation;
+  } catch (err) {
+    console.warn('elevation:', err);
+    return null;
+  }
+}
+
 async function sampleGround() {
-  if (!elevation) return;
   const moved = sampledAt ? distance(sampledAt.lat, sampledAt.lng, pos.lat, pos.lng) : Infinity;
   const speed = Math.abs(car.speed);
-  if (moved < Math.max(GROUND_SAMPLE_EVERY, speed * 3)) return; // at most one lookup every 3 s, however fast
-  sampledAt = { ...pos };
+  if (moved < GROUND_SAMPLE_EVERY) return;
+  const asked = sampledAt = { ...pos };
   const ahead = move(pos.lat, pos.lng, car.speed >= 0 ? car.heading : car.heading + 180, speed > 1 ? Math.max(120, speed * 1.5) : 0);
-  const cell = ahead.lat.toFixed(3) + ',' + ahead.lng.toFixed(3);
-  if (!groundCache.has(cell)) {
-    try {
-      const { results } = await elevation.getElevationForLocations({ locations: [ahead] });
-      groundCache.set(cell, results[0].elevation);
-    } catch (err) {
-      console.warn('elevation:', err); // keep the last known height
-      return;
-    }
-  }
-  groundTarget = groundCache.get(cell);
+  let height = await terrain.heightAt(ahead.lat, ahead.lng);
+  if (height === null && !groundKnown) height = await googleGround(ahead);
+  if (height === null || asked !== sampledAt) return;
+  groundKnown = true;
+  groundTarget = height;
 }
 
 // --- Turn signals ---------------------------------------------------------------------------------------------
@@ -184,9 +193,13 @@ function cancelSignal() {
 const toLatLng = (p) => ({ lat: typeof p.lat === 'function' ? p.lat() : p.lat, lng: typeof p.lng === 'function' ? p.lng() : p.lng });
 
 async function requestRoute(force = false) {
-  if (!destination || routing || (!force && performance.now() - routedAt < REROUTE_EVERY)) return false;
+  const since = performance.now() - routedAt;
+  if (!destination || routing || (!force && since < rerouteWait(reroutes))) return false;
+  // Asked for by the driver, it's always answered. Only the automatic ones back off.
+  if (!force) reroutes = since > REROUTE_CALM ? 0 : reroutes + 1;
   routing = true;
   routedAt = performance.now();
+  perfLog.count('routes');
   try {
     const { routes } = await routesLib.Route.computeRoutes({
       origin: { lat: pos.lat, lng: pos.lng },
@@ -205,11 +218,9 @@ async function requestRoute(force = false) {
     }
     const usable = points.length > 1 ? points : routes[0].path.map(toLatLng);
     if (destination) {
-      const began = performance.now();
-      route = new Path(usable, { stopAtEnd: true, decel: PLAN_DECEL });
-      routeIndex = null;
-      perfLog.event('route', { from: usable.length, points: route.points.length, km: Math.round(route.length / 1000), buildMs: Math.round(performance.now() - began) });
+      useRoute(usable, 'google');
       drawRoute();
+      saveRoute(destination, usable);
     }
     return true;
   } catch (err) {
@@ -219,6 +230,23 @@ async function requestRoute(force = false) {
   } finally {
     routing = false;
   }
+}
+
+function useRoute(points, source) {
+  const began = performance.now();
+  route = new Path(points, { stopAtEnd: true, decel: PLAN_DECEL });
+  routeIndex = null;
+  perfLog.event('route', { source, from: points.length, points: route.points.length, km: Math.round(route.length / 1000), buildMs: Math.round(performance.now() - began) });
+}
+
+// A refresh carries on with the route it had, as asking again is billed. Off that route, FSD asks for a new one as usual.
+function resumeRoute() {
+  const saved = loadRoute(destination);
+  if (!saved) return false;
+  useRoute(saved, 'saved');
+  routeIndex = route.locate(pos.lat, pos.lng).index;
+  drawRoute();
+  return true;
 }
 
 // Only the stretch ahead goes on the map, because a line clamped to the ground costs the map for every point it holds,
@@ -267,6 +295,7 @@ function setFsd(on, message) {
 }
 
 function clearDestination() {
+  clearRoute();
   destination = null;
   route = null;
   routeIndex = null;
@@ -351,6 +380,15 @@ function followRoad(steering, guide, dt) {
   steerToward(laneNow ? move(aim.lat, aim.lng, aim.bearing + 90, laneNow) : aim, dt, !!guide);
 }
 
+// Each write to the map is work for it even at the same value, so a parked car leaves it alone. True if `value` has
+// moved by at least `by` since it was last written, which here means about a centimetre or a hundredth of a degree.
+const sceneShown = {};
+function moved(name, value, by) {
+  if (Math.abs(value - (sceneShown[name] ?? Infinity)) < by) return false;
+  sceneShown[name] = value;
+  return true;
+}
+
 function syncScene(dt) {
   const cam = CAMERAS[camIndex];
   // The camera trails the car's yaw slightly, so you see the nose turn in, and the world always pivots on the car.
@@ -368,14 +406,14 @@ function syncScene(dt) {
 
   const lead = leadDistance(range, tilt, FOV_Y, CAR_BELOW_CENTRE);
   const center = move(pos.lat, pos.lng, camHeading, lead);
-  map.heading = camHeading;
-  map.tilt = tilt;
-  map.range = range;
-  map.center = { lat: center.lat, lng: center.lng, altitude: ground };
+  if (moved('heading', camHeading, 0.01)) map.heading = camHeading;
+  if (moved('tilt', tilt, 0.01)) map.tilt = tilt;
+  if (moved('range', range, 0.05)) map.range = range;
+  if (moved('centerLat', center.lat, 1e-7) | moved('centerLng', center.lng, 1e-7) | moved('ground', ground, 0.01)) map.center = { lat: center.lat, lng: center.lng, altitude: ground };
   applyDaylight();
   if (model) {
-    model.position = { lat: pos.lat, lng: pos.lng, altitude: 0 };
-    model.orientation = { heading: car.heading, tilt: 0, roll: 0 };
+    if (moved('carLat', pos.lat, 1e-7) | moved('carLng', pos.lng, 1e-7)) model.position = { lat: pos.lat, lng: pos.lng, altitude: 0 };
+    if (moved('carHeading', car.heading, 0.01)) model.orientation = { heading: car.heading, tilt: 0, roll: 0 };
     // The ground under a bridge is the valley floor, so on bridges the car rides on the 3D mesh instead. Only on
     // bridges: everywhere else the mesh includes tree tops and overpasses the car would climb on to.
     const mode = onBridge ? 'RELATIVE_TO_MESH' : 'RELATIVE_TO_GROUND';
@@ -407,6 +445,16 @@ function setStartLabel(label) {
   showPlace();
 }
 
+// The town and the radio both want to know where the car is, so they share an answer rather than each paying for one.
+let placeAsked = null, placeKnown = null; // placeKnown is saved with the trip, so a refresh needn't pay to ask again
+function lookUpPlace(at) {
+  if (placeKnown && distance(placeKnown.at.lat, placeKnown.at.lng, at.lat, at.lng) < TOWN_EVERY) return Promise.resolve(placeKnown);
+  if (placeAsked) return placeAsked;
+  perfLog.count('geocodes');
+  placeAsked = geocoder.geocode({ location: at }).then(({ results }) => (placeKnown = { at, ...placeFrom(results) })).finally(() => { placeAsked = null; });
+  return placeAsked;
+}
+
 async function refreshTown() {
   if (!geocoder || townBusy || performance.now() - townAsked < TOWN_WAIT) return;
   if (townAt && distance(townAt.lat, townAt.lng, pos.lat, pos.lng) < TOWN_EVERY) return;
@@ -414,8 +462,7 @@ async function refreshTown() {
   townAsked = performance.now();
   const asked = townAt = { lat: pos.lat, lng: pos.lng };
   try {
-    const { results } = await geocoder.geocode({ location: asked });
-    const name = townFrom(results);
+    const { town: name } = await lookUpPlace(asked);
     if (asked === townAt && name && name !== town) { // otherwise the car was moved to a new start while waiting
       town = name;
       perfLog.event('town', name);
@@ -457,7 +504,7 @@ function updateHud(t) {
 }
 
 // A dial is only redrawn when its needle or figures would visibly move.
-let gaugesShown = {}, fuelShown = '';
+let gaugesShown = {}, fuelShown = '', navShown = '';
 function gauge(id, key, options) {
   if (gaugesShown[id] === key) return;
   gaugesShown[id] = key;
@@ -489,9 +536,14 @@ function drawDash(t) {
   }
   if (t - navDrawnAt > 333) {
     navDrawnAt = t;
-    const navBegan = performance.now();
-    navVertices = drawNav(el('navScreen'), { roads, pos, heading: car.heading, route: fsd || destination ? route : null, routeIndex, radius: navRadius, hour: settings.hour, clock: clockText(settings.hour) });
-    perfLog.spend('nav', performance.now() - navBegan);
+    const navRoute = fsd || destination ? route : null;
+    const navKey = `${pos.lat.toFixed(6)}|${pos.lng.toFixed(6)}|${car.heading.toFixed(1)}|${navRadius}|${navRoute?.length}|${routeIndex}|${settings.hour}|${roads.changes}`;
+    if (navKey !== navShown || navBehind(roads)) { // parked, nothing on it has changed
+      navShown = navKey;
+      const navBegan = performance.now();
+      navVertices = drawNav(el('navScreen'), { roads, pos, heading: car.heading, route: navRoute, routeIndex, radius: navRadius, hour: settings.hour, clock: clockText(settings.hour) });
+      perfLog.spend('nav', performance.now() - navBegan);
+    }
     const now = new Date();
     const time = (d) => d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
     show('clock', time(now));
@@ -511,11 +563,9 @@ async function refreshStations() {
   radioArea = { lat: pos.lat, lng: pos.lng };
   let state = null, country = 'US';
   try {
-    const { results } = await geocoder.geocode({ location: radioArea });
-    for (const part of results[0]?.address_components || []) {
-      if (part.types.includes('administrative_area_level_1')) state = part.long_name;
-      if (part.types.includes('country')) country = part.short_name;
-    }
+    const place = await lookUpPlace(radioArea);
+    state = place.state;
+    country = place.country || country;
   } catch (err) {
     console.warn('radio area:', err); // nearby stations still work without it
   }
@@ -555,6 +605,19 @@ function renderRadio() {
   if (current) select.value = current.id;
   select.disabled = !list.length;
 
+}
+
+// Measured only when the song changes, as asking for a width makes the browser lay out the page.
+function showSong(song) {
+  const box = el('radioSong'), text = box.firstElementChild;
+  text.textContent = song ? `♪ ${song}` : '';
+  el('radioList').title = song || '';
+  const over = text.scrollWidth - box.clientWidth;
+  box.classList.toggle('scrolling', over > 0);
+  if (over > 0) {
+    text.style.setProperty('--slide', `-${over}px`);
+    text.style.setProperty('--slide-time', `${Math.round(6 + over / 10)}s`);
+  }
 }
 
 function setRadioPower(on) {
@@ -682,7 +745,7 @@ async function placeCar(where) {
 
 // --- Saved trip -----------------------------------------------------------------------------------------------
 
-const tripState = () => ({ pos, heading: car.heading, zoom, camIndex, destination, fsd, fsdBoost, trip, lane, navRadius, label: startLabel });
+const tripState = () => ({ pos, heading: car.heading, zoom, camIndex, destination, fsd, fsdBoost, trip, lane, navRadius, label: startLabel, place: placeKnown });
 
 function saveTrip() {
   saveSession({
@@ -707,6 +770,12 @@ async function restoreTrip(saved) {
   lane = saved.lane;
   navRadius = saved.navRadius;
   setStartLabel(saved.label);
+  if (Number.isFinite(saved.place?.at?.lat) && Number.isFinite(saved.place?.at?.lng)) {
+    placeKnown = saved.place;
+    townAt = placeKnown.at;
+    town = placeKnown.town;
+    showPlace();
+  }
   tiles.ensure(pos.lat, pos.lng, car.heading, 0);
   await sampleGround();
   ground = groundTarget;
@@ -792,6 +861,7 @@ function switchCamera() {
 
 // Resolves an address to the nearest road. Without road data (the servers can be busy) the address itself is used.
 async function findStart(address) {
+  perfLog.count('geocodes');
   const { results } = await geocoder.geocode({ address });
   const location = results[0].geometry.location, lat = location.lat(), lng = location.lng();
   const label = results[0].formatted_address;
@@ -881,6 +951,7 @@ el('destForm').addEventListener('submit', async (e) => {
   el('destGo').disabled = true;
   setStatus('dest', 'Finding a route…');
   try {
+    perfLog.count('geocodes');
     const { results } = await geocoder.geocode({ address });
     const location = results[0].geometry.location;
     const previous = destination;
@@ -951,7 +1022,7 @@ function applyCarLook() {
 // The tint covers the map, and the headlight beams are cut out of it and lightly added on top. The car's place on
 // screen is fixed; the beams are sized from the car, zoom with the map and turn with the car against the camera.
 let lightKey = '', braking = false, mapBox = null;
-window.addEventListener('resize', () => { mapBox = null; gaugesShown = {}; });
+window.addEventListener('resize', () => { mapBox = null; gaugesShown = {}; navShown = ''; });
 function applyDaylight() {
   const dark = darknessAt(settings.hour), lit = settings.headlights;
   mapBox ||= { width: el('map').clientWidth, height: el('map').clientHeight }; // asking every frame would force a layout
@@ -1384,7 +1455,6 @@ async function boot() {
   try {
     await loadGoogle(key, new URLSearchParams(location.search).get('v') || 'weekly');
     maps3d = await google.maps.importLibrary('maps3d');
-    elevation = new (await google.maps.importLibrary('elevation')).ElevationService();
     geocoder = new (await google.maps.importLibrary('geocoding')).Geocoder();
     routesLib = await google.maps.importLibrary('routes');
     const fromLink = await openSharedLink();
@@ -1404,7 +1474,7 @@ async function boot() {
     syncScene(0);
     applyDaylight();
     if (saved) {
-      if (destination) requestRoute(true);
+      if (destination && !resumeRoute()) requestRoute(true);
       notice(`${fromLink ? 'Shared drive loaded' : 'Trip restored'}${destination ? `, heading to ${destination.label}` : ''}. Press L for a new start.`, 6000);
     }
     window.__geodrive = Object.assign(debug, {

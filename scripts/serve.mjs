@@ -20,8 +20,16 @@ async function saveLog(req, res) {
   res.end(JSON.stringify({ name, rows: JSON.parse(body).rows.length }));
 }
 
+// public/nowplaying.php needs the server's PHP too, so local play asks the live one.
+async function askNowPlaying(req, res) {
+  const live = await fetch(`https://www.psistorm.com/geodrive${req.url}`);
+  res.writeHead(live.status, { 'Content-Type': 'application/json' });
+  res.end(await live.text());
+}
+
 createServer(async (req, res) => {
   if (req.method === 'POST' && req.url === '/log.php') return saveLog(req, res);
+  if (req.url.startsWith('/nowplaying.php')) return askNowPlaying(req, res).catch(() => res.writeHead(502).end());
   const path = normalize(decodeURIComponent(new URL(req.url, 'http://x').pathname));
   try {
     const body = await readFile(join(ROOT, path.endsWith('/') ? path + 'index.html' : path));

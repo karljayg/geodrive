@@ -108,6 +108,10 @@ function roundCorners(given) {
   return out;
 }
 
+// Ms to wait before asking for another new route, each of which is billed, after `recent` in a row. A car that
+// can't stay on its route would otherwise pay every few seconds for as long as it drives.
+export const rerouteWait = (recent) => Math.min(300000, 8000 * 2 ** recent);
+
 // How hard to brake to get down to a target speed.
 export const brakeFor = (speed, target) => (speed > target + 0.3 ? Math.min(40, (speed - target) * BRAKE_GAIN) : 0);
 

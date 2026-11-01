@@ -17,6 +17,7 @@ export const COLUMNS = [
   'heapMB', 'ways', 'tiles', 'tilesLoading', 'tileMs', 'navVertices',
   'mapRequests', 'mapReqMs', 'roadRequests',  // the 3D map's streaming, and road tiles
   'routePoints', 'lineVertices', 'range', 'cam', 'fsd', 'lights', 'dark',
+  'geocodes', 'routes', 'elevations',         // billed Google calls in this sample
 ];
 
 const round = (n) => (Number.isFinite(n) ? Math.round(n * 10) / 10 : 0);

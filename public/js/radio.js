@@ -4,6 +4,8 @@
 const SERVERS = ['de1.api.radio-browser.info', 'de2.api.radio-browser.info', 'fi1.api.radio-browser.info'];
 const NEARBY = 150000;   // m around the car counted as local
 const MAX_RETRIES = 6;   // dead streams skipped in a row before giving up
+const SONG_EVERY = 30000;  // ms between asking what's playing
+const SONG_RETRY = 180000; // ms for a station that sends no titles, or when the server didn't answer
 const FM = /(?<![\d.])(8[7-9]|9\d|10[0-7])[.,]\d(?!\d)/;
 const AM_NUMBER = /\b(5[3-9]\d|[6-9]\d\d|1[0-6]\d\d)\s*(?:AM|kHz)\b|\bAM\s*(5[3-9]\d|[6-9]\d\d|1[0-6]\d\d)\b/i;
 const FM_WORD = /\b[KW][A-Z]{2,3}-?FM\b|(?<![\w.])FM\b/;
@@ -43,9 +45,28 @@ export function inBand(stations, band) {
 
 export const frequencyText = (s) => (s.frequency ? `${s.band === 'FM' ? s.frequency.toFixed(1) : s.frequency} ${s.band}` : s.band);
 
+// The song from a stream's metadata, or null for an advert, silence or a station that sends nothing useful.
+// Mostly StreamTitle='Artist - Title'; iHeart's is Artist - text="Title" song_spot="M" ... with M for music.
+export function songFrom(metadata) {
+  let song = /StreamTitle='(.*?)'(?:;|$)/s.exec(metadata || '')?.[1] || '';
+  const tagged = /^(.*?)\s*-\s*text="([^"]*)"(.*)$/s.exec(song);
+  if (tagged) {
+    const spot = /song_spot="(\w*)"/.exec(tagged[3])?.[1];
+    if ((spot && spot !== 'M') || /^spot block/i.test(tagged[2])) return null;
+    song = `${tagged[1]} - ${tagged[2]}`;
+  }
+  song = song.replace(/\s+/g, ' ').replace(/^[\s-]+|[\s-]+$/g, '').replace(/&amp;/g, '&');
+  return song && !/^https?:/i.test(song) ? song.slice(0, 120) : null;
+}
+
 export class Radio {
-  constructor(onChange) {
+  // onSong(song) is separate from onChange, which redoes the station list and needn't run for each new song.
+  constructor(onChange, onSong = () => {}) {
     this.onChange = onChange;
+    this.onSong = onSong;
+    this.song = null;
+    this.songStation = null; // the station being asked about
+    this.songTimer = 0;
     this.audio = new Audio();
     this.audio.preload = 'none';
     this.on = false;
@@ -56,7 +77,11 @@ export class Radio {
     this.area = '';
     this.retries = 0;
     this.searchedAt = null;
-    this.audio.addEventListener('playing', () => { this.retries = 0; this.say('Playing'); });
+    this.audio.addEventListener('playing', () => {
+      this.retries = 0;
+      this.say('Playing');
+      if (this.songStation !== this.current?.id) this.askSong(this.current?.id);
+    });
     this.audio.addEventListener('waiting', () => this.say('Buffering…'));
     this.audio.addEventListener('error', () => { if (this.on && this.current) this.skipDead(); });
   }
@@ -64,6 +89,40 @@ export class Radio {
   say(status) {
     this.status = status;
     this.onChange();
+  }
+
+  stopSong() {
+    clearTimeout(this.songTimer);
+    this.songStation = null;
+    this.setSong(null);
+  }
+
+  setSong(song) {
+    if (song === this.song) return;
+    this.song = song;
+    this.onSong(song);
+  }
+
+  // Asks the server what's playing, while the station is on and someone can see the answer. A station that
+  // sends no titles is asked far less often, in case that was a passing failure.
+  async askSong(id) {
+    clearTimeout(this.songTimer);
+    this.songStation = id;
+    if (!id) return;
+    let wait = SONG_EVERY;
+    if (!document.hidden) {
+      try {
+        const res = await fetch(`nowplaying.php?id=${encodeURIComponent(id)}`);
+        const answer = res.ok ? await res.json() : null;
+        if (this.songStation !== id) return; // retuned while waiting
+        if (!answer?.supported) wait = SONG_RETRY;
+        this.setSong(songFrom(answer?.metadata));
+      } catch (err) {
+        wait = SONG_RETRY; // no song shown is fine; the radio plays on
+        if (this.songStation !== id) return;
+      }
+    }
+    this.songTimer = setTimeout(() => this.askSong(id), wait);
   }
 
   list() {
@@ -132,6 +191,7 @@ export class Radio {
       else this.say('Finding stations…');
       return;
     }
+    this.stopSong();
     this.audio.pause();
     this.audio.removeAttribute('src');
     this.audio.load();
@@ -165,6 +225,7 @@ export class Radio {
   tune(station) {
     if (!station) return this.say('No stations on this band here');
     this.current = station;
+    this.stopSong();
     this.say('Tuning…');
     this.audio.src = station.url;
     this.audio.play().catch((err) => {

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { COLUMNS, PerfLog } from '../public/js/perflog.js';
-import { townFrom } from '../public/js/town.js';
+import { placeFrom, townFrom } from '../public/js/town.js';
 
 const memoryStore = () => {
   const items = new Map();
@@ -130,4 +130,10 @@ test('town: falls back to a township, then a county, and to nothing', () => {
   assert.equal(townFrom([{ address_components: [state] }]), null);
   assert.equal(townFrom([]), null);
   assert.equal(townFrom(undefined), null);
+});
+
+test('place: the town plus what the radio search needs', () => {
+  const results = [{ address_components: [part('Newark', 'Newark', 'locality'), part('New Jersey', 'NJ', 'administrative_area_level_1'), part('United States', 'US', 'country')] }];
+  assert.deepEqual(placeFrom(results), { town: 'Newark, NJ', state: 'New Jersey', country: 'US' });
+  assert.deepEqual(placeFrom([]), { town: null, state: null, country: null });
 });

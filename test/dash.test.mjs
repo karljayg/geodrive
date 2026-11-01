@@ -2,7 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { CAR_PROFILES, profileFor } from '../public/js/cars.js';
 import { newGearbox, stepGearbox } from '../public/js/gearbox.js';
-import { frequencyText, inBand, organise, parseBand } from '../public/js/radio.js';
+import { frequencyText, inBand, organise, parseBand, songFrom } from '../public/js/radio.js';
+import { packRoute, unpackRoute } from '../public/js/session.js';
 import { RoadNet } from '../public/js/road.js';
 import { Path } from '../public/js/route.js';
 import { burnFuel, newTrip } from '../public/js/trip.js';
@@ -139,4 +140,31 @@ test('fuel lasts 4 hours and the ETA counts route time', () => {
   const p = new Path([{ lat: 38, lng: -77, cruise: 20 }, { lat: 38.01, lng: -77, cruise: 20 }]);
   assert.ok(Math.abs(p.secondsToEnd[0] - p.length / 20) < 1);
   assert.equal(p.secondsToEnd[p.points.length - 1], 0);
+});
+
+test('the song comes out of what stations really send', () => {
+  assert.equal(songFrom("StreamTitle='TY MYERS - ENDS OF THE EARTH';"), 'TY MYERS - ENDS OF THE EARTH');
+  assert.equal(songFrom("StreamTitle='Doesn't He - Chris Tomlin';"), "Doesn't He - Chris Tomlin");
+  assert.equal(songFrom(`StreamTitle='Sombr - text="My Body Isn't Ready" song_spot="M" MediaBaseId="3238238" itunesTrackId="0"';`), "Sombr - My Body Isn't Ready");
+  assert.equal(songFrom("StreamTitle='Muse                          - Cryogen                     ';"), 'Muse - Cryogen');
+  assert.equal(songFrom("StreamTitle='Jim Brady &amp; Trio';StreamUrl='https://x.example/';"), 'Jim Brady & Trio');
+  assert.equal(songFrom("StreamTitle='Maze Jackson - Truck Drivers Special  -';"), 'Maze Jackson - Truck Drivers Special');
+  for (const nothing of ["StreamTitle='';StreamUrl='';", "StreamTitle=' - ';", "StreamTitle='https://x.example/';", '', null, 'junk',
+    `StreamTitle='WIHT - text="Spot Block End" song_spot="F" x="1"';`, `StreamTitle='A - text="An advert" song_spot="T"';`]) {
+    assert.equal(songFrom(nothing), null, String(nothing));
+  }
+});
+
+test('a saved route comes back the same, and is small', () => {
+  const points = [];
+  for (let i = 0; i < 20000; i++) points.push({ lat: 38.9 + i * 0.00013, lng: -77.4 + i * 0.00011, ...(i % 5000 ? { cruise: 22.4 } : { cruise: 31.5 }) });
+  points[7] = { lat: 38.91, lng: -77.39 };
+  const text = packRoute(points), back = unpackRoute(text);
+  assert.equal(back.length, points.length);
+  assert.deepEqual(back[7], { lat: 38.91, lng: -77.39 }, 'no cruise stays none');
+  for (const i of [0, 8, 5000, 19999]) {
+    assert.ok(Math.abs(back[i].lat - points[i].lat) < 1e-5 && Math.abs(back[i].lng - points[i].lng) < 1e-5);
+    assert.equal(back[i].cruise, points[i].cruise);
+  }
+  assert.ok(text.length < 300000, `${text.length} characters`);
 });

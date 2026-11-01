@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { RoadNet, FLAG_BRIDGE, FLAG_MINOR, FLAG_ONEWAY } from '../public/js/road.js';
-import { Path, brakeFor, pursuitYaw } from '../public/js/route.js';
+import { Path, brakeFor, pursuitYaw, rerouteWait } from '../public/js/route.js';
+import { Terrain, heightFromPixel, heightsFromPixels, sampleHeights, tilePoint } from '../public/js/terrain.js';
 import { CAR, newCar, stepCar } from '../public/js/physics.js';
 import { RoadTiles } from '../public/js/tiles.js';
 import { readLayer, roadsFromTile, vectorTileAt } from '../public/js/vector.js';
@@ -348,4 +349,48 @@ test('route: the line drawn on the map is short and light, and still follows the
   assert.equal(path.lineAhead(path.points.length - 1, 8000).length, 1);
   const all = path.lineAhead(0, Infinity), end = path.points[path.points.length - 1];
   assert.deepEqual(all[all.length - 1], { lat: end.lat, lng: end.lng }, 'the line reaches the destination');
+});
+
+test('new routes back off when the car keeps leaving them', () => {
+  assert.deepEqual([0, 1, 2, 3].map(rerouteWait), [8000, 16000, 32000, 64000]);
+  assert.equal(rerouteWait(50), 300000, 'never less than one every 5 minutes');
+});
+
+test('terrain: heights from tile colours and between pixels', () => {
+  assert.equal(heightFromPixel(128, 0, 0), 0);
+  assert.equal(heightFromPixel(128, 88, 128), 88.5);
+  assert.equal(heightFromPixel(127, 255, 0), -1);
+  const pixels = new Uint8ClampedArray(256 * 256 * 4);
+  for (let y = 0; y < 256; y++) for (let x = 0; x < 256; x++) pixels.set([128, x < 128 ? 100 : 200, 0, 255], (y * 256 + x) * 4);
+  const heights = heightsFromPixels(pixels);
+  assert.equal(sampleHeights(heights, 10, 10), 100);
+  assert.equal(sampleHeights(heights, 128, 10), 150, 'halfway between two pixels');
+  assert.equal(sampleHeights(heights, 255.9, 255.9), 200, 'the far edge stays in the tile');
+  const { x, y, px, py } = tilePoint(38.9555, -77.4475);
+  assert.deepEqual([x, y], [1166, 1566]);
+  assert.ok(px >= 0 && px < 256 && py >= 0 && py < 256);
+});
+
+test('terrain: a tile is loaded once, and a failure is tolerated and retried later', async () => {
+  let loads = 0, fail = true;
+  const heights = new Float32Array(256 * 256).fill(42);
+  const terrain = new Terrain(async () => {
+    loads++;
+    if (fail) throw new Error('no');
+    return heights;
+  });
+  const warn = console.warn;
+  console.warn = () => {};
+  assert.equal(await terrain.heightAt(40, -74), null);
+  assert.equal(await terrain.heightAt(40, -74), null);
+  assert.equal(loads, 1, 'not asked again straight after failing');
+  console.warn = warn;
+  terrain.failedAt.clear();
+  fail = false;
+  assert.deepEqual(await Promise.all([terrain.heightAt(40, -74), terrain.heightAt(40.001, -74)]), [42, 42]);
+  assert.equal(loads, 2, 'shared while loading');
+  assert.equal(await terrain.heightAt(40, -74), 42);
+  assert.equal(loads, 2);
+  for (let i = 0; i < 12; i++) await terrain.heightAt(40, -74 + 0.1 * (i + 1));
+  assert.ok(terrain.tiles.size <= 12, 'old tiles are released');
 });

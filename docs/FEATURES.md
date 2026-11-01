@@ -13,14 +13,14 @@ The record of what the game does and why. Update it when behaviour changes.
 - Known limits: unmarked bridges and raised ramps aren't handled. At top speed on dense streets the car can briefly lose the road.
 
 ## Start point
-On load the game offers the default start or an address. An address puts the car on the nearest road and becomes the new default in that browser. While driving, the header, the middle of the nav screen and the browser tab name the town the car is in, looked up from Google at most every 2 km and 20 seconds, as each lookup is billed.
+On load the game offers the default start or an address. An address puts the car on the nearest road and becomes the new default in that browser. While driving, the header, the top of the nav screen and the browser tab name the town the car is in, looked up from Google at most every 8 km and once a minute, as each lookup is billed, so the name can lag a few minutes behind at speed. The answer is kept with the trip, so a refresh doesn't ask again.
 
 ## Signals (Q, E)
 One press takes the next non-service road on that side, far enough ahead to brake and within about 12 seconds of driving. If there isn't one it changes lane. Pressing again cancels, and steering cancels. There's no lane data, so a lane change is a fixed 3.5 m shift, one lane either way, never across a two-way road's centre line.
 
 ## Destination and FSD (G, F)
 - A destination gets a Google route, shown as a blue line, and FSD turns on.
-- Steering or braking turns FSD off. F turns it back on, with a new route if the car has left the old one (at most one request every 8 seconds, as each is billed).
+- Steering or braking turns FSD off. F turns it back on, with a new route if the car has left the old one. Without F, a car that keeps leaving its route asks again after 8 seconds, then 16, doubling up to every 5 minutes, as each request is billed.
 - W raises speed without turning FSD off, but curves still apply. - and = change cruise speed by 10 mph.
 - Cruise speed is Google's trip time for each part of the route raised 40%, between 25 and 100 mph.
 - FSD rounds corners into an arc that clips the inside, on a planned speed: it brakes firmly just early enough for each corner (about 20 mph for a 90 degree junction, more for wider bends) and accelerates once clear. Signalled turns use the same line.
@@ -30,7 +30,7 @@ One press takes the next non-service road on that side, far enough ahead to brak
 A full-width panel below the map, which is sized to end above it.
 - Left: speedometer, tachometer with gear, fuel bar, lights and horn. The speedometer tops out at 200 until past 150 mph, then steps to 300, 400 and 500, keeping the needle at or under 3/4 of the dial. Tachometers end at the round thousand above each car's redline. Electric cars show battery charge instead.
 - Fuel and charge are placeholders: 4 hours of running from full to empty, saved with the trip, with no effect on the car. A new start refills.
-- The nav screen carries FSD status and destination top left, and on the right a muted analog clock with digital time showing the game's time of day (which only moves when changed).
+- The nav screen carries FSD status and destination top left, and at the bottom left a muted analog clock with digital time showing the game's time of day (which only moves when changed).
 - Centre: real-time clock, ETA when there's a destination (from Google's route times, assuming FSD cruise), trip figures, and the navigation screen.
 - Right: radio with an LCD, PWR, bands, and volume and tune knobs (drag or scroll). Clicking the LCD opens the station list.
 - Navigation screen: heading-up view from very high: the arrow points up and the map turns under it. It's drawn from the road data already loaded rather than a second Google map, which would add map charges. Click it to change the range.
@@ -51,6 +51,7 @@ A full-width panel below the map, which is sized to end above it.
 
 ## Radio
 - On by default at 35% on HOT 99.5 (WIHT Washington), starting at the first click or key press, as browsers require. Choosing another station or turning it off is remembered in that browser. Stations come from Radio Browser: within about 150 km of the car first, then the rest of the state. It searches again after about 50 km of driving.
+- The display shows the song playing where the station sends one, which most do, and slides a title too long to fit. It's asked for every 30 seconds while the radio is on and the tab is showing, and shows nothing during adverts or on stations that send no title. It can run a few seconds ahead of what you hear.
 - These are internet streams, so band and frequency are read from each station's name and tags. Stations that don't state one are listed under WEB, and tuning only reaches listed stations.
 - Browsers block plain `http` streams on an `https` page, so only `https` stations are listed, which leaves out about half of them.
 
@@ -61,7 +62,7 @@ Clicking outside the panel closes it, and changes save as they're made. New play
 Pausing stops the car and the clock. The pause screen shows elapsed and moving time, miles, average and top speed, FSD miles, share and time, takeovers, signals, bridges and miles off road. A new start or R begins a new trip.
 
 ## Saved trip
-Position, heading, destination, FSD state and speed offset, trip stats, zoom, camera, nav range and radio station save to the browser's `localStorage` every 2 seconds and on leaving the page. A refresh skips the start dialog and carries on with the car stopped, and FSD drives on if it was on (getting one new route, which is billed). The radio comes back at the first click or key press, as browsers require. L or R starts a new trip. Saved per browser, not across devices.
+Position, heading, destination, FSD state and speed offset, trip stats, zoom, camera, nav range and radio station save to the browser's `localStorage` every 2 seconds and on leaving the page. A refresh skips the start dialog and carries on with the car stopped, and FSD drives on if it was on. The route is kept in the browser too, so a refresh doesn't pay for a new one unless the car is off it. The radio comes back at the first click or key press, as browsers require. L or R starts a new trip. Saved per browser, not across devices.
 
 ## Performance
 The dashboard shows FPS, the slowest frame in the last second, and JavaScript memory (Chrome only). Settings has map quality, a limit on the memory Google's 3D map keeps, map sharpness (80% by default: the map draws fewer pixels, which is the biggest single saving, and looks a little softer) and road and place names on the map. Beyond 60 road tiles the furthest are released. The map shows the next 8 km of a route; the nav screen shows the way beyond.
