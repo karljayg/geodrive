@@ -13,7 +13,7 @@ The record of what the game does and why. Update it when behaviour changes.
 - Known limits: unmarked bridges and raised ramps aren't handled. At top speed on dense streets the car can briefly lose the road.
 
 ## Start point
-On load the game offers the default start or an address. An address puts the car on the nearest road and becomes the new default in that browser. While driving, the header and the browser tab name the town the car is in, looked up from Google at most every 2 km and 20 seconds, as each lookup is billed.
+On load the game offers the default start or an address. An address puts the car on the nearest road and becomes the new default in that browser. While driving, the header, the middle of the nav screen and the browser tab name the town the car is in, looked up from Google at most every 2 km and 20 seconds, as each lookup is billed.
 
 ## Signals (Q, E)
 One press takes the next non-service road on that side, far enough ahead to brake and within about 12 seconds of driving. If there isn't one it changes lane. Pressing again cancels, and steering cancels. There's no lane data, so a lane change is a fixed 3.5 m shift, one lane either way, never across a two-way road's centre line.

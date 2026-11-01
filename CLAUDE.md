@@ -46,7 +46,7 @@ Deploy with `npm run deploy` when a change is done, without being asked, so the 
 - `Path` in `route.js` simplifies the line, merges bends mapped a few metres apart, rounds each corner into an arc (`APEX_CUT` metres inside the mapped corner), resamples to 8 m and sets a safe speed from each arc's radius, with a backward pass so braking starts in time. The car drives it with pure pursuit (`pursuitYaw`).
 
 ## Start point
-The header and tab title show the current town (`refreshTown`: a billed reverse geocode at most every 2 km and 20 s). The dialog on load keeps the default or overrides it with an address (Google Geocoding), and an override is saved in the browser's `localStorage`. Every start is put on the nearest road.
+The header, nav screen and tab title show the current town (`refreshTown`: a billed reverse geocode at most every 2 km and 20 s). The dialog on load keeps the default or overrides it with an address (Google Geocoding), and an override is saved in the browser's `localStorage`. Every start is put on the nearest road.
 
 ## Files
 - `public/js/road.js`: road network, matching, look-ahead, next turn. Pure, tested.

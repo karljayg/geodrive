@@ -385,6 +385,7 @@ function show(id, text) {
 function showPlace() {
   const name = town || startLabel;
   show('where', name);
+  show('navTown', town || '');
   document.title = name ? `${name} · GeoDrive` : 'GeoDrive';
 }
 
