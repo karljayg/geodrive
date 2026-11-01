@@ -4,7 +4,7 @@ A plain static website with no framework and no build step. All game logic runs 
 
 ## Front end
 - Plain JavaScript (ES modules), HTML and CSS
-- No npm packages, in the game or its tooling
+- No npm packages and no build step. The walking view vendors Three.js as one file (`public/vendor/three.module.js`)
 - Web Audio API for engine, road and wind sound (FLAC loops from the CC0 Muted.io pack), `<audio>` for radio, canvas for gauges and the nav screen
 
 ## Map and car
@@ -20,7 +20,7 @@ A plain static website with no framework and no build step. All game logic runs 
 | Google Elevation API | Fallback for the first height only, if terrain tiles aren't answering | Yes | $5 per 1,000 after 5,000 free a month |
 | Google Geocoding API | Addresses, the current town, and the state for the radio | Yes | $5 per 1,000 after 10,000 free a month |
 | Google Routes API | FSD routes (Compute Routes Essentials) | Yes | $5 per 1,000 after 10,000 free a month. Don't add traffic-aware routing, side-of-road or heading: they move it to Pro at $10 |
-| OpenFreeMap vector tiles (OpenStreetMap data) | Road shapes, one-way streets, bridges, nav screen | No | Free |
+| OpenFreeMap vector tiles (OpenStreetMap data) | Road shapes, one-way streets, bridges, nav screen, and the walking world's buildings, trees, water and ground cover | No | Free |
 | Radio Browser (radio-browser.info) | Station directory | No | Free |
 | Radio stations' own streams | Song titles, read by `nowplaying.php` (ICY metadata) | No | Free |
 
@@ -52,6 +52,9 @@ Google usage and spend can only be seen in Google Cloud Console; the API key can
 | `daylight.js` | Time-of-day tint | Yes |
 | `headlights.js` | Headlight beam pattern | Yes |
 | `dash.js` | Draws the gauges and nav screen | Browser |
+| `place.js` | Buildings, ground cover, water, roads and trees for walking | Yes |
+| `walker.js` | The person on foot: step, collision, doors, which chunks are in view | Yes |
+| `walkView.js` | Draws the walk with the vendored Three.js | Browser |
 
 ## Saved data
 The browser's `localStorage` holds the start point, settings, current trip and up to 5 hours of performance log. There is no database. Logs sent with the Send log button are JSON files on the server, in a folder closed to the web.

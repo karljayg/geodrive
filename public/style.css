@@ -3,8 +3,11 @@
 html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: #090f18; color: #fff; }
 /* The map ends where the dashboard starts, so the car and the road ahead are never under it. */
 :root { --dash: 172px; }
-#map, #shield, #hud { position: absolute; inset: 0 0 var(--dash) 0; }
+#map, #shield, #hud, #walk { position: absolute; inset: 0 0 var(--dash) 0; }
 #map { background: radial-gradient(circle at center, #344e65, #0d1825); overflow: hidden; }
+#walk { z-index: 1; display: none; touch-action: none; }
+body.walking #walk { display: block; }
+body.walking #map, body.walking #shield { display: none; }
 /* The camera belongs to the car, so mouse drags and wheel never reach the map. */
 #shield { z-index: 1; }
 #hud { z-index: 2; pointer-events: none; }
@@ -81,6 +84,8 @@ kbd { display: inline-flex; min-width: 24px; justify-content: center; border: 1p
 #touch { display: none; position: absolute; right: 8px; bottom: 8px; grid-template-columns: 1fr 1fr; gap: 5px; }
 #touch button { pointer-events: auto; width: 46px; height: 40px; background: #152637dc; border: 1px solid #ffffff55; border-radius: 11px; color: #fff; font-size: 18px; touch-action: none; }
 
+#onFoot { display: none; position: absolute; left: 50%; bottom: 12px; transform: translateX(-50%); padding: 6px 12px; border-radius: 999px; background: #0d1621e6; border: 1px solid #ffffff26; font-size: 12px; color: #d5e0e8; white-space: nowrap; }
+body.walking #onFoot { display: block; }
 #help { position: absolute; left: 24px; bottom: 12px; display: none; padding: 12px 14px; font-size: 12px; color: #aec2cf; line-height: 2; }
 #help.open { display: block; }
 

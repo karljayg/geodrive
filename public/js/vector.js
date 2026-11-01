@@ -31,6 +31,8 @@ function reader(bytes) {
       else if (wire === 5) at += 4;
       else at += varint();
     },
+    f32: () => { const v = new DataView(bytes.buffer, bytes.byteOffset + at, 4).getFloat32(0, true); at += 4; return v; },
+    f64: () => { const v = new DataView(bytes.buffer, bytes.byteOffset + at, 8).getFloat64(0, true); at += 8; return v; },
   };
 }
 
@@ -49,8 +51,8 @@ function readValue(bytes) {
     else if (field === 4 || field === 5) value = r.varint();
     else if (field === 6) { const z = r.varint(); value = z % 2 ? -(z + 1) / 2 : z / 2; }
     else if (field === 7) value = !!r.varint();
-    else if (field === 2) { value = new DataView(bytes.buffer, bytes.byteOffset + 1, 4).getFloat32(0, true); r.skip(wire); }
-    else if (field === 3) { value = new DataView(bytes.buffer, bytes.byteOffset + 1, 8).getFloat64(0, true); r.skip(wire); }
+    else if (field === 2 && wire === 5) value = r.f32();
+    else if (field === 3 && wire === 1) value = r.f64();
     else r.skip(wire);
   }
   return value;
@@ -93,8 +95,8 @@ export function readLayer(bytes, wanted) {
   return null;
 }
 
-// Geometry commands to lines of [x, y] in tile pixels.
-function decodeLines(commands) {
+// Geometry commands to lines of [x, y] in tile pixels. A polygon is one line per ring; ClosePath is dropped.
+export function decodeLines(commands) {
   const lines = [];
   let x = 0, y = 0, line = null;
   for (let i = 0; i < commands.length;) {

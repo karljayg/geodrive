@@ -28,6 +28,7 @@ Prices are in `docs/TECH_STACK.md`. Before adding any Google call, work out what
 - Ground height uses free terrain tiles (`terrain.js`). Google Elevation is only for a first height when they fail. Comparing the two needs care: Google's own answer for a ridge moved 22 to 37 m between requests.
 - The town is looked up at most every 8 km and 60 s, shared with the radio, and saved with the trip (`lookUpPlace`). Free services were tried: BigDataCloud's policy requires the device's own location and Nominatim's discourages periodic requests, so neither may be used. Place names in the road tiles matched Google on only 6 of 20 points of a real drive.
 - Routes are saved in the browser, so a refresh doesn't pay again (`resumeRoute`). Automatic re-routes back off to one every 5 minutes (`rerouteWait`); a driver's own request is always answered.
+- Walking (L) adds no Google call. It uses the free terrain tiles and the same OpenFreeMap vector tiles as the roads. The map element stays in the page while it is hidden, so getting back in the car does not bill another map load.
 
 ## How the camera works (the part the POC got wrong)
 - `Map3DElement` orbits `center`. `center` sits a fixed distance ahead of the car along the camera heading (`leadDistance` in `public/js/camera.js`), so the car keeps its place on screen for any heading and the world spins around it.
@@ -59,6 +60,9 @@ Titles travel in the stream as ICY metadata, which `<audio>` hides and most stat
 ## Start point
 The header, nav screen and tab title show the current town (`refreshTown`: a billed reverse geocode, see API costs). The dialog on load keeps the default or overrides it with an address (Google Geocoding), and an override is saved in the browser's `localStorage`. Every start is put on the nearest road.
 
+## Walking
+L while the car is stopped (under about 1 mph) hides the map and puts a person beside it. The map element is not removed and not updated, so returning does not bill another map load. WASD walks, Shift runs, the mouse looks after a click. Ground, buildings, trees, roads and water come from the free tiles (`place.js`), drawn only as far as the closest chase camera sees (`VIEW_RADIUS` in `walker.js`). Chunks load and drop as the person walks. A door opens the ground floor of that building; the same door leaves it. Within 3 m of the car, L gets back in. Trip miles do not move while walking.
+
 ## Files
 - `public/js/road.js`: road network, matching, look-ahead, next turn. Pure, tested.
 - `public/js/route.js`: `Path`, a line to drive with safe speeds. Pure, tested.
@@ -71,3 +75,6 @@ The header, nav screen and tab title show the current town (`refreshTown`: a bil
 - `public/js/settings.js`: preferences saved in the browser. The panel is in `index.html`; new settings (the owner plans a choice of cars) go in `DEFAULTS` plus a `<section>` there. The car's `scale` is 1 for real size, 0.9 by default.
 - `public/js/main.js`: input, game loop, map setup, HUD. Tune cameras, zoom and the start point here.
 - `public/js/carModel.js`: the low-poly cars, built from code so there is no asset licence.
+- `public/js/place.js`: buildings, land, water, roads and trees from a vector tile, in metres. Pure, tested.
+- `public/js/walker.js`: the person on foot. The view radius matches the closest chase camera. Pure, tested.
+- `public/js/walkView.js`: the walk scene. Three.js is vendored at `public/vendor/three.module.js`, so there is still no build step.

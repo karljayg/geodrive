@@ -2,6 +2,11 @@
 
 The record of what the game does and why. Update it when behaviour changes.
 
+## Walking (L)
+With the car stopped (under about 1 mph), L gets out. The Google map is hidden and left in place, so getting back in does not load it again and does not call Geocoding, Routes or Elevation. A person stands beside the car. Click the view to look around; WASD walks relative to that view and Shift runs. The world is built from the same free terrain and OpenStreetMap tiles as the drive: ground height, building boxes, trees in woods and parks, roads and water. Only as much ground as the closest chase camera can see is drawn. Walking past that loads the next pieces and drops the ones behind. A missing tile never blocks walking; the shapes fill in when it arrives.
+
+Each building has a door on the side that faces a road. Walking through it opens the ground floor: the footprint as a room, with the same door back outside. The room starts empty. Standing within about 3 m of the car and pressing L gets back in, with the car where it was parked. Trip miles do not move while walking. The radio keeps playing.
+
 ## Driving
 - Top speed 500 mph, reached in about 30 seconds. A stopped car can't turn, and reverse steers the other way.
 - The camera orbits a point ahead of the car at ground height, so the map rotates on the car rather than sliding under it.
@@ -97,5 +102,6 @@ Escape or a click outside closes every popup: start, destination, pause, setting
 | O | Settings |
 | P | Pause |
 | K | Show or hide the key list |
+| L | Get out of a stopped car, or get back in when standing beside it |
 
 Start (change start point) and Reset (back to the start) are header buttons only, not keys.

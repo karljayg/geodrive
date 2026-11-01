@@ -17,8 +17,8 @@ export function heightsFromPixels(rgba) {
 }
 
 // Which tile holds a point, and where in it, in pixels.
-export function tilePoint(lat, lng) {
-  const n = 2 ** ZOOM, r = (lat * Math.PI) / 180;
+export function tilePoint(lat, lng, zoom = ZOOM) {
+  const n = 2 ** zoom, r = (lat * Math.PI) / 180;
   const x = ((lng + 180) / 360) * n, y = ((1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2) * n;
   return { x: Math.floor(x), y: Math.floor(y), px: (x - Math.floor(x)) * SIZE, py: (y - Math.floor(y)) * SIZE };
 }

@@ -4,6 +4,8 @@ import { FLAG_ONEWAY, RoadNet } from './road.js';
 import { Path, brakeFor, pursuitYaw, rerouteWait } from './route.js';
 import { CAR_PROFILES, hornFor, profileFor } from './cars.js';
 import { BODY_SHAPES, buildCarGlb, carPicture } from './carModel.js';
+import { createWalkView } from './walkView.js';
+import { canLeaveCar } from './walker.js';
 import { beamPools, brakeLit, drawDots, drawPools, tailDots } from './headlights.js';
 import { clockText, darknessAt, tintAt } from './daylight.js';
 import { drawGauge, drawNav, navBehind, revRange, speedRange, speedStep } from './dash.js';
@@ -74,6 +76,8 @@ let signal = null; // { side, path, index, until } while a turn signal is on
 let lane = 0, laneNow = LANE_OFFSET; // lane: metres chosen off the usual line; laneNow: the sideways offset right now
 let destination = null, route = null, routeIndex = null, routeLine = null, routing = false, routedAt = 0, reroutes = 0, fsd = false, fsdBoost = 0, arriving = false;
 let paused = false, trip = newTrip();
+let walking = false, walk = null, lookX = 0, lookY = 0;
+const WALK_HELD = new Set(['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'shift']);
 const engine = new EngineAudio();
 let soundThrottle = 0, savedAt = 0, radioResume = false, radioHeld = false;
 const SOUND_THROTTLE_RISE = 1.1; // s for a held W to reach full throttle in the sound; the car's acceleration doesn't change
@@ -645,7 +649,22 @@ function frame(t) {
   measureFrame(t);
   const dt = Math.min((t - last) / 1000 || 0, 0.06);
   last = t;
-  if (map && !debug.hold && !dialogOpen && !paused) {
+  if (walking && walk) {
+    if (!debug.hold && !dialogOpen && !paused) {
+      const beganWalk = performance.now();
+      walk.update(dt, walkInput());
+      perfLog.spend('drive', performance.now() - beganWalk);
+      if (t - savedAt > SAVE_EVERY) { savedAt = t; saveTrip(); }
+      if (radio.on) refreshStations();
+    } else {
+      lookX = 0;
+      lookY = 0;
+    }
+    const profile = profileFor(settings.carProfile);
+    if (!previewing()) engine.update({ rpm: gearbox.rpm, load: 0, speedMph: 0, car: profile, running: false });
+    updateHud(t);
+    el('cam').textContent = walk.label();
+  } else if (map && !debug.hold && !dialogOpen && !paused) {
     const driveBegan = performance.now();
     const controls = input();
     // The driver can take over at any moment. Steering or braking drops FSD, and steering cancels a signal.
@@ -851,6 +870,7 @@ async function openSharedLink() {
 }
 
 function reset() {
+  if (walking) exitWalk();
   placeCar(start);
 }
 
@@ -882,6 +902,7 @@ const lookupError = (err) => (err.code === 'ZERO_RESULTS' ? 'No match for that a
 
 let closeDialog = null, openId = null;
 function openDialog(id) {
+  if (walking) exitWalk();
   dialogOpen = true;
   openId = id;
   keys.clear();
@@ -1048,8 +1069,8 @@ function applyDaylight() {
   for (const canvas of [night, beam]) {
     if (canvas.width !== width || canvas.height !== height) { canvas.width = width; canvas.height = height; }
   }
-  night.style.display = dark > 0.005 ? 'block' : 'none';
-  beam.style.display = lit ? 'block' : 'none';
+  night.style.display = !walking && dark > 0.005 ? 'block' : 'none';
+  beam.style.display = !walking && lit ? 'block' : 'none';
   const shape = BODY_SHAPES[settings.carProfile] || BODY_SHAPES.sport;
   const length = shape.l * 2 * settings.carScale, carWidth = shape.w * 2 * settings.carScale;
   const view = {
@@ -1089,7 +1110,7 @@ function applyDaylight() {
   dots.clearRect(0, 0, width, height);
   const shown = tailDots(view, length, carWidth, lit, braking);
   drawDots(dots, shown);
-  tails.style.display = shown.length ? 'block' : 'none'; // an empty canvas over the map still costs the compositor
+  tails.style.display = !walking && shown.length ? 'block' : 'none'; // an empty canvas over the map still costs the compositor
 }
 
 let graphicsLogged = '';
@@ -1416,6 +1437,28 @@ document.addEventListener('keydown', (e) => {
     if ((k === 'p' || k === 'escape') && !e.repeat) { e.preventDefault(); setPaused(false); }
     return;
   }
+  if (walking) {
+    if (k === 'l' && !e.repeat) { e.preventDefault(); return toggleWalk(); }
+    if (WALK_HELD.has(k)) { keys.add(k); e.preventDefault(); e.stopPropagation(); }
+    if (e.repeat) return;
+    if (k === 'p') { e.preventDefault(); return setPaused(true); }
+    if (k === 'o') { e.preventDefault(); return openSettings(); }
+    if (k === 'k') return el('help').classList.toggle('open');
+    if (k === 'n') return setRadioPower(!radio.on);
+    if (k === 'm') { settings.muted = !settings.muted; applySound(); saveSettings(); notice(settings.muted ? 'Sound muted. Press M to turn it back on.' : 'Sound on.', 2000); return; }
+    if (k === 't') {
+      settings.hour = (settings.hour + 1) % 24;
+      applyDaylight();
+      saveSettings();
+      notice(clockText(settings.hour), 1500);
+      return;
+    }
+    if (k === '[') return radio.seek(-1);
+    if (k === ']') return radio.seek(1);
+    if (k === 'b') return hornDown();
+    return;
+  }
+  if (k === 'l' && !e.repeat) { e.preventDefault(); return toggleWalk(); }
   if (k === 'p' && !e.repeat) { e.preventDefault(); return setPaused(true); }
   if (DRIVE_KEYS.has(k)) { keys.add(k); e.preventDefault(); e.stopPropagation(); }
   if (e.repeat) return;
@@ -1445,16 +1488,80 @@ document.addEventListener('keyup', (e) => {
   keys.delete(e.key.toLowerCase());
   if (e.key.toLowerCase() === 'b') hornUp();
 }, { capture: true });
-window.addEventListener('blur', () => { keys.clear(); hornUp(); });
+window.addEventListener('blur', () => { keys.clear(); hornUp(); lookX = 0; lookY = 0; });
+document.addEventListener('mousemove', (e) => {
+  if (!walking || document.pointerLockElement !== el('walk')) return;
+  lookX += e.movementX;
+  lookY += e.movementY;
+});
+el('walk').addEventListener('pointerdown', () => {
+  if (walking && document.pointerLockElement !== el('walk')) el('walk').requestPointerLock();
+});
 for (const b of document.querySelectorAll('#touch button[data-key]')) {
   const k = b.dataset.key;
   b.addEventListener('pointerdown', (e) => { e.preventDefault(); keys.add(k); b.setPointerCapture(e.pointerId); });
   b.addEventListener('pointerup', () => keys.delete(k));
   b.addEventListener('pointercancel', () => keys.delete(k));
 }
-el('touchQ').addEventListener('click', () => pressSignal(-1));
-el('touchE').addEventListener('click', () => pressSignal(1));
-el('touchF').addEventListener('click', () => setFsd(!fsd));
+el('touchQ').addEventListener('click', () => { if (!walking) pressSignal(-1); });
+el('touchE').addEventListener('click', () => { if (!walking) pressSignal(1); });
+el('touchF').addEventListener('click', () => { if (!walking) setFsd(!fsd); });
+
+function walkInput() {
+  const forward = (keys.has('w') || keys.has('arrowup') ? 1 : 0) - (keys.has('s') || keys.has('arrowdown') ? 1 : 0);
+  const strafe = (keys.has('d') || keys.has('arrowright') ? 1 : 0) - (keys.has('a') || keys.has('arrowleft') ? 1 : 0);
+  const input = { forward, strafe, run: keys.has('shift'), lookX: lookX * 0.0028, lookY: lookY * 0.0022 };
+  lookX = 0;
+  lookY = 0;
+  return input;
+}
+
+// L while stopped leaves the car. The map element stays in the page; only the walk canvas is shown.
+function enterWalk() {
+  if (!map || walking) return;
+  if (!canLeaveCar(car.speed)) { notice('Stop the car, then press L to get out.', 2500); return; }
+  document.body.classList.add('walking');
+  try {
+    walk = createWalkView({
+      canvas: el('walk'), origin: { lat: pos.lat, lng: pos.lng }, heading: car.heading,
+      shape: BODY_SHAPES[settings.carProfile] || BODY_SHAPES.sport, color: settings.carColor,
+    });
+  } catch (err) {
+    document.body.classList.remove('walking');
+    notice('Could not get out of the car: ' + err.message);
+    return;
+  }
+  walking = true;
+  el('night').style.display = 'none';
+  el('beam').style.display = 'none';
+  el('tails').style.display = 'none';
+  perfLog.event('walk', { on: true });
+  notice('Click the view to look around. Walk back to the car and press L to drive.', 5000);
+}
+
+function exitWalk() {
+  if (walk) walk.stop();
+  walk = null;
+  walking = false;
+  document.body.classList.remove('walking');
+  for (const k of WALK_HELD) keys.delete(k);
+  lookX = 0;
+  lookY = 0;
+  if (document.pointerLockElement) document.exitPointerLock();
+  el('cam').textContent = CAMERAS[camIndex].name;
+  lightKey = '';
+  applyDaylight();
+  perfLog.event('walk', { on: false });
+}
+
+function toggleWalk() {
+  if (walking) {
+    if (!walk?.nearCar()) { notice('Walk back to the car and press L.', 2500); return; }
+    exitWalk();
+    return;
+  }
+  enterWalk();
+}
 
 let noticeTimer = null;
 function notice(message, hideAfter = 0) {
