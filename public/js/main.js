@@ -974,6 +974,8 @@ el('destForm').addEventListener('submit', async (e) => {
 el('destCancel').addEventListener('click', finishDialog);
 el('destClear').addEventListener('click', () => { clearDestination(); finishDialog(); });
 el('changeDest').addEventListener('click', () => { if (!dialogOpen) openDialog('dest'); });
+el('changeStartHeader').addEventListener('click', () => { if (!dialogOpen) openDialog('start'); });
+el('resetButton').addEventListener('click', () => { if (!dialogOpen) reset(); });
 
 // --- Pause ----------------------------------------------------------------------------------------------------
 
@@ -1418,12 +1420,10 @@ document.addEventListener('keydown', (e) => {
   if (DRIVE_KEYS.has(k)) { keys.add(k); e.preventDefault(); e.stopPropagation(); }
   if (e.repeat) return;
   if (k === 'c') switchCamera();
-  if (k === 'r') reset();
-  if (k === 'l') { e.preventDefault(); openDialog('start'); }
   if (k === 'g') { e.preventDefault(); openDialog('dest'); }
   if (k === 'o') { e.preventDefault(); openSettings(); }
   if (k === 'n') setRadioPower(!radio.on);
-  if (k === 'j') setHeadlights(!settings.headlights);
+  if (k === 'h') setHeadlights(!settings.headlights);
   if (k === 'b') hornDown();
   if (k === 't') {
     settings.hour = (settings.hour + 1) % 24;
@@ -1433,7 +1433,7 @@ document.addEventListener('keydown', (e) => {
   }
   if (k === '[') radio.seek(-1);
   if (k === ']') radio.seek(1);
-  if (k === 'h' || k === 'k') el('help').classList.toggle('open');
+  if (k === 'k') el('help').classList.toggle('open');
   if (k === 'm') { settings.muted = !settings.muted; applySound(); saveSettings(); notice(settings.muted ? 'Sound muted. Press M to turn it back on.' : 'Sound on.', 2000); }
   if (k === 'q') pressSignal(-1);
   if (k === 'e') pressSignal(1);
@@ -1507,7 +1507,7 @@ async function boot() {
     applyDaylight();
     if (saved) {
       if (destination && !resumeRoute()) requestRoute(true);
-      notice(`${fromLink ? 'Shared drive loaded' : 'Trip restored'}${destination ? `, heading to ${destination.label}` : ''}. Press L for a new start.`, 6000);
+      notice(`${fromLink ? 'Shared drive loaded' : 'Trip restored'}${destination ? `, heading to ${destination.label}` : ''}. Use Start in the header for a new start.`, 6000);
     }
     window.__geodrive = Object.assign(debug, {
       settings, gearbox, saveTrip, engine, radio, map, model, ground: () => ground, match: () => match, onBridge: () => onBridge, placeCar, pressSignal,

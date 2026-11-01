@@ -66,7 +66,7 @@ The header, nav screen and tab title show the current town (`refreshTown`: a bil
 - `public/js/terrain.js`: ground height from free terrain tiles. Pure apart from loading a tile, tested.
 - `public/js/physics.js`: bicycle-model car. Pure, tested. Tune `CAR` here.
 - `public/js/camera.js`: geo and camera maths. Pure, tested.
-- `public/js/trip.js`: trip stats for the HUD and the pause screen (`P`). A new start or `R` begins a new trip. Pure, tested.
+- `public/js/trip.js`: trip stats for the HUD and the pause screen (`P`). A new start or Reset from the header begins a new trip. Pure, tested.
 - `public/js/perflog.js`: the performance log. Pure apart from `observeBrowser`, tested. `public/js/town.js`: the town name from a reverse geocode. Pure, tested.
 - `public/js/settings.js`: preferences saved in the browser. The panel is in `index.html`; new settings (the owner plans a choice of cars) go in `DEFAULTS` plus a `<section>` there. The car's `scale` is 1 for real size, 0.9 by default.
 - `public/js/main.js`: input, game loop, map setup, HUD. Tune cameras, zoom and the start point here.

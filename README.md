@@ -15,14 +15,16 @@ Live: https://www.psistorm.com/geodrive/
 | Z | Hold to zoom back in |
 | Shift | Handbrake |
 | C | Switch camera |
-| R | Back to the start, zoom reset |
-| L | Change the start point |
+| H | Headlights on / off |
 | P | Pause, with the trip's time, miles and other stats. P or Esc resumes |
 | O | Settings: car size, remembered in this browser |
+| K | Show or hide the key list |
 | Q / E | One press signals left / right: takes the next turn that way, or changes lane if none is coming up. Press again to cancel |
 | G | Enter a destination; the car drives there in FSD |
 | F | FSD on / off. Steering or braking also turns it off |
 | - / = | FSD cruise speed down / up by 10 mph. W also speeds up without turning FSD off |
+
+**Start** and **Reset** are header buttons only (no hotkeys): change the start point, or put the car back at the saved start.
 
 Full key list and behaviour: `docs/FEATURES.md`. Tech stack: `docs/TECH_STACK.md`.
 

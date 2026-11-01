@@ -13,7 +13,7 @@ The record of what the game does and why. Update it when behaviour changes.
 - Known limits: unmarked bridges and raised ramps aren't handled. At top speed on dense streets the car can briefly lose the road.
 
 ## Start point
-On load the game offers the default start or an address. An address puts the car on the nearest road and becomes the new default in that browser. While driving, the header, the top of the nav screen and the browser tab name the town the car is in, looked up from Google at most every 8 km and once a minute, as each lookup is billed, so the name can lag a few minutes behind at speed. The answer is kept with the trip, so a refresh doesn't ask again.
+On load the game offers the default start or an address. An address puts the car on the nearest road and becomes the new default in that browser. While driving, **Start** in the header opens that dialog again, and **Reset** puts the car back at the saved start (both menu-only, no hotkeys, so they aren't hit by accident). The header, the top of the nav screen and the browser tab name the town the car is in, looked up from Google at most every 8 km and once a minute, as each lookup is billed, so the name can lag a few minutes behind at speed. The answer is kept with the trip, so a refresh doesn't ask again.
 
 ## Signals (Q, E)
 One press takes the next non-service road on that side, far enough ahead to brake and within about 12 seconds of driving. If there isn't one it changes lane. Pressing again cancels, and steering cancels. There's no lane data, so a lane change is a fixed 3.5 m shift, one lane either way, never across a two-way road's centre line.
@@ -46,7 +46,7 @@ A full-width panel below the map, which is sized to end above it.
 ## Car look, lights, horn and time of day
 - Car type and colour are built in the browser (`carModel.js`), with a matching side-view picture in Settings.
 - Time of day (Settings, or T for +1 hour) is a colour tint over the map (`daylight.js`). Google's 3D map is a photograph with fixed lighting and no lighting controls, so shadows don't move, and buildings and streets don't light up.
-- Headlights (J or Lights button) are two forward beams (`headlights.js`) cut out of the tint: they begin about 3.5 car lengths past the nose (so they stay ahead when the overlay and the 3D car drift), brightest about 3.5 lengths into the beam, fading out by 6, with little side spill and nothing behind. They scale with the car's size and shape and turn with it. The car's body is also lifted slightly so it stays visible at night. Two tail lights are small lit dots, a fixed size on screen: on with the lights, bigger and brighter when braking or reversing, including with the lights off, so holding S keeps them bright through the stop and all the way back. It's a screen effect, so it doesn't fall on buildings or follow hills.
+- Headlights (H or Lights button) are two forward beams (`headlights.js`) cut out of the tint: they begin about 3.5 car lengths past the nose (so they stay ahead when the overlay and the 3D car drift), brightest about 3.5 lengths into the beam, fading out by 6, with little side spill and nothing behind. They scale with the car's size and shape and turn with it. The car's body is also lifted slightly so it stays visible at night. Two tail lights are small lit dots, a fixed size on screen: on with the lights, bigger and brighter when braking or reversing, including with the lights off, so holding S keeps them bright through the stop and all the way back. It's a screen effect, so it doesn't fall on buildings or follow hills.
 - Horn (hold B or the Horn button) is synthesised, with notes set per car in `cars.js`.
 
 ## Radio
@@ -59,10 +59,10 @@ A full-width panel below the map, which is sized to end above it.
 Clicking outside the panel closes it, and changes save as they're made. New players start from `public/data/defaults.json`; **Copy settings** produces the text for it. Start location, car size, car profile, engine sound (recorded or synth), sound mix (Quiet, Balanced, Sport), master volume, mute, volumes for engine, radio, road, wind and effects, engine pitch, and road following on or off. Saved in the browser.
 
 ## Pause and trip stats (P)
-Pausing stops the car and the clock, and mutes the radio if it was on. Resuming brings the radio back if it was playing before the pause. The pause screen shows elapsed and moving time, miles, average and top speed, FSD miles, share and time, takeovers, signals, bridges and miles off road. A new start or R begins a new trip.
+Pausing stops the car and the clock, and mutes the radio if it was on. Resuming brings the radio back if it was playing before the pause. The pause screen shows elapsed and moving time, miles, average and top speed, FSD miles, share and time, takeovers, signals, bridges and miles off road. A new start or Reset from the header begins a new trip.
 
 ## Saved trip
-Position, heading, destination, FSD state and speed offset, trip stats, zoom, camera, nav range and radio station save to the browser's `localStorage` every 2 seconds and on leaving the page. A refresh skips the start dialog and carries on with the car stopped, and FSD drives on if it was on. The route is kept in the browser too, so a refresh doesn't pay for a new one unless the car is off it. The radio comes back at the first click or key press, as browsers require. L or R starts a new trip. Saved per browser, not across devices.
+Position, heading, destination, FSD state and speed offset, trip stats, zoom, camera, nav range and radio station save to the browser's `localStorage` every 2 seconds and on leaving the page. A refresh skips the start dialog and carries on with the car stopped, and FSD drives on if it was on. The route is kept in the browser too, so a refresh doesn't pay for a new one unless the car is off it. The radio comes back at the first click or key press, as browsers require. Start or Reset in the header starts a new trip. Saved per browser, not across devices.
 
 ## Performance
 The dashboard shows FPS, the slowest frame in the last second, and JavaScript memory (Chrome only). The API figure is billed calls since the page opened. Hovering it lists the other files loaded and, at the bottom, geocoding, routes and elevation. That list is drawn when the page opens and when the pointer moves onto it. Settings has map quality, a limit on the memory Google's 3D map keeps, map sharpness (80% by default: the map draws fewer pixels, which is the biggest single saving, and looks a little softer) and road and place names on the map. Beyond 60 road tiles the furthest are released. The map shows the next 8 km of a route; the nav screen shows the way beyond.
@@ -90,12 +90,12 @@ Escape or a click outside closes every popup: start, destination, pause, setting
 | N | Radio on / off |
 | [ / ] | Previous / next station |
 | M | Mute all sound |
-| J | Headlights on / off |
+| H | Headlights on / off |
 | B | Horn (hold) |
 | T | Time of day +1 hour |
 | C | Camera |
-| R | Back to the start |
-| L | Change the start point |
 | O | Settings |
 | P | Pause |
-| H / K | Show or hide the key list |
+| K | Show or hide the key list |
+
+Start (change start point) and Reset (back to the start) are header buttons only, not keys.
