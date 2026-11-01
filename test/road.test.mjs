@@ -1,7 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { RoadNet, FLAG_BRIDGE, FLAG_MINOR, FLAG_ONEWAY } from '../public/js/road.js';
-import { Path } from '../public/js/route.js';
+import { Path, brakeFor, pursuitYaw } from '../public/js/route.js';
+import { CAR, newCar, stepCar } from '../public/js/physics.js';
+import { RoadTiles } from '../public/js/tiles.js';
 import { readLayer, roadsFromTile, vectorTileAt } from '../public/js/vector.js';
 
 // A road running east, a bridge continuing it, a sharp side road and a parallel one-way road just north.
@@ -156,6 +158,68 @@ test('a path slows for a corner, early enough to make it, and can stop at its en
   assert.ok(at(corner.length - 500) > 60);
 });
 
+const rad = (d) => (d * Math.PI) / 180;
+
+// Drives a path the way FSD does and reports the fastest it took the corner and how far it strayed from the line.
+function drive(path, startSpeed, cruise = Infinity) {
+  const dt = 1 / 60, car = newCar(), pos = { lat: path.points[0].lat, lng: path.points[0].lng };
+  car.speed = startSpeed;
+  car.heading = path.pointAt(1).bearing;
+  let index = null, stray = 0, overLimit = 0, peakYaw = 0, along = 0;
+  for (let t = 0; t < 120 && along < path.length - 10; t += dt) {
+    const at = path.locate(pos.lat, pos.lng, index);
+    index = at.index; along = at.along;
+    const on = path.pointAt(along);
+    stray = Math.max(stray, Math.hypot((pos.lat - on.lat) * 111320, (pos.lng - on.lng) * 111320 * Math.cos((pos.lat * Math.PI) / 180)));
+    const target = Math.min(path.targetAt(along, car.speed), cruise);
+    const brake = brakeFor(car.speed, target);
+    stepCar(car, { throttle: Math.max(0, Math.min(1, (target - car.speed) / 3)), brake }, dt);
+    if (path.points[index].radius !== undefined && path.cum[index] >= along) overLimit = Math.max(overLimit, car.speed - path.limitAt(index));
+    const aim = path.pointAt(along + Math.max(6, car.speed * 0.45));
+    const dx = (aim.lng - pos.lng) * Math.cos((pos.lat * Math.PI) / 180), dy = aim.lat - pos.lat;
+    const error = (((Math.atan2(dx, dy) * 180) / Math.PI - car.heading + 540) % 360) - 180;
+    const yaw = Math.max(-1.6, Math.min(1.6, pursuitYaw(car.speed, error, Math.hypot(dx, dy) * 111320)));
+    peakYaw = Math.max(peakYaw, Math.abs(yaw));
+    car.heading = (car.heading + (yaw * dt * 180) / Math.PI + 360) % 360;
+    const m = car.speed * dt, h = (car.heading * Math.PI) / 180;
+    pos.lat += (m * Math.cos(h)) / 111320;
+    pos.lng += (m * Math.sin(h)) / (111320 * Math.cos((pos.lat * Math.PI) / 180));
+  }
+  return { stray, overLimit, peakYaw, along };
+}
+
+test('a 90 degree corner becomes an arc that clips the apex, and FSD takes it at any approach speed', () => {
+  const corner = () => new Path([{ lat: LAT, lng: LNG }, { lat: LAT, lng: LNG + 10 * E }, { lat: LAT - 10 * E, lng: LNG + 10 * E }], { decel: 8 });
+  const path = corner();
+  const apex = Math.min(...path.points.map((p) => Math.hypot((p.lat - LAT) * 111320, (p.lng - (LNG + 10 * E)) * 111320 * Math.cos((LAT * Math.PI) / 180))));
+  assert.ok(apex > 4 && apex < 6, `apex ${apex} m inside the corner`);
+  const slowest = Math.min(...path.limit);
+  assert.ok(slowest > 7 && slowest < 12, `corner speed ${slowest} m/s`);
+  for (const speed of [10, 25, 45, 90]) {
+    const run = drive(corner(), speed);
+    assert.ok(run.along > 1800, `finished at ${speed} m/s`);
+    assert.ok(run.stray < 3, `strayed ${run.stray} m at ${speed} m/s`);
+    assert.ok(run.overLimit < 1.5, `${run.overLimit} m/s over the plan at ${speed} m/s`);
+  }
+});
+
+test('a corner drawn as several short pieces rounds as one, and gentle bends are not slowed', () => {
+  const m = 1 / 111320, c = Math.cos((LAT * Math.PI) / 180);
+  const pts = [[0, 0], [0, 200], [-1, 203], [-3, 205], [-6, 206], [-200, 206]].map(([n, e]) => ({ lat: LAT + n * m, lng: LNG + (e * m) / c }));
+  const path = new Path(pts, { decel: 8 });
+  assert.ok(Math.min(...path.limit) > 7, 'one corner, not several tight ones');
+  assert.ok(drive(path, 25).stray < 3);
+  const bend = [];
+  for (let a = 0; a <= 60; a += 5) bend.push({ lat: LAT + (300 * Math.cos(rad(a)) - 300) * m, lng: LNG + (300 * Math.sin(rad(a)) * m) / c });
+  assert.ok(Math.min(...new Path(bend).limit) > 40, 'a 300 m bend is taken quickly');
+});
+
+test('a change of cruise speed survives on a straight line', () => {
+  const line = new Path([{ lat: LAT, lng: LNG, cruise: 10 }, { lat: LAT, lng: LNG + 5 * E, cruise: 10 }, { lat: LAT, lng: LNG + 10 * E, cruise: 30 }]);
+  assert.equal(line.cruiseAt(line.indexAt(100)), 10);
+  assert.equal(line.cruiseAt(line.indexAt(700)), 30);
+});
+
 test('a path finds the car on it, searching forward, and gives points along it', () => {
   const line = new Path([{ lat: LAT, lng: LNG, cruise: 20 }, { lat: LAT, lng: LNG + 10 * E, cruise: 20 }]);
   const a = line.locate(LAT + 0.0001, LNG + 5 * E);
@@ -180,12 +244,98 @@ test('a side street counts even without a shared point on the straight road', ()
   assert.equal(n.findTurn(n.match(LAT, LNG + 0.1 * E, 90), -1, 1000), null, 'and nothing on the left');
 });
 
-test('clearing the network releases everything and it can load again', () => {
+test('a released road can load again', () => {
   const n = new RoadNet();
   const w = way('c', 0, [1, 2], [[LAT, LNG], [LAT, LNG + E]]);
   n.add([w]);
-  n.clear();
+  n.remove([w]);
   assert.equal(n.ways.size + n.grid.size + n.atNode.size, 0);
   n.add([w]);
   assert.ok(n.match(LAT, LNG + E / 2, 90));
+});
+
+test('tiles: over the limit, the furthest go first and wanted ones stay', () => {
+  const n = new RoadNet();
+  const tiles = new RoadTiles(n);
+  const here = vectorTileAt(LAT, LNG);
+  const add = (x, y) => {
+    const key = `${x}_${y}`, ways = [way(key, 0, [`${key}a`, `${key}b`], [[LAT + y, LNG + x], [LAT + y, LNG + x + E]])];
+    n.add(ways);
+    tiles.waysOf.set(key, ways);
+    tiles.loaded.add(key);
+    return key;
+  };
+  for (let i = 0; i < 60; i++) add(here.x + i, here.y);
+  tiles.evict(LAT, LNG, new Set());
+  assert.equal(tiles.loaded.size, 60, 'nothing released at the limit');
+  const furthestWanted = add(here.x + 500, here.y), furthest = add(here.x + 400, here.y);
+  tiles.evict(LAT, LNG, new Set([furthestWanted]));
+  assert.equal(tiles.loaded.size, 60);
+  assert.equal(tiles.loaded.has(furthest), false);
+  assert.equal(n.ways.has(furthest), false);
+  assert.equal(tiles.waysOf.has(furthest), false);
+  assert.equal(tiles.loaded.has(furthestWanted), true);
+  assert.equal(tiles.loaded.has(`${here.x + 59}_${here.y}`), false, 'then the next furthest');
+});
+
+test('a route far too long to recurse over still builds', () => {
+  const points = [];
+  for (let i = 0; i < 200000; i++) points.push({ lat: LAT + i * 0.0001, lng: LNG + (i % 2) * 0.001, cruise: 20 + (i % 3) });
+  assert.ok(new Path(points, { stopAtEnd: true }).length > 0);
+});
+
+test('the point repeated between two route steps keeps its corner', () => {
+  const steps = [{ lat: LAT, lng: LNG, cruise: 10 }, { lat: LAT + E, lng: LNG, cruise: 10 }, { lat: LAT + E, lng: LNG, cruise: 20 }, { lat: LAT + E, lng: LNG + E, cruise: 20 }];
+  const path = new Path(steps);
+  assert.ok(path.points.some((p) => p.radius !== undefined), 'the corner became an arc');
+  assert.ok(path.points.every((p) => Number.isFinite(p.lat) && Number.isFinite(p.lng)));
+});
+
+test('roads: a released tile leaves nothing behind, and the others keep working', () => {
+  const net = new RoadNet();
+  const a = [{ id: 'a', f: 0, n: ['1', 'j'], c: [40, -74, 40.01, -74] }];
+  const b = [{ id: 'b', f: 0, n: ['j', '2'], c: [40.01, -74, 40.02, -74] }];
+  net.add(a);
+  net.add(b);
+  const changes = net.changes;
+  net.remove(a);
+  assert.ok(net.changes > changes, 'whatever draws roads can tell');
+  assert.equal(net.ways.has('a'), false);
+  assert.equal(net.atNode.has('1'), false);
+  assert.deepEqual(net.atNode.get('j').map((e) => e.way.id), ['b']);
+  assert.equal(net.match(40.005, -74, 0), null);
+  assert.equal(net.match(40.015, -74, 0).way.id, 'b');
+  for (const entries of net.grid.values()) assert.ok(entries.every((e) => e.way.id === 'b'));
+  net.remove(a); // already gone
+  net.remove(b);
+  assert.equal(net.grid.size, 0);
+  assert.equal(net.atNode.size, 0);
+});
+
+test('roads: ways near a point, for the nav screen', () => {
+  const net = new RoadNet();
+  net.add([
+    { id: 'near', f: 0, n: ['1', '2'], c: [40, -74, 40.001, -74] },
+    { id: 'crossing', f: 0, n: ['3', '4'], c: [39.9, -74, 40.1, -74] },
+    { id: 'far', f: 0, n: ['5', '6'], c: [41, -74, 41.001, -74] },
+  ]);
+  const found = [];
+  net.forEachWayNear(40, -74, 500, (way) => found.push(way.id));
+  assert.deepEqual(found.sort(), ['crossing', 'near']);
+});
+
+test('route: the line drawn on the map is short and light, and still follows the corners', () => {
+  const points = [];
+  for (let i = 0; i <= 400; i++) points.push({ lat: 40 + i * 0.0005, lng: -74 });
+  for (let i = 1; i <= 400; i++) points.push({ lat: 40.2, lng: -74 + i * 0.0005 });
+  const path = new Path(points);
+  const line = path.lineAhead(0, 8000);
+  assert.ok(line.length < path.points.length / 4, `${line.length} of ${path.points.length}`);
+  assert.deepEqual(line[0], { lat: path.points[0].lat, lng: path.points[0].lng });
+  const metres = (p, q) => Math.hypot((q.lng - p.lng) * Math.cos((p.lat * Math.PI) / 180), q.lat - p.lat) * 111320;
+  for (let i = 1; i < line.length; i++) assert.ok(metres(line[i - 1], line[i]) < 60, 'no long chord cuts a corner');
+  const offCorner = Math.min(...path.lineAhead(0, 30000).map((p) => metres(p, { lat: 40.2, lng: -74 })));
+  assert.ok(offCorner < 10, `passes the corner within ${offCorner} m`);
+  assert.ok(line.length < path.lineAhead(0, 30000).length / 2, 'and only the stretch asked for');
+  assert.equal(path.lineAhead(path.points.length - 1, 8000).length, 1);
 });

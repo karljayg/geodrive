@@ -13,7 +13,7 @@ The record of what the game does and why. Update it when behaviour changes.
 - Known limits: unmarked bridges and raised ramps aren't handled. At top speed on dense streets the car can briefly lose the road.
 
 ## Start point
-On load the game offers the default start or an address. An address puts the car on the nearest road and becomes the new default in that browser.
+On load the game offers the default start or an address. An address puts the car on the nearest road and becomes the new default in that browser. While driving, the header and the browser tab name the town the car is in, looked up from Google at most every 2 km and 20 seconds, as each lookup is billed.
 
 ## Signals (Q, E)
 One press takes the next non-service road on that side, far enough ahead to brake and within about 12 seconds of driving. If there isn't one it changes lane. Pressing again cancels, and steering cancels. There's no lane data, so a lane change is a fixed 3.5 m shift, one lane either way, never across a two-way road's centre line.
@@ -23,6 +23,7 @@ One press takes the next non-service road on that side, far enough ahead to brak
 - Steering or braking turns FSD off. F turns it back on, with a new route if the car has left the old one (at most one request every 8 seconds, as each is billed).
 - W raises speed without turning FSD off, but curves still apply. - and = change cruise speed by 10 mph.
 - Cruise speed is Google's trip time for each part of the route raised 40%, between 25 and 100 mph.
+- FSD rounds corners into an arc that clips the inside, on a planned speed: it brakes firmly just early enough for each corner (about 20 mph for a 90 degree junction, more for wider bends) and accelerates once clear. Signalled turns use the same line.
 - FSD ignores lights and signs, and there's no traffic. It brakes to a stop on arrival.
 
 ## Dashboard
@@ -45,7 +46,7 @@ A full-width panel below the map, which is sized to end above it.
 ## Car look, lights, horn and time of day
 - Car type and colour are built in the browser (`carModel.js`), with a matching side-view picture in Settings.
 - Time of day (Settings, or T for +1 hour) is a colour tint over the map (`daylight.js`). Google's 3D map is a photograph with fixed lighting and no lighting controls, so shadows don't move, and buildings and streets don't light up.
-- Headlights (J or Lights button) are two forward beams (`headlights.js`) cut out of the tint: dim at the nose, brightest about 3.5 car lengths ahead, fading out by 6, with little side spill and nothing behind. They scale with the car's size and shape and turn with it. The car's body is also lifted slightly so it stays visible at night. Two tail lights are small lit dots, a fixed size on screen: on with the lights, bigger and brighter when braking, including with the lights off. It's a screen effect, so it doesn't fall on buildings or follow hills.
+- Headlights (J or Lights button) are two forward beams (`headlights.js`) cut out of the tint: dim at the nose, brightest about 3.5 car lengths ahead, fading out by 6, with little side spill and nothing behind. They scale with the car's size and shape and turn with it. The car's body is also lifted slightly so it stays visible at night. Two tail lights are small lit dots, a fixed size on screen: on with the lights, bigger and brighter when braking or reversing, including with the lights off, so holding S keeps them bright through the stop and all the way back. It's a screen effect, so it doesn't fall on buildings or follow hills.
 - Horn (hold B or the Horn button) is synthesised, with notes set per car in `cars.js`.
 
 ## Radio
@@ -63,7 +64,9 @@ Pausing stops the car and the clock. The pause screen shows elapsed and moving t
 Position, heading, destination, FSD state and speed offset, trip stats, zoom, camera, nav range and radio station save to the browser's `localStorage` every 2 seconds and on leaving the page. A refresh skips the start dialog and carries on with the car stopped, and FSD drives on if it was on (getting one new route, which is billed). The radio comes back at the first click or key press, as browsers require. L or R starts a new trip. Saved per browser, not across devices.
 
 ## Performance
-The dashboard shows FPS, the slowest frame in the last second, and JavaScript memory (Chrome only). Settings has map quality and a limit on the memory Google's 3D map keeps. Road data is released after 60 tiles.
+The dashboard shows FPS, the slowest frame in the last second, and JavaScript memory (Chrome only). Settings has map quality, a limit on the memory Google's 3D map keeps, map sharpness (80% by default: the map draws fewer pixels, which is the biggest single saving, and looks a little softer) and road and place names on the map. Beyond 60 road tiles the furthest are released. The map shows the next 8 km of a route; the nav screen shows the way beyond.
+
+**Send log** in the header sends the performance log to the server for review. The game records frame rate, slow frames, where the time went, map and road loading, and the car's position every 5 seconds, keeping the last 5 hours in that browser across refreshes. Nothing leaves the browser until the button is pressed, and a sent log is cleared from it. Anyone playing can press the button, so the server caps what it holds at 200 MB.
 
 ## Sharing
 The Share button copies a link holding the drive and settings: position, destination and FSD, trip stats, camera, start location, and any settings that differ from the defaults. It's compressed into the URL's # part, so no server stores it. Opening a link first shows what it holds, including the radio station and that music will start. Accepting replaces that browser's settings and trip, with the car stopped, and starts the radio if it was on. Declining, Escape or clicking outside leaves everything as it was. Links are checked on opening (`share.js`), because anyone can make one.

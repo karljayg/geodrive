@@ -7,7 +7,8 @@ const TILEJSON = 'https://tiles.openfreemap.org/planet';
 const RETRY_AFTER = 15000; // ms before a tile that failed is tried again
 const AROUND = [-1, 0, 1];
 const RING = 2500;         // m out from the car that should always be loaded
-const MAX_TILES = 60;      // road tiles kept before older ones are released
+const MAX_TILES = 60;      // road tiles kept before the furthest are released
+const EVICT_PER_CHECK = 3; // tiles released at once, so it never costs more than a frame can absorb
 const LOOK = 20;           // seconds of driving ahead to load
 
 export class RoadTiles {
@@ -17,6 +18,8 @@ export class RoadTiles {
     this.failedAt = new Map();
     this.loading = new Map();
     this.template = null;
+    this.waysOf = new Map(); // tile key -> its ways, so one tile can be released
+    this.onWork = null;      // called with the ms each tile cost the main thread
   }
 
   keyAt(lat, lng) {
@@ -33,7 +36,10 @@ export class RoadTiles {
     if (this.loading.has(key)) return this.loading.get(key);
     const job = this.fetchTile(key)
       .then((ways) => {
+        const began = performance.now();
         this.net.add(ways);
+        this.onWork?.(performance.now() - began);
+        this.waysOf.set(key, ways);
         this.loaded.add(key);
         this.failedAt.delete(key);
         return true;
@@ -58,7 +64,11 @@ export class RoadTiles {
     const res = await fetch(this.template.replace('{z}', 14).replace('{x}', x).replace('{y}', y));
     if (res.status === 204 || res.status === 404) return []; // nothing mapped there
     if (!res.ok) throw new Error(`vector tile answered ${res.status}`);
-    return roadsFromTile(new Uint8Array(await res.arrayBuffer()), x, y);
+    const bytes = new Uint8Array(await res.arrayBuffer());
+    const began = performance.now();
+    const ways = roadsFromTile(bytes, x, y);
+    this.onWork?.(performance.now() - began);
+    return ways;
   }
 
   // Everything near a point, for finding its nearest road. True if the tile under the point itself arrived.
@@ -69,12 +79,25 @@ export class RoadTiles {
     return results[0];
   }
 
+  // Releases the tiles furthest from the one the car is in, leaving the ones it still wants.
+  evict(lat, lng, wanted) {
+    if (this.loaded.size <= MAX_TILES) return;
+    const here = vectorTileAt(lat, lng);
+    const far = [...this.loaded].filter((key) => !wanted.has(key)).map((key) => {
+      const [x, y] = key.split('_').map(Number);
+      return { key, away: Math.hypot(x - here.x, y - here.y) };
+    }).sort((a, b) => b.away - a.away);
+    for (const { key } of far.slice(0, Math.min(EVICT_PER_CHECK, this.loaded.size - MAX_TILES))) {
+      const began = performance.now();
+      this.net.remove(this.waysOf.get(key));
+      this.onWork?.(performance.now() - began);
+      this.waysOf.delete(key);
+      this.loaded.delete(key);
+    }
+  }
+
   // Keeps the tiles around the car loaded, plus where it will be soon.
   ensure(lat, lng, heading, speed) {
-    if (this.loaded.size > MAX_TILES && !this.loading.size) {
-      this.net.clear();
-      this.loaded.clear();
-    }
     const keys = new Set([this.keyAt(lat, lng)]);
     for (const bearing of [0, 45, 90, 135, 180, 225, 270, 315]) {
       const p = move(lat, lng, bearing, RING);
@@ -88,5 +111,6 @@ export class RoadTiles {
       const failed = this.failedAt.get(key);
       if (!failed || Date.now() - failed > RETRY_AFTER) this.load(key);
     }
+    this.evict(lat, lng, keys);
   }
 }

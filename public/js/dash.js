@@ -21,8 +21,17 @@ export function headingUp(east, north, heading) {
   return [east * cos - north * sin, east * sin + north * cos];
 }
 
+// Asking an element its size makes the browser lay out any pending changes, so it's asked once and again after a resize.
+let sizes = new WeakMap();
+if (typeof window !== 'undefined') window.addEventListener('resize', () => { sizes = new WeakMap(); });
+
 function fit(canvas) {
-  const dpr = Math.min(devicePixelRatio || 1, 2), w = canvas.clientWidth, h = canvas.clientHeight;
+  let size = sizes.get(canvas);
+  if (!size) {
+    size = { w: canvas.clientWidth, h: canvas.clientHeight };
+    if (size.w) sizes.set(canvas, size);
+  }
+  const dpr = Math.min(devicePixelRatio || 1, 2), { w, h } = size;
   if (canvas.width !== Math.round(w * dpr) || canvas.height !== Math.round(h * dpr)) {
     canvas.width = Math.round(w * dpr);
     canvas.height = Math.round(h * dpr);
@@ -73,6 +82,48 @@ export function drawGauge(canvas, { value, max, step, scale = 1, redFrom = null,
   ctx.fillText(small, cx, cy + r * 0.68);
 }
 
+// The roads, drawn north-up on a canvas of their own that is turned and slid under the car each time the screen updates.
+// A full redraw is thousands of lines, so it happens only when the car nears the edge of what's drawn, the range changes,
+// or new roads have arrived.
+const LAYER_MARGIN = 0.4;     // of the screen's height, drawn beyond the corners; the car travels this far between redraws
+const LAYER_REFRESH = 3000;   // ms at the least between redraws just for newly arrived roads
+const SKIP_MINOR_FROM = 3000; // m of range from which service roads are too small to matter
+const MIN_STEP = 1.5;         // px; points closer than this along a road add nothing
+let layer = null;
+
+function roadLayer(roads, pos, { radius, scale, half, margin, dpr }) {
+  const now = performance.now(), M = 111320;
+  const moved = layer && Math.hypot((pos.lng - layer.lng) * layer.k, pos.lat - layer.lat) * M * scale;
+  const fresh = layer && layer.radius === radius && layer.half === half && moved < margin && (layer.changes === roads.changes || now - layer.at < LAYER_REFRESH);
+  if (fresh) return layer;
+  const size = half * 2 * dpr;
+  const canvas = layer?.canvas || document.createElement('canvas');
+  if (canvas.width !== size) canvas.width = canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, half * 2, half * 2);
+  const k = Math.cos((pos.lat * Math.PI) / 180);
+  const minor = new Path2D(), major = new Path2D(), bridge = new Path2D();
+  let vertices = 0;
+  roads.forEachWayNear(pos.lat, pos.lng, half / scale, (way) => {
+    if (way.f & 4 && radius >= SKIP_MINOR_FROM) return;
+    const path = way.f & 1 ? bridge : way.f & 4 ? minor : major, c = way.c, last = c.length - 2;
+    let px = 0, py = 0;
+    for (let i = 0; i <= last; i += 2) {
+      const x = half + (c[i + 1] - pos.lng) * k * M * scale, y = half - (c[i] - pos.lat) * M * scale;
+      if (i && i < last && Math.abs(x - px) + Math.abs(y - py) < MIN_STEP) continue;
+      if (i) path.lineTo(x, y); else path.moveTo(x, y);
+      px = x; py = y;
+      vertices++;
+    }
+  });
+  ctx.strokeStyle = '#ffffff1c'; ctx.lineWidth = 1; ctx.stroke(minor);
+  ctx.strokeStyle = '#8fa6b880'; ctx.lineWidth = 1.2; ctx.stroke(major);
+  ctx.strokeStyle = '#ffd27a'; ctx.lineWidth = 1.6; ctx.stroke(bridge);
+  layer = { canvas, radius, half, k, lat: pos.lat, lng: pos.lng, changes: roads.changes, at: now, vertices };
+  return layer;
+}
+
 // The navigation screen: a map from very high up, drawn from the road data already loaded, so it adds no map charges.
 // options: { roads, pos, heading, route, routeIndex, radius (m from the car to the top of the screen) }
 export function drawNav(canvas, { roads, pos, heading, route, routeIndex, radius, hour, clock }) {
@@ -87,19 +138,13 @@ export function drawNav(canvas, { roads, pos, heading, route, routeIndex, radius
     return [carX + x * scale, carY - y * scale];
   };
 
-  const reach = Math.hypot(w, h) / scale;
-  const minor = new Path2D(), major = new Path2D(), bridge = new Path2D();
-  roads.forEachSegmentNear(pos.lat, pos.lng, reach, (way, i) => {
-    const [x1, y1] = toScreen(way.c[i * 2], way.c[i * 2 + 1]);
-    const [x2, y2] = toScreen(way.c[i * 2 + 2], way.c[i * 2 + 3]);
-    const path = way.f & 1 ? bridge : way.f & 4 ? minor : major;
-    path.moveTo(x1, y1);
-    path.lineTo(x2, y2);
-  });
-  ctx.lineCap = 'round';
-  ctx.strokeStyle = '#ffffff1c'; ctx.lineWidth = 1; ctx.stroke(minor);
-  ctx.strokeStyle = '#8fa6b880'; ctx.lineWidth = 1.2; ctx.stroke(major);
-  ctx.strokeStyle = '#ffd27a'; ctx.lineWidth = 1.6; ctx.stroke(bridge);
+  const layer = roadLayer(roads, pos, { radius, scale, half: Math.ceil(Math.hypot(w / 2, h * 0.68) + h * LAYER_MARGIN), margin: h * LAYER_MARGIN, dpr: Math.min(devicePixelRatio || 1, 2) });
+  ctx.save();
+  ctx.translate(carX, carY);
+  ctx.rotate((-heading * Math.PI) / 180);
+  ctx.translate(-layer.half - (pos.lng - layer.lng) * layer.k * M * scale, -layer.half + (pos.lat - layer.lat) * M * scale);
+  ctx.drawImage(layer.canvas, 0, 0, layer.half * 2, layer.half * 2);
+  ctx.restore();
 
   if (route) {
     ctx.strokeStyle = '#2f9bff';
@@ -153,4 +198,5 @@ export function drawNav(canvas, { roads, pos, heading, route, routeIndex, radius
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillText('N', w - 15 + nx * 9, 15 - ny * 9);
+  return layer.vertices;
 }

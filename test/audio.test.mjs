@@ -6,7 +6,7 @@ import { AUDIO_PRESETS, engineCutoff, engineIntensity, layerMix, roadLevel, wind
 import { newGearbox, stepGearbox } from '../public/js/gearbox.js';
 import { BODY_SHAPES, buildCarGlb, carPicture, colorFactor, DEFAULT_COLOR } from '../public/js/carModel.js';
 import { clockText, darknessAt, tintAt } from '../public/js/daylight.js';
-import { beamBrightness, beamPools, tailDots } from '../public/js/headlights.js';
+import { beamBrightness, beamPools, brakeLit, tailDots } from '../public/js/headlights.js';
 
 const sport = CAR_PROFILES.sport, layers = sport.sound.layers;
 
@@ -121,4 +121,19 @@ test('tail lights are dots behind the car: none when off, bigger when braking, a
   assert.ok(lit[0].x < 100 && lit[1].x > 100 && lit[0].y === lit[1].y);
   const turned = tailDots({ ...view, angle: 90 }, 4, 2, true, false);
   assert.ok((turned[0].x + turned[1].x) / 2 < 100, 'pointing right, the back is on the left');
+});
+
+test('brake lights: on while slowing, through the stop and while reversing, off when just driving', () => {
+  const held = (over) => ({ throttle: 0, reverse: false, handbrake: false, brake: 0, ...over });
+  assert.equal(brakeLit(20, held({ reverse: true })), true, 'S slows the car');
+  assert.equal(brakeLit(0, held({ reverse: true })), true, 'at the stop');
+  assert.equal(brakeLit(-8, held({ reverse: true })), true, 'reversing');
+  assert.equal(brakeLit(20, held({ brake: 5 })), true, 'FSD braking');
+  assert.equal(brakeLit(20, held({ handbrake: true })), true);
+  assert.equal(brakeLit(20, held({}), true), true, 'pulling up on arrival');
+  assert.equal(brakeLit(-8, held({ throttle: 1 })), true, 'W stops a reversing car');
+  assert.equal(brakeLit(20, held({ throttle: 1 })), false);
+  assert.equal(brakeLit(20, held({})), false, 'coasting');
+  assert.equal(brakeLit(0, held({})), false, 'parked');
+  assert.equal(brakeLit(-8, held({})), false, 'rolling back with nothing held');
 });

@@ -4,7 +4,7 @@ html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background:
 /* The map ends where the dashboard starts, so the car and the road ahead are never under it. */
 :root { --dash: 172px; }
 #map, #shield, #hud { position: absolute; inset: 0 0 var(--dash) 0; }
-#map { background: radial-gradient(circle at center, #344e65, #0d1825); }
+#map { background: radial-gradient(circle at center, #344e65, #0d1825); overflow: hidden; }
 /* The camera belongs to the car, so mouse drags and wheel never reach the map. */
 #shield { z-index: 1; }
 #hud { z-index: 2; pointer-events: none; }
@@ -15,13 +15,13 @@ html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background:
 #tails { display: block; z-index: 1; }
 
 .pill, .panel { background: #101923dd; border: 1px solid #ffffff26; box-shadow: 0 8px 30px #0004; backdrop-filter: blur(18px); border-radius: 14px; }
-header { position: absolute; top: 8px; left: 8px; display: flex; align-items: center; gap: 2px; max-width: calc(100% - 16px); padding: 3px 6px; border-radius: 9px; background: #0d1621cc; backdrop-filter: blur(12px); pointer-events: auto; }
+header { position: absolute; top: 8px; left: 8px; display: flex; align-items: center; gap: 2px; max-width: calc(100% - 16px); padding: 3px 6px; border-radius: 9px; background: #0d1621e6; pointer-events: auto; }
 header button { font: inherit; font-size: 11px; color: #d5e0e8; padding: 4px 8px; background: none; border: 0; border-radius: 6px; cursor: pointer; white-space: nowrap; }
 header button:hover { background: #ffffff1f; color: #fff; }
 .pill { background: #0d1621cc; border-radius: 9px; backdrop-filter: blur(12px); padding: 6px 10px; font-size: 11px; }
 .panel { background: #101923dd; border: 1px solid #ffffff26; backdrop-filter: blur(18px); border-radius: 12px; }
 .brand { font-weight: 800; letter-spacing: .08em; font-size: 11px; margin: 0 6px 0 2px; }
-.where { font-size: 10px; color: #8fa2b0; margin-left: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.where { font-size: 12px; font-weight: 650; color: #fff; margin-left: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .brand b { color: #69d9ba; }
 #notice { position: absolute; top: 44px; left: 8px; max-width: 420px; padding: 10px 15px; border-radius: 9px; background: #923822e0; font-size: 13px; line-height: 1.4; display: none; }
 

@@ -1,4 +1,5 @@
 public/config.json
+logs/
 node_modules/
 .DS_Store
 .claude/settings.local.json

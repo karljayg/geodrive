@@ -1,6 +1,6 @@
 # GeoDrive tech stack
 
-A plain static website with no framework, no build step and no backend of its own. All game logic runs in the browser.
+A plain static website with no framework and no build step. All game logic runs in the browser. The only server code is `log.php`, which saves performance logs sent from the game.
 
 ## Front end
 - Plain JavaScript (ES modules), HTML and CSS
@@ -17,7 +17,7 @@ A plain static website with no framework, no build step and no backend of its ow
 | --- | --- | --- | --- |
 | Google Map Tiles | The 3D map | Yes | Billed beyond the free allowance |
 | Google Elevation API | Ground height for the camera pivot | Yes | Billed beyond the free allowance |
-| Google Geocoding API | Addresses, and the state for the radio | Yes | Billed beyond the free allowance |
+| Google Geocoding API | Addresses, the current town, and the state for the radio | Yes | Billed beyond the free allowance |
 | Google Routes API | FSD routes | Yes | Billed beyond the free allowance |
 | OpenFreeMap vector tiles (OpenStreetMap data) | Road shapes, one-way streets, bridges, nav screen | No | Free |
 | Radio Browser (radio-browser.info) | Station directory | No | Free |
@@ -36,6 +36,8 @@ Google usage and spend can only be seen in Google Cloud Console; the API key can
 | `vector.js` | Reads the vector tile format | Yes |
 | `trip.js` | Trip stats | Yes |
 | `settings.js` | Preferences saved in the browser | Browser |
+| `perflog.js` | Performance log kept in the browser and sent on request | Yes |
+| `town.js` | Current town from a reverse geocode | Yes |
 | `cars.js` | Car profiles: gearing and engine sound | Yes |
 | `gearbox.js` | Speed to gear and revs | Yes |
 | `engineSound.js` | Audio buses, recorded engine, road, wind, effects | Browser, by ear |
@@ -50,11 +52,12 @@ Google usage and spend can only be seen in Google Cloud Console; the API key can
 | `dash.js` | Draws the gauges and nav screen | Browser |
 
 ## Saved data
-The browser's `localStorage` holds the start point, settings and current trip. There is no database.
+The browser's `localStorage` holds the start point, settings, current trip and up to 5 hours of performance log. There is no database. Logs sent with the Send log button are JSON files on the server, in a folder closed to the web.
 
 ## Hosting and tools
 - Server: psistorm.com (Amazon Linux), Apache serving static files from `/var/www/html/psistorm/geodrive`
 - Deploy: `npm run deploy` (`scripts/deploy.sh`, rsync over SSH)
+- Logs: `npm run logs` (`scripts/fetch-logs.sh`) copies sent logs into `logs/`
 - Local run: `npm start` (`scripts/serve.mjs`, port 8765)
 - Tests: `npm test` (Node's built-in test runner)
 - Version control: local git repo, no remote yet

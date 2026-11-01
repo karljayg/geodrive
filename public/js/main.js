@@ -1,19 +1,21 @@
 import { newCar, stepCar } from './physics.js';
 import { distance, easeAngle, leadDistance, move } from './camera.js';
 import { FLAG_ONEWAY, RoadNet } from './road.js';
-import { Path } from './route.js';
+import { Path, brakeFor, pursuitYaw } from './route.js';
 import { CAR_PROFILES, hornFor, profileFor } from './cars.js';
 import { BODY_SHAPES, buildCarGlb, carPicture } from './carModel.js';
-import { beamPools, drawDots, drawPools, tailDots } from './headlights.js';
+import { beamPools, brakeLit, drawDots, drawPools, tailDots } from './headlights.js';
 import { clockText, darknessAt, tintAt } from './daylight.js';
 import { drawGauge, drawNav, revRange, speedRange, speedStep } from './dash.js';
 import { EngineAudio } from './engineSound.js';
+import { describeMachine, observeBrowser, PerfLog } from './perflog.js';
 import { newGearbox, stepGearbox } from './gearbox.js';
 import { frequencyText, Radio } from './radio.js';
 import { loadSession, saveSession } from './session.js';
 import { DEFAULTS, saveSettings, settings } from './settings.js';
 import { decodeShare, encodeShare, packShare, shareSummary } from './share.js';
 import { RoadTiles } from './tiles.js';
+import { townFrom } from './town.js';
 import { burnFuel, newTrip, tripFigures, updateTrip } from './trip.js';
 
 const ORIGINAL_START = { label: 'Saarinen Circle, Dulles Airport, Virginia', lat: 38.9555, lng: -77.4475, heading: 270 };
@@ -35,7 +37,7 @@ const LANE_SHIFT_RATE = 2;    // m/s sideways during a lane change
 const SIGNAL_BLINK_AFTER_LANE = 2500; // ms the signal stays on after a lane change
 const SIGNAL_REACH = 12;      // seconds ahead, at the current speed, a signal looks for its turn
 const SIGNAL_MIN_REACH = 300; // m
-const PLAN_DECEL = 12;        // m/s² the turn and route speed plans brake at
+const PLAN_DECEL = 8;         // m/s² the turn and route speed plans brake at, firm but not an emergency stop
 const OFF_PATH = 40;          // m from a path that counts as having left it
 const REROUTE_EVERY = 8000;   // ms at the least between route requests
 const FSD_SPEED_STEP = 10;    // mph per press of - or =
@@ -45,6 +47,10 @@ const CRUISE_MAX = 45;        // m/s (100 mph)
 const SNAP_DISTANCE = 100;    // m to the road for a saved start to go on to it
 const SNAP_WAIT = 4000;       // ms a saved start will wait for road data
 const ADDRESS_WAIT = 12000;   // ms a new address will wait for road data
+const ROUTE_DRAWN = 8000;     // m of route drawn on the map ahead of the car
+const ROUTE_REDRAW = 2000;    // m driven before that stretch moves on
+const TOWN_EVERY = 2000;      // m driven between looking up the town, as each lookup is billed
+const TOWN_WAIT = 20000;      // ms at the least between lookups
 const CAMERAS = [
   { name: 'CHASE', tilt: 62, range: 130 },
   { name: 'HIGH CHASE', tilt: 45, range: 320 },
@@ -78,7 +84,18 @@ const NAV_RANGES = [800, 1500, 3000, 6000]; // m from the car to the top of the 
 const TUNE_STEP = 12; // px of knob turn per station
 const RADIO_RESEARCH = 50000; // m driven before looking for stations again
 const groundCache = new Map();
-const debug = { hold: false, car, pos, keys, roads, tiles }; // window.__geodrive, for checks from the console
+function logStore() {
+  try {
+    return localStorage;
+  } catch (err) {
+    return { getItem: () => null, setItem() {}, removeItem() {} }; // storage is blocked, so the log lasts this visit at most
+  }
+}
+const perfLog = new PerfLog(logStore());
+tiles.onWork = (ms) => perfLog.spend('tile', ms);
+let lineVertices = 0, lineAlong = 0, navVertices = 0;
+let hudTextAt = 0, startLabel = '', town = null, townAt = null, townAsked = -Infinity, townBusy = false;
+const debug = { hold: false, car, pos, keys, roads, tiles, perfLog }; // window.__geodrive, for checks from the console
 
 function loadStart() {
   try {
@@ -188,9 +205,11 @@ async function requestRoute(force = false) {
     }
     const usable = points.length > 1 ? points : routes[0].path.map(toLatLng);
     if (destination) {
+      const began = performance.now();
       route = new Path(usable, { stopAtEnd: true, decel: PLAN_DECEL });
       routeIndex = null;
-      drawRoute(routes[0].path.map(toLatLng));
+      perfLog.event('route', { from: usable.length, points: route.points.length, km: Math.round(route.length / 1000), buildMs: Math.round(performance.now() - began) });
+      drawRoute();
     }
     return true;
   } catch (err) {
@@ -202,12 +221,25 @@ async function requestRoute(force = false) {
   }
 }
 
-function drawRoute(path) {
-  if (routeLine) routeLine.remove();
-  routeLine = null;
-  if (!map || !maps3d.Polyline3DElement || !path) return;
-  routeLine = new maps3d.Polyline3DElement({ path, altitudeMode: 'CLAMP_TO_GROUND', strokeColor: '#2f9bffcc', strokeWidth: 8 });
-  map.append(routeLine);
+// Only the stretch ahead goes on the map, because a line clamped to the ground costs the map for every point it holds,
+// and a route between states has tens of thousands. The nav screen shows the way beyond it.
+function drawRoute() {
+  if (!route) {
+    routeLine?.remove();
+    routeLine = null;
+    lineVertices = 0;
+    return;
+  }
+  if (!map || !maps3d.Polyline3DElement) return;
+  const from = routeIndex ?? 0, path = route.lineAhead(from, ROUTE_DRAWN);
+  lineAlong = route.cum[from];
+  lineVertices = path.length;
+  if (routeLine) {
+    routeLine.path = path;
+  } else {
+    routeLine = new maps3d.Polyline3DElement({ path, altitudeMode: 'CLAMP_TO_GROUND', strokeColor: '#2f9bffcc', strokeWidth: 8 });
+    map.append(routeLine);
+  }
 }
 
 function setFsd(on, message) {
@@ -228,7 +260,7 @@ function clearDestination() {
   route = null;
   routeIndex = null;
   fsd = false;
-  drawRoute(null);
+  drawRoute();
 }
 
 // What the car is following right now, if not just the road: a signalled turn first, then the route.
@@ -266,8 +298,8 @@ function currentGuide() {
 // still works. W in FSD lifts the cruise speed, like pressing the accelerator in the real thing, but curves still apply.
 function applySpeed(controls, guide) {
   if (!guide) return;
-  const curve = guide.path.limitAt(guide.at.index);
   const v = car.speed;
+  const curve = guide.path.targetAt(guide.at.along, v);
   let target = curve;
   if (fsd) {
     const cruise = controls.throttle ? Infinity : Math.max(3, guide.cruise + fsdBoost / MPS_TO_MPH);
@@ -276,15 +308,18 @@ function applySpeed(controls, guide) {
   } else if (v >= target) {
     controls.throttle = 0;
   }
-  if (v > target + 0.5) controls.brake = clamp((v - target) * 3, 0, 40);
+  const brake = brakeFor(v, target);
+  if (brake) controls.brake = brake;
 }
 
-function steerToward(target, dt) {
+// exact: drive the circle through the target, which holds a curved line without wobble, rather than swinging at it.
+function steerToward(target, dt, exact = false) {
   const dx = (target.lng - pos.lng) * Math.cos(rad(pos.lat)), dy = target.lat - pos.lat;
   const bearing = (Math.atan2(dx, dy) * 180) / Math.PI;
   const error = ((bearing - car.heading + 540) % 360) - 180;
   const maxYaw = (Math.min(FOLLOW_MAX_YAW, (car.speed * Math.tan(0.6)) / 2.7) * 180) / Math.PI; // no sharper than the wheels allow at low speed
-  car.heading = (car.heading + clamp(error * FOLLOW_GAIN, -maxYaw, maxYaw) * dt + 360) % 360;
+  const wanted = exact ? (pursuitYaw(car.speed, error, Math.hypot(dx, dy) * 111320) * 180) / Math.PI : error * FOLLOW_GAIN;
+  car.heading = (car.heading + clamp(wanted, -maxYaw, maxYaw) * dt + 360) % 360;
 }
 
 // Finds the road under the car and, unless the driver is steering, turns the car along the guide or the road.
@@ -300,9 +335,9 @@ function followRoad(steering, guide, dt) {
   laneNow += clamp(wanted - laneNow, -LANE_SHIFT_RATE * dt, LANE_SHIFT_RATE * dt);
 
   if (steering || car.speed <= 1) return;
-  const aim = guide ? guide.path.pointAt(guide.at.along + Math.max(8, car.speed * 0.45)) : settings.roadFollow ? look : null;
+  const aim = guide ? guide.path.pointAt(guide.at.along + Math.max(6, car.speed * 0.45)) : settings.roadFollow ? look : null;
   if (!aim) return;
-  steerToward(laneNow ? move(aim.lat, aim.lng, aim.bearing + 90, laneNow) : aim, dt);
+  steerToward(laneNow ? move(aim.lat, aim.lng, aim.bearing + 90, laneNow) : aim, dt, !!guide);
 }
 
 function syncScene(dt) {
@@ -337,12 +372,59 @@ function syncScene(dt) {
   }
 }
 
+// Writing text, even the same text, makes the browser lay the page out again, so only real changes are written.
+const HUD_TEXT_EVERY = 100; // ms between updates of the figures, which is as fast as anyone can read them
+const shownText = new Map();
+function show(id, text) {
+  if (shownText.get(id) === text) return;
+  shownText.set(id, text);
+  el(id).textContent = text;
+}
+
+// The header names the town the car is in. Until the first answer, it names where the trip started.
+function showPlace() {
+  const name = town || startLabel;
+  show('where', name);
+  document.title = name ? `${name} · GeoDrive` : 'GeoDrive';
+}
+
+function setStartLabel(label) {
+  startLabel = label;
+  town = null;
+  townAt = null;
+  showPlace();
+}
+
+async function refreshTown() {
+  if (!geocoder || townBusy || performance.now() - townAsked < TOWN_WAIT) return;
+  if (townAt && distance(townAt.lat, townAt.lng, pos.lat, pos.lng) < TOWN_EVERY) return;
+  townBusy = true;
+  townAsked = performance.now();
+  townAt = { lat: pos.lat, lng: pos.lng };
+  try {
+    const { results } = await geocoder.geocode({ location: townAt });
+    const name = townFrom(results);
+    if (name && name !== town) {
+      town = name;
+      perfLog.event('town', name);
+      showPlace();
+    }
+  } catch (err) {
+    console.warn('town:', err); // the last answer stays up
+  } finally {
+    townBusy = false;
+  }
+}
+
 function updateHud(t) {
-  el('heading').textContent = String(Math.round(car.heading) % 360).padStart(3, '0') + '°';
-  el('from').textContent = (distance(start.lat, start.lng, pos.lat, pos.lng) / 1609.344).toFixed(2) + ' mi';
-  const figures = tripFigures(trip);
-  for (const id of ['elapsed', 'miles', 'top', 'average']) el('hud-' + id).textContent = figures[id];
-  el('road').textContent = onBridge ? 'ON BRIDGE' : match ? 'ON ROAD' : tiles.hasRoads(pos.lat, pos.lng) ? 'OFF ROAD' : 'LOADING ROADS';
+  if (!t || t - hudTextAt >= HUD_TEXT_EVERY) {
+    hudTextAt = t;
+    show('heading', String(Math.round(car.heading) % 360).padStart(3, '0') + '°');
+    show('from', (distance(start.lat, start.lng, pos.lat, pos.lng) / 1609.344).toFixed(2) + ' mi');
+    const figures = tripFigures(trip);
+    for (const id of ['elapsed', 'miles', 'top', 'average']) show('hud-' + id, figures[id]);
+    show('road', onBridge ? 'ON BRIDGE' : match ? 'ON ROAD' : tiles.hasRoads(pos.lat, pos.lng) ? 'OFF ROAD' : 'LOADING ROADS');
+  }
 
   const blinkOn = Math.floor(t / 400) % 2 === 0;
   el('signalLeft').classList.toggle('on', !!signal && signal.side < 0 && blinkOn);
@@ -357,9 +439,17 @@ function updateHud(t) {
   nav.classList.toggle('engaged', fsd);
   if (destination) {
     const boost = fsdBoost ? ` · ${fsdBoost > 0 ? '+' : ''}${fsdBoost} mph` : '';
-    el('navState').textContent = fsd ? `FSD ON${boost}` : 'FSD OFF · press F';
-    el('navWhere').textContent = destination.label;
+    show('navState', fsd ? `FSD ON${boost}` : 'FSD OFF · press F');
+    show('navWhere', destination.label);
   }
+}
+
+// A dial is only redrawn when its needle or figures would visibly move.
+let gaugesShown = {}, fuelShown = '';
+function gauge(id, key, options) {
+  if (gaugesShown[id] === key) return;
+  gaugesShown[id] = key;
+  drawGauge(el(id), options);
 }
 
 function drawDash(t) {
@@ -368,33 +458,38 @@ function drawDash(t) {
   const profile = profileFor(settings.carProfile);
   const mph = Math.abs(car.speed) * MPS_TO_MPH;
   speedMax = speedRange(mph, speedMax);
-  drawGauge(el('speedGauge'), { value: mph, max: speedMax, step: speedStep(speedMax), big: String(Math.round(mph)), small: 'MPH' });
+  gauge('speedGauge', `${Math.round(mph * 2)}|${speedMax}`, { value: mph, max: speedMax, step: speedStep(speedMax), big: String(Math.round(mph)), small: 'MPH' });
   const electric = !profile.cylinders;
   const charge = Math.round(trip.fuel);
   if (electric) {
     // Electric cars have no meaningful revs, so this dial is the battery.
-    drawGauge(el('revGauge'), { value: trip.fuel, max: 100, step: 25, big: `${charge}%`, small: 'CHARGE' });
+    gauge('revGauge', `charge|${charge}`, { value: trip.fuel, max: 100, step: 25, big: `${charge}%`, small: 'CHARGE' });
   } else {
     const max = revRange(profile.redline);
-    drawGauge(el('revGauge'), { value: gearbox.rpm, max, step: max > 6000 ? 2000 : 1000, scale: 1000, redFrom: profile.redline, big: gearbox.label, small: 'x1000 RPM' });
+    gauge('revGauge', `${Math.round(gearbox.rpm / 25)}|${gearbox.label}|${max}|${profile.redline}`, { value: gearbox.rpm, max, step: max > 6000 ? 2000 : 1000, scale: 1000, redFrom: profile.redline, big: gearbox.label, small: 'x1000 RPM' });
   }
-  el('fuel').style.visibility = electric ? 'hidden' : 'visible';
-  el('fuel').classList.toggle('low', trip.fuel < 15);
-  el('fuelBar').style.width = `${trip.fuel}%`;
-  el('fuelValue').textContent = `${charge}%`;
+  if (fuelShown !== `${electric}|${charge}`) {
+    fuelShown = `${electric}|${charge}`;
+    el('fuel').style.visibility = electric ? 'hidden' : 'visible';
+    el('fuel').classList.toggle('low', trip.fuel < 15);
+    el('fuelBar').style.width = `${charge}%`;
+    show('fuelValue', `${charge}%`);
+  }
   if (t - navDrawnAt > 333) {
     navDrawnAt = t;
-    drawNav(el('navScreen'), { roads, pos, heading: car.heading, route: fsd || destination ? route : null, routeIndex, radius: navRadius, hour: settings.hour, clock: clockText(settings.hour) });
+    const navBegan = performance.now();
+    navVertices = drawNav(el('navScreen'), { roads, pos, heading: car.heading, route: fsd || destination ? route : null, routeIndex, radius: navRadius, hour: settings.hour, clock: clockText(settings.hour) });
+    perfLog.spend('nav', performance.now() - navBegan);
     const now = new Date();
     const time = (d) => d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-    el('clock').textContent = time(now);
+    show('clock', time(now));
     let eta = '';
     if (destination && route) {
       const at = routeIndex ?? 0, seconds = route.secondsToEnd[at], miles = (route.length - route.cum[at]) / 1609.344;
       const left = seconds < 3600 ? `${Math.max(1, Math.round(seconds / 60))} min` : `${Math.floor(seconds / 3600)} h ${Math.round((seconds % 3600) / 60)} min`;
       eta = `ETA ${time(new Date(now.getTime() + seconds * 1000))} · ${left} · ${miles.toFixed(1)} mi`;
     }
-    el('eta').textContent = eta;
+    show('eta', eta);
   }
 }
 
@@ -470,10 +565,12 @@ function applySound() {
 }
 
 function frame(t) {
+  const began = performance.now();
   measureFrame(t);
   const dt = Math.min((t - last) / 1000 || 0, 0.06);
   last = t;
   if (map && !debug.hold && !dialogOpen && !paused) {
+    const driveBegan = performance.now();
     const controls = input();
     // The driver can take over at any moment. Steering or braking drops FSD, and steering cancels a signal.
     if (controls.steer) cancelSignal();
@@ -485,7 +582,7 @@ function frame(t) {
 
     const guide = currentGuide();
     applySpeed(controls, guide);
-    braking = car.speed > 0.5 && (controls.reverse || controls.handbrake || controls.brake > 0 || arriving);
+    braking = brakeLit(car.speed, controls, arriving);
     // Pull up at the destination, unless the driver has already taken over.
     if (arriving && (controls.throttle || controls.reverse || controls.steer || car.speed <= 0)) arriving = false;
     if (arriving) controls.brake = PLAN_DECEL;
@@ -508,16 +605,25 @@ function frame(t) {
     if (t - tilesCheckedAt > 1000) {
       tilesCheckedAt = t;
       tiles.ensure(pos.lat, pos.lng, car.heading, car.speed);
+      refreshTown();
+      if (route && fsd && routeIndex !== null && route.cum[routeIndex] - lineAlong > ROUTE_REDRAW) drawRoute();
     }
     lateSnap();
     sampleGround();
+    const sceneBegan = performance.now();
+    perfLog.spend('drive', sceneBegan - driveBegan);
     syncScene(dt);
+    const dashBegan = performance.now();
+    perfLog.spend('scene', dashBegan - sceneBegan);
     updateHud(t);
+    perfLog.spend('dash', performance.now() - dashBegan);
   } else if (map) {
     // Paused or in a dialog: the engine goes quiet and the radio carries on.
     const profile = profileFor(settings.carProfile);
     if (!previewing()) engine.update({ rpm: gearbox.rpm, load: 0, speedMph: 0, car: profile, running: false });
   }
+  perfLog.frame(t, performance.now() - began);
+  if (perfLog.due(t)) sampleLog(t);
   requestAnimationFrame(frame);
 }
 
@@ -552,10 +658,10 @@ async function placeCar(where) {
   fsd = false;
   arriving = false;
   route = null;
-  drawRoute(null);
+  drawRoute();
   cancelSignal();
   trip = newTrip();
-  el('where').textContent = where.label;
+  setStartLabel(where.label);
   tiles.ensure(pos.lat, pos.lng, car.heading, 0);
   await sampleGround();
   ground = groundTarget;
@@ -564,7 +670,7 @@ async function placeCar(where) {
 
 // --- Saved trip -----------------------------------------------------------------------------------------------
 
-const tripState = () => ({ pos, heading: car.heading, zoom, camIndex, destination, fsd, fsdBoost, trip, lane, navRadius, label: el('where').textContent });
+const tripState = () => ({ pos, heading: car.heading, zoom, camIndex, destination, fsd, fsdBoost, trip, lane, navRadius, label: startLabel });
 
 function saveTrip() {
   saveSession({
@@ -588,7 +694,7 @@ async function restoreTrip(saved) {
   trip = { ...newTrip(), ...saved.trip };
   lane = saved.lane;
   navRadius = saved.navRadius;
-  el('where').textContent = saved.label;
+  setStartLabel(saved.label);
   tiles.ensure(pos.lat, pos.lng, car.heading, 0);
   await sampleGround();
   ground = groundTarget;
@@ -832,17 +938,19 @@ function applyCarLook() {
 
 // The tint covers the map, and the headlight beams are cut out of it and lightly added on top. The car's place on
 // screen is fixed; the beams are sized from the car, zoom with the map and turn with the car against the camera.
-let lightKey = '', braking = false;
+let lightKey = '', braking = false, mapBox = null;
+window.addEventListener('resize', () => { mapBox = null; gaugesShown = {}; });
 function applyDaylight() {
   const dark = darknessAt(settings.hour), lit = settings.headlights;
-  el('lightsButton').setAttribute('aria-pressed', String(lit));
-  const box = el('map'), width = box.clientWidth, height = box.clientHeight;
+  mapBox ||= { width: el('map').clientWidth, height: el('map').clientHeight }; // asking every frame would force a layout
+  const { width, height } = mapBox;
   const angle = ((car.heading - camHeading + 540) % 360) - 180;
   // Only the headlights and brake lights depend on the view, so with neither on nothing redraws while driving.
   const moving = lit || braking ? `${Math.round(range / 2)}|${Math.round(tilt)}|${Math.round(angle * 2)}` : '';
   const key = `${settings.hour}|${lit}|${braking}|${settings.carScale}|${settings.carProfile}|${width}x${height}|${moving}`;
   if (key === lightKey) return;
   lightKey = key;
+  el('lightsButton').setAttribute('aria-pressed', String(lit));
   const night = el('night'), beam = el('beam');
   for (const canvas of [night, beam]) {
     if (canvas.width !== width || canvas.height !== height) { canvas.width = width; canvas.height = height; }
@@ -886,13 +994,28 @@ function applyDaylight() {
   if (tails.width !== width || tails.height !== height) { tails.width = width; tails.height = height; }
   const dots = tails.getContext('2d');
   dots.clearRect(0, 0, width, height);
-  drawDots(dots, tailDots(view, length, carWidth, lit, braking));
+  const shown = tailDots(view, length, carWidth, lit, braking);
+  drawDots(dots, shown);
+  tails.style.display = shown.length ? 'block' : 'none'; // an empty canvas over the map still costs the compositor
 }
 
+let graphicsLogged = '';
 function applyGraphics() {
   if (!map) return;
   if (map.qualityMode !== settings.mapQuality) map.qualityMode = settings.mapQuality;
   if (map.maxMemoryMegabytes !== settings.mapMemory) map.maxMemoryMegabytes = settings.mapMemory;
+  const mode = settings.mapLabels ? 'HYBRID' : 'SATELLITE';
+  if (map.mode !== mode) map.mode = mode;
+  // The map is laid out larger or smaller than its box and scaled to fit, as it draws one pixel per pixel it thinks it has.
+  const size = `${100 / settings.mapScale}%`;
+  if (map.style.width !== size) {
+    map.style.width = map.style.height = size;
+    map.style.transformOrigin = '0 0';
+    map.style.transform = `scale(${settings.mapScale})`;
+  }
+  const graphics = `${settings.mapQuality} ${settings.mapMemory} ${settings.mapScale} ${mode}`;
+  if (graphics !== graphicsLogged) perfLog.event('graphics', graphics);
+  graphicsLogged = graphics;
 }
 
 // Frames per second, the slowest frame in the last second, and JavaScript memory where the browser reports it
@@ -912,6 +1035,47 @@ function measureFrame(t) {
   perfFrames = 0;
   perfSince = t;
   perfSlowest = 0;
+}
+
+// One row of the log. state: 0 driving, 1 paused or in a dialog, 2 tab hidden, when browsers throttle it and the numbers mean little.
+function sampleLog(t) {
+  perfLog.sample(t, {
+    state: document.hidden ? 2 : dialogOpen || paused ? 1 : 0,
+    lat: pos.lat,
+    lng: pos.lng,
+    mph: Math.abs(car.speed) * MPS_TO_MPH,
+    heapMB: performance.memory ? performance.memory.usedJSHeapSize / 1048576 : 0,
+    ways: roads.ways.size,
+    tiles: tiles.loaded.size,
+    tilesLoading: tiles.loading.size,
+    navVertices,
+    routePoints: route ? route.points.length : 0,
+    lineVertices,
+    range,
+    cam: camIndex,
+    fsd: fsd ? 1 : 0,
+    lights: settings.headlights ? 1 : 0,
+    dark: darknessAt(settings.hour),
+  });
+}
+
+async function sendLog() {
+  const button = el('sendLog');
+  button.disabled = true;
+  perfLog.event('sent', { town, mapScale: settings.mapScale });
+  try {
+    const report = perfLog.report({ ...describeMachine(), settings, town, trip, route: route ? { km: Math.round(route.length / 1000), points: route.points.length } : null });
+    const res = await fetch('log.php', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(report) });
+    if (!res.ok) throw new Error(`server answered ${res.status}`);
+    const { name, rows } = await res.json();
+    perfLog.clear();
+    notice(`Log sent: ${rows} samples, saved as ${name}.`, 6000);
+  } catch (err) {
+    console.warn('send log:', err);
+    notice('Could not send the log, so it was kept. Please try again.', 5000);
+  } finally {
+    button.disabled = false;
+  }
 }
 
 function setHeadlights(on) {
@@ -956,7 +1120,7 @@ function showSettings() {
   applyCarLook();
   applyDaylight();
   applyGraphics();
-  el('settingsStart').textContent = el('where').textContent || start.label;
+  el('settingsStart').textContent = startLabel || start.label;
   if (model) model.scale = settings.carScale; // fixed in world units, so the car shrinks with the map when zooming out
   applySound();
 }
@@ -1066,6 +1230,7 @@ el('navScreen').addEventListener('click', () => {
   navDrawnAt = 0;
 });
 el('shareButton').addEventListener('click', shareDrive);
+el('sendLog').addEventListener('click', sendLog);
 // A link opened in a tab already on the game changes only the # part, which wouldn't otherwise reload the page.
 window.addEventListener('hashchange', () => { if (location.hash.startsWith('#d=')) location.reload(); });
 el('helpButton').addEventListener('click', () => el('help').classList.toggle('open'));
@@ -1080,7 +1245,10 @@ for (const kind of ['pointerdown', 'keydown']) {
     }
   }, { capture: true });
 }
-window.addEventListener('pagehide', () => { if (map) saveTrip(); });
+window.addEventListener('pagehide', () => {
+  if (map) saveTrip();
+  perfLog.flush();
+});
 
 // --- Dismissing popups ----------------------------------------------------------------------------------------
 
@@ -1214,7 +1382,6 @@ async function boot() {
     // Accepting was the click browsers require, so a shared drive's radio can start straight away.
     if (fromLink && settings.radioOn) setRadioPower(true);
     map = new maps3d.Map3DElement({ center: { ...pos, altitude: ground }, heading: car.heading, tilt, range, fov: FOV_Y, mode: 'HYBRID', defaultUIHidden: true });
-    map.style.width = map.style.height = '100%';
     applyGraphics();
     el('map').replaceChildren(map);
     if (maps3d.Model3DElement) {
@@ -1236,6 +1403,9 @@ async function boot() {
     notice('Could not load the map: ' + err.message);
   }
 }
+
+observeBrowser(perfLog);
+perfLog.event('load', { saved: !!loadSession(), version: 1 });
 
 // The saved or default station, ready to play at the first click or key press, as browsers require.
 radio.restore(settings.radioStation);

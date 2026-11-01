@@ -22,13 +22,25 @@ export class RoadNet {
     this.atNode = new Map(); // node id -> [{ way, index }]
     this.grid = new Map();   // cell -> [{ way, i }]
     this.serial = 0;
+    this.changes = 0;        // goes up whenever roads come or go, for whatever draws them
   }
 
-  // Forgets everything, to release memory on long drives. Nearby tiles load again straight after.
-  clear() {
-    this.ways.clear();
-    this.atNode.clear();
-    this.grid.clear();
+  // Forgets these ways, to release memory on long drives.
+  remove(list) {
+    for (const way of list) {
+      if (!this.ways.delete(way.id)) continue;
+      for (const node of way.n) {
+        const left = this.atNode.get(node).filter((entry) => entry.way !== way);
+        if (left.length) this.atNode.set(node, left);
+        else this.atNode.delete(node);
+      }
+      for (const key of way.cells) {
+        const left = this.grid.get(key).filter((entry) => entry.way !== way);
+        if (left.length) this.grid.set(key, left);
+        else this.grid.delete(key);
+      }
+    }
+    this.changes++;
   }
 
   add(list) {
@@ -36,6 +48,14 @@ export class RoadNet {
       if (this.ways.has(way.id)) continue;
       this.ways.set(way.id, way);
       way.serial = this.serial++;
+      way.cells = new Set();
+      way.box = [Infinity, Infinity, -Infinity, -Infinity]; // south, west, north, east
+      for (let i = 0; i < way.c.length; i += 2) {
+        way.box[0] = Math.min(way.box[0], way.c[i]);
+        way.box[1] = Math.min(way.box[1], way.c[i + 1]);
+        way.box[2] = Math.max(way.box[2], way.c[i]);
+        way.box[3] = Math.max(way.box[3], way.c[i + 1]);
+      }
       way.n.forEach((node, index) => {
         if (!this.atNode.has(node)) this.atNode.set(node, []);
         this.atNode.get(node).push({ way, index });
@@ -51,9 +71,11 @@ export class RoadNet {
           seen.add(key);
           if (!this.grid.has(key)) this.grid.set(key, []);
           this.grid.get(key).push({ way, i });
+          way.cells.add(key);
         }
       }
     }
+    this.changes++;
   }
 
   cell(lat, lng) {
@@ -203,21 +225,13 @@ export class RoadNet {
     return best;
   }
 
-  // Calls fn(way, segment) once for each road piece within about `distance` metres, for drawing.
-  forEachSegmentNear(lat, lng, distance, fn) {
-    const span = Math.ceil(distance / (M_PER_DEG * CELL));
-    const spanLng = Math.ceil(span / Math.cos(rad(lat)));
-    const cy = Math.floor(lat / CELL), cx = Math.floor(lng / CELL);
-    const seen = new Set();
-    for (let y = cy - span; y <= cy + span; y++) {
-      for (let x = cx - spanLng; x <= cx + spanLng; x++) {
-        for (const { way, i } of this.grid.get(`${y}_${x}`) || []) {
-          const key = way.serial * 100000 + i; // a number: this runs thousands of times per draw
-          if (seen.has(key)) continue;
-          seen.add(key);
-          fn(way, i);
-        }
-      }
+  // Calls fn(way) for each way that reaches within about `distance` metres, for drawing.
+  forEachWayNear(lat, lng, distance, fn) {
+    const dLat = distance / M_PER_DEG, dLng = dLat / Math.cos(rad(lat));
+    const south = lat - dLat, north = lat + dLat, west = lng - dLng, east = lng + dLng;
+    for (const way of this.ways.values()) {
+      const b = way.box;
+      if (b[0] <= north && b[2] >= south && b[1] <= east && b[3] >= west) fn(way);
     }
   }
 

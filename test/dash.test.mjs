@@ -102,12 +102,12 @@ test('a band starts on a nearby station', async () => {
   assert.equal(list.find((s) => s.local).id, 'near');
 });
 
-test('the nav screen visits each nearby road piece once', () => {
+test('the nav screen visits each nearby road once', () => {
   const net = new RoadNet();
   net.add([{ id: 1, f: 0, n: [1, 2], c: [38.95, -77.45, 38.95, -77.44] }, { id: 2, f: 0, n: [3, 4], c: [39.5, -77.45, 39.5, -77.44] }]);
   const seen = [];
-  net.forEachSegmentNear(38.95, -77.445, 1500, (way, i) => seen.push(`${way.id}:${i}`));
-  assert.deepEqual(seen, ['1:0']);
+  net.forEachWayNear(38.95, -77.445, 1500, (way) => seen.push(way.id));
+  assert.deepEqual(seen, [1]);
 });
 
 test('speedometer range: 200 to start, grows past 3/4, comes back without flicker', () => {

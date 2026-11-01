@@ -20,6 +20,7 @@
     <button id="shareButton">Share</button>
     <button id="pauseButton">Pause</button>
     <button id="helpButton">Keys</button>
+    <button id="sendLog" title="Sends the performance log to the server for review, including where the car has been">Send log</button>
     <div class="where" id="where"></div>
   </header>
   <div id="notice"></div>
@@ -189,6 +190,9 @@
     <select id="mapQuality" data-setting="mapQuality"><option value="PERFORMANCE">Smoother</option><option value="FIDELITY">More detail</option></select>
     <label for="mapMemory">Map memory limit <span data-value="mapMemory"></span></label>
     <input id="mapMemory" data-setting="mapMemory" type="range" min="256" max="2048" step="128">
+    <label for="mapScale">Map sharpness <span data-value="mapScale"></span></label>
+    <input id="mapScale" data-setting="mapScale" type="range" min="0.5" max="1" step="0.05">
+    <label class="check"><input id="mapLabels" data-setting="mapLabels" type="checkbox"> Road and place names on the map</label>
   </section>
   <section>
     <h3>Driving</h3>
