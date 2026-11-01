@@ -44,6 +44,19 @@ test('log: a row holds frame rate, slow frames and our own share of the frame', 
   assert.equal(log.frames, 0, 'each row starts counting afresh');
 });
 
+test('log: session API totals survive each sample row', () => {
+  const log = new PerfLog(memoryStore());
+  log.count('geocodes', 2);
+  log.count('routes', 1);
+  log.sample(6000, { mph: 0 });
+  log.count('elevations', 1);
+  assert.equal(log.totals.geocodes, 2);
+  assert.equal(log.totals.routes, 1);
+  assert.equal(log.totals.elevations, 1);
+  assert.equal(log.billedTotal(), 4);
+  assert.equal(log.apiSummaryKey(), 'geocodes:2|routes:1|elevations:1|mapRequests:0|roadRequests:0');
+});
+
 test('log: survives a refresh, and clears once sent', () => {
   const store = memoryStore();
   const before = new PerfLog(store);

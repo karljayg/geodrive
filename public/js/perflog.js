@@ -20,6 +20,15 @@ export const COLUMNS = [
   'geocodes', 'routes', 'elevations',         // billed Google calls in this sample
 ];
 
+// Session totals for the HUD; keys match count() names.
+export const API_STATS = [
+  { key: 'geocodes', label: 'Geocoding', note: 'Billed · address and reverse geocode' },
+  { key: 'routes', label: 'Routes', note: 'Billed · navigation and FSD' },
+  { key: 'elevations', label: 'Elevation', note: 'Billed · fallback ground height' },
+  { key: 'mapRequests', label: 'Map tiles', note: '3D map streaming requests' },
+  { key: 'roadRequests', label: 'Road tiles', note: 'OpenFreeMap · free' },
+];
+
 const round = (n) => (Number.isFinite(n) ? Math.round(n * 10) / 10 : 0);
 
 export class PerfLog {
@@ -30,6 +39,7 @@ export class PerfLog {
     this.nextSample = 0;
     this.lastFrame = 0;
     this.chunk = this.readIndex().next;
+    this.totals = {};
     this.reset();
   }
 
@@ -69,6 +79,16 @@ export class PerfLog {
 
   count(name, by = 1) {
     this.counts[name] = (this.counts[name] || 0) + by;
+    this.totals[name] = (this.totals[name] || 0) + by;
+  }
+
+  // Compact string for the HUD; changes only when a count() runs.
+  apiSummaryKey() {
+    return API_STATS.map(({ key }) => `${key}:${this.totals[key] || 0}`).join('|');
+  }
+
+  billedTotal() {
+    return (this.totals.geocodes || 0) + (this.totals.routes || 0) + (this.totals.elevations || 0);
   }
 
   event(type, detail = null) {

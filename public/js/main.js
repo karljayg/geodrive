@@ -8,7 +8,7 @@ import { beamPools, brakeLit, drawDots, drawPools, tailDots } from './headlights
 import { clockText, darknessAt, tintAt } from './daylight.js';
 import { drawGauge, drawNav, navBehind, revRange, speedRange, speedStep } from './dash.js';
 import { EngineAudio } from './engineSound.js';
-import { describeMachine, observeBrowser, PerfLog } from './perflog.js';
+import { API_STATS, describeMachine, observeBrowser, PerfLog } from './perflog.js';
 import { newGearbox, stepGearbox } from './gearbox.js';
 import { frequencyText, Radio } from './radio.js';
 import { clearRoute, loadRoute, loadSession, saveRoute, saveSession } from './session.js';
@@ -75,7 +75,7 @@ let lane = 0, laneNow = LANE_OFFSET; // lane: metres chosen off the usual line; 
 let destination = null, route = null, routeIndex = null, routeLine = null, routing = false, routedAt = 0, reroutes = 0, fsd = false, fsdBoost = 0, arriving = false;
 let paused = false, trip = newTrip();
 const engine = new EngineAudio();
-let soundThrottle = 0, savedAt = 0, radioResume = false;
+let soundThrottle = 0, savedAt = 0, radioResume = false, radioHeld = false;
 const SOUND_THROTTLE_RISE = 1.1; // s for a held W to reach full throttle in the sound; the car's acceleration doesn't change
 const SAVE_EVERY = 2000; // ms between saving the trip
 const gearbox = newGearbox();
@@ -694,7 +694,7 @@ function frame(t) {
     updateHud(t);
     perfLog.spend('dash', performance.now() - dashBegan);
   } else if (map) {
-    // Paused or in a dialog: the engine goes quiet and the radio carries on.
+    // Paused or in a dialog: the engine goes quiet. Pause also holds the radio (see setPaused).
     const profile = profileFor(settings.carProfile);
     if (!previewing()) engine.update({ rpm: gearbox.rpm, load: 0, speedMph: 0, car: profile, running: false });
   }
@@ -988,7 +988,15 @@ function setPaused(on) {
   keys.clear();
   el('pause').classList.toggle('open', on);
   el('pauseButton').textContent = on ? 'Resume' : 'Pause';
-  if (on) renderTrip();
+  if (on) {
+    renderTrip();
+    // Mute the radio while paused, but remember it so resume can bring it back.
+    radioHeld = radio.on;
+    if (radioHeld) radio.hold();
+  } else if (radioHeld) {
+    radioHeld = false;
+    if (radio.on) radio.release();
+  }
 }
 
 el('pauseButton').addEventListener('click', () => setPaused(!paused));
@@ -1103,12 +1111,30 @@ function applyGraphics() {
 
 // Frames per second, the slowest frame in the last second, and JavaScript memory where the browser reports it
 // (Chrome). That memory excludes the 3D map's graphics, which is usually most of what a tab uses.
-let perfFrames = 0, perfSince = 0, perfSlowest = 0, perfLast = 0;
+let perfFrames = 0, perfSince = 0, perfSlowest = 0, perfLast = 0, apiSummaryKey = '';
+function updateApiPanel() {
+  const key = perfLog.apiSummaryKey();
+  if (key === apiSummaryKey) return;
+  apiSummaryKey = key;
+  const billed = perfLog.billedTotal();
+  const summary = el('apiSummary');
+  summary.textContent = billed ? `API ${billed}` : 'API 0';
+  summary.title = billed
+    ? `Session billed calls: ${perfLog.totals.geocodes || 0} geocode, ${perfLog.totals.routes || 0} routes, ${perfLog.totals.elevations || 0} elevation. Hover for details.`
+    : 'No billed Google calls yet this session. Hover for details.';
+  const rows = API_STATS.map(({ key: name, label, note }) => {
+    const n = perfLog.totals[name] || 0;
+    return `<tr><th title="${note}">${label}</th><td>${Number.isInteger(n) ? n : Math.round(n * 10) / 10}</td></tr>`;
+  }).join('');
+  el('apiDetail').innerHTML = `<table>${rows}</table><p class="note">Counts since load. Geocoding, routes and elevation are billed in Google Cloud.</p>`;
+}
+
 function measureFrame(t) {
   perfSlowest = Math.max(perfSlowest, t - perfLast);
   perfLast = t;
   perfFrames++;
   if (t - perfSince < 1000) return;
+  updateApiPanel();
   const fps = Math.round((perfFrames * 1000) / (t - perfSince));
   const heap = performance.memory ? ` · JS ${Math.round(performance.memory.usedJSHeapSize / 1048576)} MB` : '';
   const box = el('perf');
@@ -1488,6 +1514,7 @@ async function boot() {
 
 observeBrowser(perfLog);
 perfLog.event('load', { saved: !!loadSession(), version: 1 });
+updateApiPanel();
 
 // The saved or default station, ready to play at the first click or key press, as browsers require.
 radio.restore(settings.radioStation);

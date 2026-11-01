@@ -58,7 +58,17 @@
     </div>
   </div>
   <div class="centre">
-    <div class="navTop"><span id="eta"></span><span id="perf" title="Frames per second, the slowest frame in the last second, and JavaScript memory"></span><span id="clock"></span></div>
+    <div class="navTop">
+      <span id="eta"></span>
+      <div class="navMetrics">
+        <div id="apiPanel" class="apiPanel">
+          <span id="apiSummary" title="Hover for API call counts this session">API 0</span>
+          <div id="apiDetail" class="apiDetail" aria-hidden="true"></div>
+        </div>
+        <span id="perf" title="Frames per second, the slowest frame in the last second, and JavaScript memory"></span>
+      </div>
+      <span id="clock"></span>
+    </div>
     <div class="navBox">
       <canvas id="navScreen" title="Click to change the range" aria-label="Navigation screen"></canvas>
       <div id="nav"><div id="navState"></div><div id="navWhere"></div></div>

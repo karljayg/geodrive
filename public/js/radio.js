@@ -198,6 +198,19 @@ export class Radio {
     this.say('Off');
   }
 
+  // Stops sound without turning the radio off, for the pause screen. Leaves the station and UI as they were.
+  hold() {
+    if (!this.on) return;
+    this.stopSong();
+    this.audio.pause();
+  }
+
+  // Plays again after hold(), retuning so a live stream catches up rather than buffering silence.
+  release() {
+    if (!this.on || !this.current) return;
+    this.tune(this.current);
+  }
+
   setBand(band) {
     this.band = band;
     const first = this.firstStation();
