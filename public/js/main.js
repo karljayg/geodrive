@@ -8,7 +8,7 @@ import { beamPools, brakeLit, drawDots, drawPools, tailDots } from './headlights
 import { clockText, darknessAt, tintAt } from './daylight.js';
 import { drawGauge, drawNav, navBehind, revRange, speedRange, speedStep } from './dash.js';
 import { EngineAudio } from './engineSound.js';
-import { API_STATS, describeMachine, observeBrowser, PerfLog } from './perflog.js';
+import { apiPanelRows, describeMachine, observeBrowser, PerfLog } from './perflog.js';
 import { newGearbox, stepGearbox } from './gearbox.js';
 import { frequencyText, Radio } from './radio.js';
 import { clearRoute, loadRoute, loadSession, saveRoute, saveSession } from './session.js';
@@ -1111,22 +1111,28 @@ function applyGraphics() {
 
 // Frames per second, the slowest frame in the last second, and JavaScript memory where the browser reports it
 // (Chrome). That memory excludes the 3D map's graphics, which is usually most of what a tab uses.
-let perfFrames = 0, perfSince = 0, perfSlowest = 0, perfLast = 0, apiSummaryKey = '';
-function updateApiPanel() {
-  const key = perfLog.apiSummaryKey();
-  if (key === apiSummaryKey) return;
-  apiSummaryKey = key;
+let perfFrames = 0, perfSince = 0, perfSlowest = 0, perfLast = 0, apiBadge = '';
+const callCount = (n) => (Number.isInteger(n) ? String(n) : String(Math.round(n * 10) / 10));
+function callTable(rows) {
+  return `<table>${rows.map(({ label, note, n }) => `<tr><th title="${note}">${label}</th><td>${callCount(n)}</td></tr>`).join('')}</table>`;
+}
+
+// The number is cheap. The table walks every kind of call, so it is drawn when the page opens and again on hover.
+function updateApiBadge() {
   const billed = perfLog.billedTotal();
+  const text = `API ${billed}`;
+  if (text === apiBadge) return;
+  apiBadge = text;
   const summary = el('apiSummary');
-  summary.textContent = billed ? `API ${billed}` : 'API 0';
+  summary.textContent = text;
   summary.title = billed
-    ? `Session billed calls: ${perfLog.totals.geocodes || 0} geocode, ${perfLog.totals.routes || 0} routes, ${perfLog.totals.elevations || 0} elevation. Hover for details.`
-    : 'No billed Google calls yet this session. Hover for details.';
-  const rows = API_STATS.map(({ key: name, label, note }) => {
-    const n = perfLog.totals[name] || 0;
-    return `<tr><th title="${note}">${label}</th><td>${Number.isInteger(n) ? n : Math.round(n * 10) / 10}</td></tr>`;
-  }).join('');
-  el('apiDetail').innerHTML = `<table>${rows}</table><p class="note">Counts since load. Geocoding, routes and elevation are billed in Google Cloud.</p>`;
+    ? `Billed this page: ${perfLog.totals.geocodes || 0} geocode, ${perfLog.totals.routes || 0} routes, ${perfLog.totals.elevations || 0} elevation. Hover for the list.`
+    : 'No billed calls yet this page. Hover for the list.';
+}
+
+function renderApiDetail() {
+  const { other, billed } = apiPanelRows(perfLog.totals);
+  el('apiDetail').innerHTML = `<p class="head">Other calls</p>${callTable(other)}<p class="head billed">Billed</p>${callTable(billed)}<p class="note">Since this page opened. The API number is the three billed calls. Map tiles are files for the view. Opening the page is one map charge, not listed here.</p>`;
 }
 
 function measureFrame(t) {
@@ -1134,7 +1140,7 @@ function measureFrame(t) {
   perfLast = t;
   perfFrames++;
   if (t - perfSince < 1000) return;
-  updateApiPanel();
+  updateApiBadge();
   const fps = Math.round((perfFrames * 1000) / (t - perfSince));
   const heap = performance.memory ? ` · JS ${Math.round(performance.memory.usedJSHeapSize / 1048576)} MB` : '';
   const box = el('perf');
@@ -1514,7 +1520,10 @@ async function boot() {
 
 observeBrowser(perfLog);
 perfLog.event('load', { saved: !!loadSession(), version: 1 });
-updateApiPanel();
+updateApiBadge();
+renderApiDetail();
+el('apiPanel').addEventListener('pointerenter', renderApiDetail);
+el('apiPanel').addEventListener('focusin', renderApiDetail);
 
 // The saved or default station, ready to play at the first click or key press, as browsers require.
 radio.restore(settings.radioStation);

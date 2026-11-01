@@ -1,0 +1,15 @@
+---
+description: Owner phrase "Ok, go to sync and deploy" — commit, push, local, live
+alwaysApply: true
+---
+
+# Sync and deploy
+
+When the owner says **Ok, go to sync and deploy** (or close variants like "go to sync and deploy"), do all of this, in order:
+
+1. **git commit** — stage relevant changes and commit (follow the repo commit rules: status/diff/log, HEREDOC message). If the working tree is already clean, skip commit.
+2. **git push** to GitHub (`origin`, usually `main`).
+3. **Local** — `public/` is what `npm start` serves at http://localhost:8765/, so saving/committing is enough for local. If the local server is not running, start it with `npm start`.
+4. **psistorm** — `npm run deploy` (rsync `public/` to the live site), as usual.
+
+Do not ask whether to push or deploy when this phrase is used; that is the request. Still use a proper commit message and do not force-push.

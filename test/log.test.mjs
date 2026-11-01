@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { COLUMNS, PerfLog } from '../public/js/perflog.js';
+import { apiPanelRows, COLUMNS, PerfLog, resourceKind } from '../public/js/perflog.js';
 import { placeFrom, townFrom } from '../public/js/town.js';
 
 const memoryStore = () => {
@@ -55,6 +55,27 @@ test('log: session API totals survive each sample row', () => {
   assert.equal(log.totals.elevations, 1);
   assert.equal(log.billedTotal(), 4);
   assert.equal(log.apiSummaryKey(), 'geocodes:2|routes:1|elevations:1|mapRequests:0|roadRequests:0');
+});
+
+test('log: the hover panel lists other files, then the billed calls', () => {
+  assert.equal(resourceKind('https://keyhole-pa.googleapis.com/x'), 'mapRequests');
+  assert.equal(resourceKind('https://maps.googleapis.com/maps/vt?x=1'), 'mapRequests');
+  assert.equal(resourceKind('https://tiles.openfreemap.org/planet/14/1/2.pbf'), 'roadRequests');
+  assert.equal(resourceKind('https://s3.amazonaws.com/elevation-tiles-prod/terrarium/12/1/2.png'), 'terrainRequests');
+  assert.equal(resourceKind('https://de1.api.radio-browser.info/json/stations'), 'radioRequests');
+  assert.equal(resourceKind('nowplaying.php?id=1'), 'songRequests');
+  assert.equal(resourceKind('/audio/samples/idle.flac'), 'audioRequests');
+  assert.equal(resourceKind('https://maps.googleapis.com/maps/api/geocode/json'), null);
+  assert.equal(resourceKind('https://routes.googleapis.com/directions/v2:computeRoutes'), null);
+  assert.equal(resourceKind('config.json'), 'otherRequests');
+  const rows = apiPanelRows({ geocodes: 1, mapRequests: 10, songRequests: 2 });
+  assert.deepEqual(rows.billed.map((r) => r.label), ['Geocoding', 'Routes', 'Elevation']);
+  assert.equal(rows.billed[0].n, 1);
+  assert.equal(rows.billed[2].n, 0);
+  assert.equal(rows.other[0].n, 10);
+  assert.equal(rows.other.find((r) => r.label === 'Terrain').n, 0);
+  assert.equal(rows.other.find((r) => r.label === 'Song titles').n, 2);
+  assert.equal(rows.other.some((r) => r.label === 'Radio'), false);
 });
 
 test('log: survives a refresh, and clears once sent', () => {

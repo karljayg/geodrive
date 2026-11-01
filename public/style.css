@@ -115,9 +115,9 @@ kbd { display: inline-flex; min-width: 24px; justify-content: center; border: 1p
   display: none;
   position: absolute;
   right: 0;
-  top: calc(100% + 4px);
+  bottom: calc(100% + 4px);
   z-index: 40;
-  min-width: 210px;
+  min-width: 220px;
   padding: 8px 10px;
   border-radius: 8px;
   background: #0a1219f0;
@@ -126,6 +126,9 @@ kbd { display: inline-flex; min-width: 24px; justify-content: center; border: 1p
   pointer-events: none;
 }
 .apiPanel:hover .apiDetail, .apiPanel:focus-within .apiDetail { display: block; }
+.apiDetail .head { margin: 8px 0 3px; font-size: 9px; letter-spacing: .06em; text-transform: uppercase; color: #7a8f9f; }
+.apiDetail .head:first-child { margin-top: 0; }
+.apiDetail .head.billed { color: #d5e4c4; }
 .apiDetail table { width: 100%; border-collapse: collapse; font-size: 10px; line-height: 1.35; }
 .apiDetail th { text-align: left; font-weight: 650; color: #dfe7ee; padding: 2px 8px 2px 0; white-space: nowrap; }
 .apiDetail td { text-align: right; font-variant-numeric: tabular-nums; color: #fff; padding: 2px 0; }

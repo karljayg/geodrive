@@ -20,14 +20,49 @@ export const COLUMNS = [
   'geocodes', 'routes', 'elevations',         // billed Google calls in this sample
 ];
 
-// Session totals for the HUD; keys match count() names.
-export const API_STATS = [
-  { key: 'geocodes', label: 'Geocoding', note: 'Billed · address and reverse geocode' },
-  { key: 'routes', label: 'Routes', note: 'Billed · navigation and FSD' },
-  { key: 'elevations', label: 'Elevation', note: 'Billed · fallback ground height' },
-  { key: 'mapRequests', label: 'Map tiles', note: '3D map streaming requests' },
-  { key: 'roadRequests', label: 'Road tiles', note: 'OpenFreeMap · free' },
+// The three calls Google bills apart from the map load. Order is the hover panel, billed section last.
+export const BILLED_CALLS = [
+  { key: 'geocodes', label: 'Geocoding', note: 'Address, destination, and the town name' },
+  { key: 'routes', label: 'Routes', note: 'A destination, and a new line after leaving the route' },
+  { key: 'elevations', label: 'Elevation', note: 'Only if the free terrain tiles fail before the first height' },
 ];
+
+// Files and free lookups. The first three always show; the rest show once one has happened.
+export const OTHER_CALLS = [
+  { key: 'mapRequests', label: 'Map tiles', note: '3D files for what is on screen. Not a separate charge' },
+  { key: 'roadRequests', label: 'Road tiles', note: 'OpenFreeMap. Free' },
+  { key: 'terrainRequests', label: 'Terrain', note: 'Ground height. Free' },
+  { key: 'radioRequests', label: 'Radio', note: 'Station directory. Free', whenUsed: true },
+  { key: 'songRequests', label: 'Song titles', note: 'This site reads the station. Free', whenUsed: true },
+  { key: 'audioRequests', label: 'Audio', note: 'Engine samples from this site', whenUsed: true },
+  { key: 'otherRequests', label: 'Other', note: 'Anything else loaded since the page opened', whenUsed: true },
+];
+
+// Session totals for the HUD; keys match count() names. Billed first, then the two streams the log already stores.
+export const API_STATS = [...BILLED_CALLS, OTHER_CALLS[0], OTHER_CALLS[1]];
+
+// Which counter a downloaded file belongs to. Null is a billed Google call, counted where it is asked for.
+export function resourceKind(url) {
+  const name = String(url);
+  if (/keyhole-pa\.googleapis|maps\.googleapis\.com\/maps\/vt/.test(name)) return 'mapRequests';
+  if (/openfreemap/.test(name)) return 'roadRequests';
+  if (/elevation-tiles-prod|terrarium/.test(name)) return 'terrainRequests';
+  if (/radio-browser\.info/.test(name)) return 'radioRequests';
+  if (/nowplaying\.php/.test(name)) return 'songRequests';
+  if (/\/audio\/|\.flac(?:$|\?)/.test(name)) return 'audioRequests';
+  if (/routes\.googleapis\.com/.test(name)) return null;
+  if (/maps\.googleapis\.com/.test(name) && /geocode|elevation/i.test(name)) return null;
+  return 'otherRequests';
+}
+
+// Rows for the hover panel: other files first, billed calls last.
+export function apiPanelRows(totals = {}) {
+  const row = (spec) => ({ label: spec.label, note: spec.note, n: totals[spec.key] || 0 });
+  return {
+    other: OTHER_CALLS.filter((spec) => !spec.whenUsed || (totals[spec.key] || 0) > 0).map(row),
+    billed: BILLED_CALLS.map(row),
+  };
+}
 
 const round = (n) => (Number.isFinite(n) ? Math.round(n * 10) / 10 : 0);
 
@@ -195,12 +230,10 @@ export function observeBrowser(log) {
     log.count('longMs', e.duration);
   });
   watch('resource', (e) => {
-    if (/keyhole-pa\.googleapis|maps\.googleapis\.com\/maps\/vt/.test(e.name)) {
-      log.count('mapRequests');
-      log.count('mapReqMs', e.duration);
-    } else if (/openfreemap/.test(e.name)) {
-      log.count('roadRequests');
-    }
+    const kind = resourceKind(e.name);
+    if (!kind) return;
+    log.count(kind);
+    if (kind === 'mapRequests') log.count('mapReqMs', e.duration);
   });
   watch('long-animation-frame', (e) => {
     if (e.duration < SLOW_FRAME || document.hidden) return; // a hidden tab's frames are slow on purpose
