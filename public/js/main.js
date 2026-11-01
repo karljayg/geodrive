@@ -1433,7 +1433,7 @@ document.addEventListener('keydown', (e) => {
   }
   if (k === '[') radio.seek(-1);
   if (k === ']') radio.seek(1);
-  if (k === 'h') el('help').classList.toggle('open');
+  if (k === 'h' || k === 'k') el('help').classList.toggle('open');
   if (k === 'm') { settings.muted = !settings.muted; applySound(); saveSettings(); notice(settings.muted ? 'Sound muted. Press M to turn it back on.' : 'Sound on.', 2000); }
   if (k === 'q') pressSignal(-1);
   if (k === 'e') pressSignal(1);

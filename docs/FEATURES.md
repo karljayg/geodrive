@@ -98,4 +98,4 @@ Escape or a click outside closes every popup: start, destination, pause, setting
 | L | Change the start point |
 | O | Settings |
 | P | Pause |
-| H | Show or hide the key list |
+| H / K | Show or hide the key list |
