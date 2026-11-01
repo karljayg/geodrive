@@ -212,7 +212,8 @@ export class Path {
     const line = [], end = this.cum[index] + metres;
     for (let i = index; i < this.points.length && this.cum[i] <= end; i++) {
       const p = this.points[i];
-      if (i === index || (i - index) % (p.radius !== undefined ? DRAW_EVERY_ARC : DRAW_EVERY) === 0) line.push({ lat: p.lat, lng: p.lng });
+      const kept = i === index || i === this.points.length - 1 || (i - index) % (p.radius !== undefined ? DRAW_EVERY_ARC : DRAW_EVERY) === 0;
+      if (kept) line.push({ lat: p.lat, lng: p.lng });
     }
     return line;
   }

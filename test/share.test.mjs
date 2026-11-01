@@ -65,3 +65,9 @@ test('the dialog says what a link will do', () => {
   assert.match(Object.fromEntries(shareSummary(shared, { ...base, radioOn: false }, helpers)).Radio, /^Off/);
   assert.match(Object.fromEntries(shareSummary(shared, { ...base, muted: true }, helpers)).Radio, /muted/);
 });
+
+test('the map settings travel in a link, kept to what the slider allows', () => {
+  const carry = (mapScale, mapLabels) => unpackShare(JSON.parse(JSON.stringify(packShare({ settings: { ...defaults, mapScale, mapLabels }, defaults: { ...defaults, mapScale: 0.8, mapLabels: true }, session, start: startA, defaultStart: startA })))).settings;
+  assert.deepEqual([carry(0.6, false).mapScale, carry(0.6, false).mapLabels], [0.6, false]);
+  assert.equal(carry(0, true).mapScale, 0.5, 'never zero, which would hide the map');
+});

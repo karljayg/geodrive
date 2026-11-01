@@ -242,6 +242,17 @@ function drawRoute() {
   }
 }
 
+// Keeps the drawn stretch ahead of the car, on FSD or driving by hand. By hand the car may leave the line and rejoin
+// anywhere, so a point too far from the last one searches the whole route.
+function advanceRouteLine() {
+  if (!route) return;
+  if (!fsd) {
+    const near = route.locate(pos.lat, pos.lng, routeIndex);
+    routeIndex = (near.dist > OFF_PATH ? route.locate(pos.lat, pos.lng) : near).index;
+  }
+  if (routeIndex !== null && Math.abs(route.cum[routeIndex] - lineAlong) > ROUTE_REDRAW) drawRoute();
+}
+
 function setFsd(on, message) {
   if (on && !destination) return notice('Enter a destination first: press G.', 3000);
   fsd = on;
@@ -401,11 +412,11 @@ async function refreshTown() {
   if (townAt && distance(townAt.lat, townAt.lng, pos.lat, pos.lng) < TOWN_EVERY) return;
   townBusy = true;
   townAsked = performance.now();
-  townAt = { lat: pos.lat, lng: pos.lng };
+  const asked = townAt = { lat: pos.lat, lng: pos.lng };
   try {
-    const { results } = await geocoder.geocode({ location: townAt });
+    const { results } = await geocoder.geocode({ location: asked });
     const name = townFrom(results);
-    if (name && name !== town) {
+    if (asked === townAt && name && name !== town) { // otherwise the car was moved to a new start while waiting
       town = name;
       perfLog.event('town', name);
       showPlace();
@@ -566,6 +577,7 @@ function applySound() {
 }
 
 function frame(t) {
+  requestAnimationFrame(frame); // first, so an error in one frame can't stop the car for good
   const began = performance.now();
   measureFrame(t);
   const dt = Math.min((t - last) / 1000 || 0, 0.06);
@@ -607,7 +619,7 @@ function frame(t) {
       tilesCheckedAt = t;
       tiles.ensure(pos.lat, pos.lng, car.heading, car.speed);
       refreshTown();
-      if (route && fsd && routeIndex !== null && route.cum[routeIndex] - lineAlong > ROUTE_REDRAW) drawRoute();
+      advanceRouteLine();
     }
     lateSnap();
     sampleGround();
@@ -625,7 +637,6 @@ function frame(t) {
   }
   perfLog.frame(t, performance.now() - began);
   if (perfLog.due(t)) sampleLog(t);
-  requestAnimationFrame(frame);
 }
 
 // --- Start point and destination ------------------------------------------------------------------------------

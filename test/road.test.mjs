@@ -312,6 +312,14 @@ test('roads: a released tile leaves nothing behind, and the others keep working'
   assert.equal(net.atNode.size, 0);
 });
 
+test('roads: a way that visits a node twice, like a roundabout, can be released', () => {
+  const net = new RoadNet();
+  const loop = { id: 'loop', f: 0, n: ['1', '2', '3', '1'], c: [40, -74, 40.001, -74, 40.001, -73.999, 40, -74] };
+  net.add([loop]);
+  net.remove([loop]);
+  assert.equal(net.ways.size + net.grid.size + net.atNode.size, 0);
+});
+
 test('roads: ways near a point, for the nav screen', () => {
   const net = new RoadNet();
   net.add([
@@ -338,4 +346,6 @@ test('route: the line drawn on the map is short and light, and still follows the
   assert.ok(offCorner < 10, `passes the corner within ${offCorner} m`);
   assert.ok(line.length < path.lineAhead(0, 30000).length / 2, 'and only the stretch asked for');
   assert.equal(path.lineAhead(path.points.length - 1, 8000).length, 1);
+  const all = path.lineAhead(0, Infinity), end = path.points[path.points.length - 1];
+  assert.deepEqual(all[all.length - 1], { lat: end.lat, lng: end.lng }, 'the line reaches the destination');
 });

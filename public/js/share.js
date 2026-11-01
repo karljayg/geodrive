@@ -9,13 +9,13 @@ const latLng = (lat, lng) => Number.isFinite(lat) && Number.isFinite(lng) && Mat
 const TRIP_FIELDS = ['elapsed', 'moving', 'meters', 'fsdMeters', 'offRoadMeters', 'fsdSeconds', 'topSpeed', 'bridges', 'takeovers', 'signals', 'fuel'];
 const RANGES = {
   carScale: [0.3, 5], masterVolume: [0, 1], engineVolume: [0, 1], enginePitch: [0.5, 1.5], radioVolume: [0, 1],
-  signalVolume: [0, 1], roadVolume: [0, 1], windVolume: [0, 1], hour: [0, 24], mapMemory: [256, 2048],
+  signalVolume: [0, 1], roadVolume: [0, 1], windVolume: [0, 1], hour: [0, 24], mapMemory: [256, 2048], mapScale: [0.5, 1],
 };
 const CHOICES = {
   carProfile: ['sport', 'muscle', 'hatch', 'truck', 'electric'], engineSound: ['recorded', 'synth'],
   audioPreset: ['quiet', 'balanced', 'sport'], mapQuality: ['PERFORMANCE', 'FIDELITY'],
 };
-const SWITCHES = ['muted', 'roadFollow', 'headlights', 'radioOn'];
+const SWITCHES = ['muted', 'roadFollow', 'headlights', 'radioOn', 'mapLabels'];
 
 // Only what differs from the defaults goes in the link, which keeps it short.
 export function packShare({ settings, defaults, session, start, defaultStart }) {

@@ -29,7 +29,7 @@ export class RoadNet {
   remove(list) {
     for (const way of list) {
       if (!this.ways.delete(way.id)) continue;
-      for (const node of way.n) {
+      for (const node of new Set(way.n)) { // a roundabout starts and ends on the same node
         const left = this.atNode.get(node).filter((entry) => entry.way !== way);
         if (left.length) this.atNode.set(node, left);
         else this.atNode.delete(node);
