@@ -1,10 +1,11 @@
 // The headlight pattern on the road: two beams from the lamps, made of many soft overlapping pools. All sizes come
 // from the car's own length and width. Pure apart from drawing, and tested in node.
 const SLICES = 36;
-const REACH = 6;          // car lengths ahead of the nose where the outer beam has faded out
-const PEAK = 3.5;         // car lengths ahead of the nose where the beam is brightest
-const NEAR = 0.08;        // brightness just ahead of the nose, against 1 at the peak
+const REACH = 6;          // car lengths of beam length, from the start of the pool to where it has faded out
+const PEAK = 3.5;         // car lengths into the beam where it is brightest
+const NEAR = 0.08;        // brightness at the start of the beam, against 1 at the peak
 const SPREAD = 0.11;      // how much a beam widens per metre ahead
+const BIAS = 3.5;         // car lengths past the nose where the beams begin (keeps them ahead when the overlay drifts)
 
 export function beamBrightness(ahead, length) {
   const d = ahead / length;
@@ -16,13 +17,13 @@ export function beamBrightness(ahead, length) {
 
 // Soft pools in metres on the road: f ahead of the car's centre, r to its right, rx and ry their half sizes.
 export function beamPools(length, width) {
-  const nose = length / 2, lamp = width * 0.65, pools = [];
+  const nose = length / 2, lamp = width * 0.65, bias = BIAS * length, pools = [];
   for (let i = 0; i < SLICES; i++) {
     const ahead = ((i + 0.5) / SLICES) * REACH * length;
     const strength = beamBrightness(ahead, length);
     const rx = Math.min(width * 0.45 + ahead * SPREAD, nose + ahead), ry = Math.min(length * 0.55, ahead);
     for (const side of [-1, 1]) {
-      pools.push({ f: nose + ahead, r: side * (lamp + ahead * 0.015), rx, ry, strength });
+      pools.push({ f: nose + bias + ahead, r: side * (lamp + ahead * 0.015), rx, ry, strength });
     }
   }
   return pools;

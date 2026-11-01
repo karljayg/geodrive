@@ -94,7 +94,7 @@ test('time of day: clear by day, dark at night, warm at dusk', () => {
   assert.equal(clockText(13.5), '1:30 PM');
 });
 
-test('headlights: dim at the nose, brightest 3-4 car lengths ahead, gone by 6, narrow, nothing behind', () => {
+test('headlights: dim at the start, brightest mid-beam, gone by 6 lengths, start past the nose, narrow', () => {
   const L = 4, W = 1.8;
   assert.ok(beamBrightness(0.1, L) < 0.3);
   assert.equal(beamBrightness(3.5 * L, L), 1);
@@ -104,9 +104,9 @@ test('headlights: dim at the nose, brightest 3-4 car lengths ahead, gone by 6, n
   assert.equal(beamBrightness(-1, L), 0);
   const pools = beamPools(L, W);
   for (const p of pools) {
-    assert.ok(p.f - p.ry >= L / 2 - 1e-9, 'no light behind the nose');
+    assert.ok(p.f - p.ry >= L / 2 + 3.5 * L - 1e-9, 'beams start ~3.5 lengths past the nose');
     assert.ok(Math.abs(p.r) + p.rx < W * 1.3 + (p.f - L / 2) * 0.2, 'little sideways spill');
-    assert.ok(p.f <= L / 2 + 6 * L);
+    assert.ok(p.f <= L / 2 + 3.5 * L + 6 * L);
   }
   const twice = beamPools(L * 2, W * 2);
   assert.ok(Math.abs(twice[10].f - pools[10].f * 2) < 1e-9, 'scales with the car');
