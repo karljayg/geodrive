@@ -10,6 +10,16 @@ export const SAYINGS = {
     'Just you and the floor here.',
     'You look around. Nope.',
     'If there is something to do here, it\'s hiding well.',
+    'You press F with confidence. Nothing is impressed.',
+    'This spot has no further questions.',
+    'You consider your options. There aren\'t any.',
+    'Nothing here. The floor appreciates the visit, though.',
+    'You stand here importantly for a moment.',
+    'All quiet on this bit of ground.',
+    'Your hands remain unemployed.',
+    'You could do something here, if there were anything.',
+    'You nod at nothing in particular. It nods back.',
+    'A fine place to do nothing, and you\'re doing it well.',
   ],
 
   // Light switches
