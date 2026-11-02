@@ -18,6 +18,7 @@ export const DEFAULTS = {
   roadFollow: true,
   carColor: '#0dbf8c',
   hour: 12, // time of day, 0..24
+  footTimeRate: 1, // game hours that pass in a real minute on foot; at the wheel time runs at real speed
   headlights: false,
   mapQuality: 'PERFORMANCE', // or 'FIDELITY': Google's 3D map detail
   mapMemory: 512, // MB the 3D map may keep

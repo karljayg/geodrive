@@ -40,8 +40,8 @@ One press takes the next non-service road on that side, far enough ahead to brak
 A full-width panel below the map, which is sized to end above it.
 - Left: speedometer, tachometer with gear, fuel bar, lights and horn. The speedometer tops out at 200 until past 150 mph, then steps to 300, 400 and 500, keeping the needle at or under 3/4 of the dial. Tachometers end at the round thousand above each car's redline. Electric cars show battery charge instead.
 - Fuel and charge are placeholders: 4 hours of running from full to empty, saved with the trip, with no effect on the car. A new start refills.
-- The nav screen carries FSD status and destination top left, and at the bottom left a muted analog clock with digital time showing the game's time of day (which only moves when changed).
-- Centre: real-time clock, ETA when there's a destination (from Google's route times, assuming FSD cruise), trip figures, and the navigation screen.
+- The nav screen carries FSD status and destination top left, and at the bottom left a muted analog clock with digital time showing the game's time of day.
+- Centre: the game clock, ETA when there's a destination (from Google's route times, assuming FSD cruise), trip figures, and the navigation screen.
 - Right: radio with an LCD, PWR, bands, and volume and tune knobs (drag or scroll). Clicking the LCD opens the station list.
 - Navigation screen: heading-up view from very high: the arrow points up and the map turns under it. It's drawn from the road data already loaded rather than a second Google map, which would add map charges. Click it to change the range.
 
@@ -55,7 +55,7 @@ A full-width panel below the map, which is sized to end above it.
 
 ## Car look, lights, horn and time of day
 - Car type and colour are built in the browser (`carModel.js`), with a matching side-view picture in Settings.
-- Time of day (Settings, or T for +1 hour) is a colour tint over the map (`daylight.js`). Google's 3D map is a photograph with fixed lighting and no lighting controls, so shadows don't move, and buildings and streets don't light up.
+- There is one game clock, and every clock shows it. It keeps real time at the wheel and runs at 1 minute = 1 hour on foot (Settings, On foot), and stops while paused. Settings or T (+1 hour) set it. Time of day is a colour tint over the map (`daylight.js`). Google's 3D map is a photograph with fixed lighting and no lighting controls, so shadows don't move, and buildings and streets don't light up.
 - Headlights (H or Lights button) are two forward beams (`headlights.js`) cut out of the tint: they begin about 3.5 car lengths past the nose (so they stay ahead when the overlay and the 3D car drift), brightest about 3.5 lengths into the beam, fading out by 6, with little side spill and nothing behind. They scale with the car's size and shape and turn with it. The car's body is also lifted slightly so it stays visible at night. Two tail lights are small lit dots, a fixed size on screen: on with the lights, bigger and brighter when braking or reversing, including with the lights off, so holding S keeps them bright through the stop and all the way back. It's a screen effect, so it doesn't fall on buildings or follow hills.
 - Horn (hold B or the Horn button) is synthesised, with notes set per car in `cars.js`.
 

@@ -69,6 +69,7 @@ Titles travel in the stream as ICY metadata, which `<audio>` hides and most stat
 - Furniture is Kenney's kit (CC0). After changing which models `ITEMS` uses, run `node scripts/build-furniture.mjs`. Models are z up with fronts towards +y, standing on z = 0. The conversion is a rotation, not a mirror, so winding holds; keep the tests on it.
 - Outdoors nothing is drawn by us: the person is 17 `Model3DElement`s on the map (`footPerson.js`: standing, 8 walking, 8 running), and only the current one has any size. Footprints are invisible walls, so they can differ a little from the 3D map's buildings. Rooms are the only thing `footGl.js` draws, on a canvas that is clear otherwise.
 - Rooms are dark unless lit: `roomLight.js` bakes each floor's windows and the sun's position into a small map, redone every half hour of game time and sampled in `footGl.js`, along with room lights (F at a switch by a door, `switchSpots`, kept per floor in `plan.state`; about a quarter of large buildings need a building key, `switchNeedsKey`) and a carried light. Beams don't stop at walls. Outdoors a carried light is drawn on the same `#night` and `#beam` canvases as the headlights.
+- `settings.hour` is the one game clock, moved by `tickClock` in `main.js`: real time at the wheel, `settings.footTimeRate` game hours a real minute on foot. Anything shown from it must key on `clockText`, not the raw hour, which changes every frame.
 - The camera on foot is the driving camera at half its range (`placeCamera`, `syncFootScene`), so it doesn't dodge walls.
 
 ## Start point

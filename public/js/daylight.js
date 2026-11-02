@@ -24,6 +24,11 @@ export const darknessAt = (hour) => {
   return 1 - (0.3 * r + 0.59 * g + 0.11 * b) / 255;
 };
 
+// The one game clock, moved on by real seconds. At the wheel it keeps real time; on foot footRate is the game hours that pass in a real minute.
+export function advanceHour(hour, seconds, onFoot, footRate) {
+  return (hour + seconds * (onFoot ? footRate / 60 : 1 / 3600)) % 24;
+}
+
 export function clockText(hour) {
   const total = Math.round(hour * 60) % 1440;
   const h = Math.floor(total / 60), m = String(total % 60).padStart(2, '0');

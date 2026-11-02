@@ -7,7 +7,7 @@ import { CAR_PROFILES, hornFor, profileFor } from './cars.js';
 import { engineFadeAt } from './engineMix.js';
 import { BODY_SHAPES, buildCarGlb, buildPersonGlb, carPicture } from './carModel.js';
 import { beamPools, brakeLit, drawDots, drawPools, tailDots, torchPools } from './headlights.js';
-import { clockText, darknessAt, tintAt } from './daylight.js';
+import { advanceHour, clockText, darknessAt, tintAt } from './daylight.js';
 import { drawGauge, drawNav, navBehind, revRange, speedRange, speedStep } from './dash.js';
 import { EngineAudio } from './engineSound.js';
 import { apiPanelRows, describeMachine, observeBrowser, PerfLog } from './perflog.js';
@@ -556,21 +556,19 @@ function drawDash(t) {
     navDrawnAt = t;
     const navRoute = fsd || destination ? route : null;
     const navPos = foot ? foot.where() : pos, navHeading = foot ? foot.compass() : car.heading;
-    const navKey = `${navPos.lat.toFixed(6)}|${navPos.lng.toFixed(6)}|${navHeading.toFixed(1)}|${navRadius}|${navRoute?.length}|${routeIndex}|${settings.hour}|${roads.changes}`;
+    const navKey = `${navPos.lat.toFixed(6)}|${navPos.lng.toFixed(6)}|${navHeading.toFixed(1)}|${navRadius}|${navRoute?.length}|${routeIndex}|${clockText(settings.hour)}|${roads.changes}`;
     if (navKey !== navShown || navBehind(roads)) { // parked, nothing on it has changed
       navShown = navKey;
       const navBegan = performance.now();
       navVertices = drawNav(el('navScreen'), { roads, pos: navPos, heading: navHeading, parked: foot ? pos : null, route: navRoute, routeIndex, radius: navRadius, hour: settings.hour, clock: clockText(settings.hour) });
       perfLog.spend('nav', performance.now() - navBegan);
     }
-    const now = new Date();
-    const time = (d) => d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-    show('clock', time(now));
+    show('clock', clockText(settings.hour));
     let eta = '';
     if (destination && route) {
       const at = routeIndex ?? 0, seconds = route.secondsToEnd[at], miles = (route.length - route.cum[at]) / 1609.344;
       const left = seconds < 3600 ? `${Math.max(1, Math.round(seconds / 60))} min` : `${Math.floor(seconds / 3600)} h ${Math.round((seconds % 3600) / 60)} min`;
-      eta = `ETA ${time(new Date(now.getTime() + seconds * 1000))} · ${left} · ${miles.toFixed(1)} mi`;
+      eta = `ETA ${clockText((settings.hour + seconds / 3600) % 24)} · ${left} · ${miles.toFixed(1)} mi`;
     }
     show('eta', eta);
   }
@@ -658,11 +656,23 @@ function applySound() {
   turnKnob(el('volumeKnob'), -135 + settings.radioVolume * 270);
 }
 
+// Every clock reads settings.hour. Pausing or a dialog stops it, and it's saved now and then so a refresh keeps the time.
+let clockSavedAt = 0;
+function tickClock(t, seconds) {
+  if (debug.hold || dialogOpen || paused) return;
+  settings.hour = advanceHour(settings.hour, seconds, !!foot, settings.footTimeRate);
+  if (t - clockSavedAt > 15000) {
+    clockSavedAt = t;
+    saveSettings();
+  }
+}
+
 function frame(t) {
   requestAnimationFrame(frame); // first, so an error in one frame can't stop the car for good
   const began = performance.now();
   measureFrame(t);
   const dt = Math.min((t - last) / 1000 || 0, 0.06);
+  tickClock(t, Math.min((t - last) / 1000 || 0, 1)); // not dt, whose limit would slow the clock whenever the frame rate drops
   last = t;
   if (foot) runFoot(t, dt);
   if (map && !foot && !debug.hold && !dialogOpen && !paused) {
@@ -1372,7 +1382,7 @@ function applyDaylight() {
   const personAngle = carried ? ((foot.posture().facing - camHeading + 540) % 360) - 180 : 0;
   // Only the headlights and brake lights depend on the view, so with neither on nothing redraws while driving.
   const moving = lit || shownBraking || carried ? `${Math.round(range / 2)}|${Math.round(tilt)}|${Math.round(carAngle * 2)}|${Math.round(personAngle * 2)}|${Math.round(carView?.x ?? 0)}|${Math.round(carView?.y ?? 0)}` : '';
-  const key = `${indoors}|${carried}|${settings.hour}|${lit}|${shownBraking}|${settings.carScale}|${settings.carProfile}|${width}x${height}|${moving}`;
+  const key = `${indoors}|${carried}|${clockText(settings.hour)}|${lit}|${shownBraking}|${settings.carScale}|${settings.carProfile}|${width}x${height}|${moving}`;
   if (key === lightKey) return;
   lightKey = key;
   el('lightsButton').setAttribute('aria-pressed', String(settings.headlights));
@@ -1559,6 +1569,7 @@ const settingText = {
   walkSpeed: (v) => `${v.toFixed(1)} m/s`,
   runSpeed: (v) => `${v.toFixed(1)} m/s`,
   hour: clockText,
+  footTimeRate: (v) => (v < 1 ? `1 min = ${v * 60} min` : `1 min = ${v} hr`),
   mapMemory: (v) => `${v} MB`,
   enginePitch: (v) => `${Math.round(v * 100)}%`,
 };

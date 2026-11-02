@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { advanceHour, clockText } from '../public/js/daylight.js';
 import { TORCHES, lightAt, lightMap, sunAt, windowsOn } from '../public/js/roomLight.js';
 import { PocketData, BAG_SLOTS, CAR_SLOTS, FLASHLIGHT } from '../public/js/pocketData.js';
 import { torchPools } from '../public/js/headlights.js';
@@ -91,4 +92,14 @@ test('a full bag refuses, the car holds far more, and a full car refuses', () =>
   for (let i = 0; i < CAR_SLOTS; i++) { data.state.car.push({ id: `c${i}`, name: 'x', count: 1 }); }
   assert.equal(data.move('c0', false), false, 'the bag is full');
   assert.equal(data.move('b0', true), false, 'the car is full');
+});
+
+test('the clock keeps real time at the wheel, runs faster on foot as set, and wraps at midnight', () => {
+  assert.equal(clockText(advanceHour(9, 60, false, 1)), '9:01 AM', 'a minute driving is a minute');
+  assert.equal(clockText(advanceHour(9, 60, true, 1)), '10:00 AM', 'a minute on foot is an hour');
+  assert.equal(clockText(advanceHour(9, 60, true, 3)), '12:00 PM', 'or what the setting says');
+  assert.equal(clockText(advanceHour(23.5, 60, true, 1)), '12:30 AM');
+  let hour = 9;
+  for (let i = 0; i < 3600; i++) hour = advanceHour(hour, 1 / 60, true, 1);
+  assert.equal(clockText(hour), '10:00 AM', 'and small steps add up to the same');
 });
