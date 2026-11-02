@@ -90,6 +90,7 @@ The header, nav screen and tab title show the current town (`refreshTown`: a bil
 - `public/js/settings.js`: preferences saved in the browser. The panel is in `index.html`; new settings (the owner plans a choice of cars) go in `DEFAULTS` plus a `<section>` there. The car's `scale` is 1 for real size, 0.9 by default.
 - `public/js/main.js`: input, game loop, map setup, HUD. Tune cameras, zoom and the start point here.
 - `public/js/carModel.js`: the low-poly cars, built from code so there is no asset licence.
+- `public/js/itemArt.js`: a picture for each thing in the bag or car. A new item needs one, and a test checks that. Pure, tested.
 - `public/js/pocket.js`: the phone, compass, notepad and bag on foot, and `pocketData.js` (pure, tested) and `pocketArt.js`. To add one: an entry in `TRAY` or `APPS`, a picture in `ART`, and for an app a render function.
 - `public/js/footActions.js`: what F does to things, and what they hold. Pure, tested. What has happened is in `plan.state` by floor, not the saved layout.
 - `public/js/roomLight.js`: light in a room from its windows and the sun, and what a carried light reaches. Pure, tested.

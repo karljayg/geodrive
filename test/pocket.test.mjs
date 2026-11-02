@@ -1,3 +1,7 @@
+import { GAME } from '../public/js/gameConfig.js';
+import { actionsOf, useThing } from '../public/js/footActions.js';
+import { ITEMS } from '../public/js/furniture.js';
+import { hasItemIcon, itemIcon } from '../public/js/itemArt.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { ART } from '../public/js/pocketArt.js';
@@ -103,4 +107,19 @@ test('what played earlier: newest first, no repeat of the current one, and a lim
   assert.deepEqual(addRecent(['x'], null), ['x']);
   for (let i = 0; i < 20; i++) list = addRecent(list, String(i));
   assert.equal(list.length, 6);
+});
+
+test('everything that can reach the bag has its own picture, and anything new still gets one', () => {
+  const names = new Set([...Object.values(GAME.finds).flat(), ...Object.values(GAME.machines).map((m) => m.give), ...Object.keys(GAME.consumables), 'Flashlight', 'Cash', 'Ticket']);
+  for (const item of Object.keys(ITEMS)) {
+    const actions = actionsOf(item);
+    if (actions.includes('pick up')) names.add(useThing([item, ITEMS[item].models[0], 0, 0, 0, 0, 0, 1], {}, 1, 'x', actions[1] === 'pick up').give);
+    else if (actions.includes('use')) { const { give } = useThing([item, ITEMS[item].models[0], 0, 0, 0, 0, 0, 1], {}, 1, 'x'); if (give) names.add(give); }
+  }
+  for (const name of names) {
+    assert.ok(hasItemIcon(name), name);
+    assert.match(itemIcon(name), /^<svg [^>]*>.+<\/svg>$/);
+  }
+  assert.match(itemIcon('Something nobody has drawn'), /^<svg /);
+  assert.equal(new Set([...names].map(itemIcon)).size, names.size, 'no two look the same');
 });

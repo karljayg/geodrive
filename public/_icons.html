@@ -1,0 +1,6 @@
+<!doctype html><meta charset="utf-8"><title>icons</title><style>body{margin:0;background:#2a1c13;color:#eee;font:10px system-ui}div{display:grid;grid-template-columns:repeat(11,72px);gap:2px;padding:4px}p{margin:0;text-align:center}svg{width:44px;height:44px}</style><div id="a"></div>
+<script type="module">
+import { itemIcon } from './js/itemArt.js';
+const names = new URLSearchParams(location.search).get('n')?.split(',') || [];
+document.getElementById('a').innerHTML = names.map((n) => `<p>${itemIcon(n)}<br>${n}</p>`).join('');
+</script>

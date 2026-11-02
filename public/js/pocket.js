@@ -3,6 +3,7 @@
 import { clockText } from './daylight.js';
 import { say } from './sayings.js';
 import { drawNav } from './dash.js';
+import { itemIcon } from './itemArt.js';
 import { ART } from './pocketArt.js';
 import { BAG_SLOTS, CAR_SLOTS, CONTACTS, PocketData, addRecent, bearingToCar, compassName, distanceText, noteTitle, songParts, turnToCar } from './pocketData.js';
 import { frequencyText } from './radio.js';
@@ -28,6 +29,8 @@ const MAP_REFRESH = 333;   // ms, as for the nav screen
 const RING_TIME = 5000;    // ms a call rings before nobody answers
 const REPLY_TIME = 2500;   // ms before a text gets its answer
 const MAP_RADII = [150, 400, 1000, 3000]; // m from the person to the top of the map
+const MAP_REACH = 1.2;    // of that, out to the screen's corners
+const MAP_BUTTONS = [{ fromRight: 22, y: 49, r: 18 }, { fromRight: 22, y: 82, r: 18 }]; // the zoom buttons, which street names stay clear of
 
 let art = 0;
 const picture = (name) => ART[name](`pk${art++}`);
@@ -416,7 +419,7 @@ export class Pocket {
   // Your bag, and the car's storage beside it when you're in or next to the car. Clicking something moves it across; the flashlight, away from the car, turns on.
   renderBag() {
     const { bag, car } = this.data, near = this.calls.nearCar(), slots = (list, size, side) => Array.from({ length: size }, (_, i) => list[i]).map((item, i) => (item
-      ? `<div class="slotBox"><button class="bagSlot full" data-slot="${esc(item.id)}" data-side="${side}" title="${esc(item.name)}">${side === 'bag' && i < 10 ? `<kbd>${(i + 1) % 10}</kbd>` : ''}<span>${esc(item.name)}</span>${item.count > 1 ? `<b>${item.count}</b>` : ''}</button><button class="slotDrop" data-drop="${esc(item.id)}" data-side="${side}" title="Drop ${esc(item.name)}" aria-label="Drop ${esc(item.name)}">✕</button></div>`
+      ? `<div class="slotBox"><button class="bagSlot full" data-slot="${esc(item.id)}" data-side="${side}" title="${esc(item.name)}">${side === 'bag' && i < 10 ? `<kbd>${(i + 1) % 10}</kbd>` : ''}<i class="itemIcon">${itemIcon(item.id)}</i><span>${esc(item.name)}</span>${item.count > 1 ? `<b>${item.count}</b>` : ''}</button><button class="slotDrop" data-drop="${esc(item.id)}" data-side="${side}" title="Drop ${esc(item.name)}" aria-label="Drop ${esc(item.name)}">✕</button></div>`
       : '<div class="bagSlot"></div>')).join('');
     this.nearShown = near;
     this.bagPanel.classList.toggle('withCar', near);
@@ -444,7 +447,7 @@ export class Pocket {
     if (card) card.setAttribute('transform', `rotate(${(-facing).toFixed(1)} 50 50)`);
   }
 
-  // on: { x, y, facing, where } of the person. at: { roads, parked, hour } for the map.
+  // on: { x, y, facing, where } of the person. at: { roads, tiles, parked, hour } for the map.
   update(now, on, at) {
     if (now - this.lastUpdate < REFRESH) return;
     this.lastUpdate = now;
@@ -490,7 +493,10 @@ export class Pocket {
       if (now - this.mapDrawn >= MAP_REFRESH) {
         this.mapDrawn = now;
         const canvas = this.area.querySelector('[data-map]');
-        if (canvas) drawNav(canvas, { roads: at.roads, pos: on.where, heading: on.facing, parked: at.parked, route: null, routeIndex: 0, radius: MAP_RADII[this.mapRadius], hour: at.hour, clock: clockText(at.hour) });
+        if (canvas) {
+          const radius = MAP_RADII[this.mapRadius];
+          drawNav(canvas, { roads: at.roads, pos: on.where, heading: on.facing, parked: at.parked, route: null, routeIndex: 0, radius, hour: at.hour, clock: clockText(at.hour), streets: { lines: at.tiles.streetNames(on.where.lat, on.where.lng, radius * MAP_REACH), avoid: MAP_BUTTONS } });
+        }
       }
     }
   }
