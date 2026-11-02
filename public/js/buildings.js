@@ -40,6 +40,13 @@ export const TYPES = {
   nursingHome: { name: 'Care home', floor: 3.5, min: 1, max: 8, unknown: [2, 3] },
   kindergarten: { name: 'Nursery', floor: 3.5, min: 1, max: 2, unknown: [1] },
   dorm: { name: 'Dormitory', floor: 3.2, min: 2, max: 30, unknown: [3, 4, 5] },
+  fastFood: { name: 'Fast food', floor: 3.5, min: 1, max: 2, unknown: [1] },
+  bar: { name: 'Bar', floor: 3.5, min: 1, max: 2, unknown: [1] },
+  bakery: { name: 'Bakery', floor: 3.5, min: 1, max: 1, unknown: [1] },
+  laundromat: { name: 'Laundromat', floor: 3.5, min: 1, max: 1, unknown: [1] },
+  departmentStore: { name: 'Department store', floor: 5, min: 1, max: 8, unknown: [2, 3] },
+  station: { name: 'Station', floor: 6, min: 1, max: 4, unknown: [1, 2] },
+  pool: { name: 'Swimming pool', floor: 6, min: 1, max: 2, unknown: [1] },
   // Types with no rooms yet, locked until they have some. docs/INTERIORS.md has the queue.
   parking: { name: 'Parking garage', floor: 3, min: 1, max: 12, unknown: [2, 3, 4, 5] },
   gasStation: { name: 'Gas station', floor: 4, min: 1, max: 1, unknown: [1] },
@@ -59,7 +66,7 @@ export const TYPES = {
 };
 
 // The types you can go into. A type with rooms that aren't good enough yet can be left out too.
-export const OPEN_TYPES = new Set(['fireStation', 'police', 'postOffice', 'communityCentre', 'library', 'kindergarten', 'dorm', 'hospital', 'clinic', 'vet', 'pharmacy', 'salon', 'nursingHome', 'home', 'shed', 'apartments', 'parking', 'hotel', 'office', 'bank', 'restaurant', 'cafe', 'shop', 'supermarket', 'mall', 'school', 'worship', 'museum', 'warehouse', 'factory', 'hangar', 'terminal']);
+export const OPEN_TYPES = new Set(['gym', 'pool', 'cinema', 'theatre', 'stadium', 'bar', 'fastFood', 'bakery', 'laundromat', 'departmentStore', 'station', 'gasStation', 'carGarage', 'fireStation', 'police', 'postOffice', 'communityCentre', 'library', 'kindergarten', 'dorm', 'hospital', 'clinic', 'vet', 'pharmacy', 'salon', 'nursingHome', 'home', 'shed', 'apartments', 'parking', 'hotel', 'office', 'bank', 'restaurant', 'cafe', 'shop', 'supermarket', 'mall', 'school', 'worship', 'museum', 'warehouse', 'factory', 'hangar', 'terminal']);
 
 // A building is judged by what's at its door, so a clinic at the foot of an office tower is locked.
 export const isLocked = (plan) => !OPEN_TYPES.has(plan.ground || plan.type);
@@ -68,15 +75,15 @@ export const typeName = (plan) => TYPES[plan.ground || plan.type]?.name || 'Buil
 // The tile's poi class, or its subclass where one class covers different things. Anything else says nothing about the building.
 const POI_CLASS = {
   bank: 'bank', lodging: 'hotel', office: 'office', town_hall: 'communityCentre', police: 'police', fire_station: 'fireStation', parking: 'parking', fuel: 'gasStation',
-  restaurant: 'restaurant', fast_food: 'restaurant', cafe: 'cafe', bar: 'cafe', beer: 'cafe', bakery: 'cafe', ice_cream: 'cafe',
-  shop: 'shop', clothing_store: 'shop', butcher: 'shop', pharmacy: 'pharmacy', hairdresser: 'salon', laundry: 'shop', car: 'carGarage', bicycle: 'shop', music: 'shop',
+  restaurant: 'restaurant', fast_food: 'fastFood', cafe: 'cafe', bar: 'bar', beer: 'bar', bakery: 'bakery', ice_cream: 'cafe', ferry_terminal: 'station', swimming_pool: 'pool',
+  shop: 'shop', clothing_store: 'shop', butcher: 'shop', pharmacy: 'pharmacy', hairdresser: 'salon', laundry: 'laundromat', car: 'carGarage', bicycle: 'shop', music: 'shop',
   sports_centre: 'gym', gymnastics: 'gym', yoga: 'gym', stadium: 'stadium',
   alcohol_shop: 'supermarket', grocery: 'supermarket',
   school: 'school', college: 'school', hospital: 'hospital', dentist: 'clinic', doctors: 'clinic', veterinary: 'vet',
   place_of_worship: 'worship', museum: 'museum', theatre: 'theatre', cinema: 'cinema',
 };
-const POI_SUBCLASS = { kindergarten: 'kindergarten', dormitory: 'dorm', hostel: 'dorm', nursing_home: 'nursingHome', convenience: 'supermarket', department_store: 'shop', library: 'library', books: 'shop', gallery: 'museum', post_office: 'postOffice', clinic: 'clinic', beauty: 'salon', cosmetics: 'shop' };
-const RETAIL = new Set(['restaurant', 'cafe', 'shop', 'supermarket', 'pharmacy', 'salon']);
+const POI_SUBCLASS = { kindergarten: 'kindergarten', dormitory: 'dorm', hostel: 'dorm', nursing_home: 'nursingHome', convenience: 'supermarket', department_store: 'departmentStore', station: 'station', halt: 'station', bus_station: 'station', library: 'library', books: 'shop', gallery: 'museum', post_office: 'postOffice', clinic: 'clinic', beauty: 'salon', cosmetics: 'shop' };
+const RETAIL = new Set(['fastFood', 'bar', 'bakery', 'laundromat', 'departmentStore', 'restaurant', 'cafe', 'shop', 'supermarket', 'pharmacy', 'salon']);
 const GROUND_ONLY = new Set([...RETAIL, 'bank', 'clinic', 'pharmacy', 'salon', 'gym', 'postOffice']);
 const ALSO_OFFICES = new Set(['warehouse', 'factory', 'supermarket', 'shop']);
 const LAND_TYPE = { school: 'school', university: 'school', college: 'school', hospital: 'hospital', library: 'library', commercial: 'office' };

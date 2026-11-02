@@ -85,19 +85,18 @@ Known weak spots, all from what the map holds:
 A shop or restaurant POI in a building of 5 or more floors fills the ground floor only, and the floors above follow the land use. A bank in a tower is a bank downstairs and offices upstairs.
 
 ## The queue
-Which types you can go into, and what each still needs. A locked building says "Sorry you can't get in. It's locked." To open a type, add it to `OPEN_TYPES` in `buildings.js`; it also needs rooms in `TYPE_ZONES` and `RECIPES` in `furnish.js`.
+All 45 types are open now, so nothing is locked. The lock is still there for anything new: a type not in `OPEN_TYPES` (`buildings.js`) says "Sorry you can't get in. It's locked." A new type needs a line in `TYPES`, its map clues in `POI_CLASS` or `POI_SUBCLASS`, rooms in `TYPE_ZONES` and `RECIPES` (`furnish.js`), and any new items in `ITEMS` and `BUILT` (`furniture.js`).
+
+Tried on 3,576 floors of real footprints from Dulles, Ashburn, Tysons, downtown DC and Midtown Manhattan on 2026-11-02: no failures, 95 ms at the slowest, and at most about 60,000 triangles a floor. Hospitals, care homes, stadiums and a few others weren't among those places' buildings, so they have only been tried on rectangles.
+
+Detail varies on purpose. Hangars, warehouses, worship halls and stadiums are sparse; hospitals, apartments, gyms and offices are the busiest.
 
 | Status | Type | Has rooms? | What it needs |
 |---|---|---|---|
-| Locked | Car dealer or repair shop | No | Cars, lifts, tools. Was counted as a shop |
-| Locked | Gas station | No | Shop, counter, fridges. New type |
-| Locked | Gym | No | Machines, weights, mats, lockers. New type |
-| Locked | Cinema | No | Screens, seat rows, ticket desk, snacks. Was counted as a museum |
-| Locked | Theatre | No | Stage, seat rows, foyer. Was counted as a museum |
-| Locked | Stadium | No | Seating, concourse, field. New type |
-| Open, could be better | Lobbies, in offices, hotels and apartments | Better | Now has a desk with a chair, sofa, armchairs, rug, notice board and plants. A lift lobby and signs would help |
-| Open, could be better | Hotel, mall, airport terminal, museum, place of worship, school, supermarket, warehouse, factory, hangar | Basic | Made from boxes and only checked by tests, apart from the school's layout. Walk round them and lock any that disappoint |
+| Could be better | Lobbies, in offices, hotels and apartments | Better | Now has a desk with a chair, sofa, armchairs, rug, notice board and plants. A lift lobby and signs would help |
+| Could be better | Hotel rooms, mall, airport terminal, museum, school, supermarket, warehouse, factory, hangar | Basic | First pass from the earlier batch, and the ones to look at next. Not locked |
 | Open | Fire station, police station, post office, community centre, library, nursery, dormitory | Yes | Done: engine bays and bunks, front desk and cells, counters and sorting, a hall with a stage, book stacks and reading rooms, little tables, shared rooms. Nursery and dormitory are new types |
+| Open | Gym, swimming pool, cinema, theatre, stadium, bar, fast food, bakery, laundromat, department store, station, gas station, car dealer or repair shop | Yes | Done, from sparse (stadium, laundromat) to busier (gym, station). Pool, bar, fast food, bakery, laundromat, department store and station are new types. Banks have a lobby of their own and hotels a bar |
 | Open | Hospital, clinic, vet, pharmacy, salon, care home | Yes | Done: reception, exam rooms, scanner room, wards with nurses' stations, operating rooms. Clinics and vets are smaller versions, with kennels at the vet |
 | Open | Parking garage | Yes | Done: bays, parked cars, pillars, lanes with arrows, ramps, ticket machines, a barrier on the ground floor. Also found from parking aisles mapped inside a footprint |
 | Open | Apartment building | Yes | Done: corridors, a landing at the stairs, up to 9 flats a floor with front doors, each with a kitchen, bathroom, living room and bedroom. Lobby, mailroom, laundry and gym downstairs. Very large footprints get oversized flats |
