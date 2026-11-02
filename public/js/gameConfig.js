@@ -1,50 +1,52 @@
 // Everything to tune about survival is here: nothing else holds these numbers. Rates are per hour of game time, on a 0 to 100 scale where 100 is good.
 // Each stat's comment says what real figure its rate came from, so it can be judged against something.
-// The clock's speed on foot is settings.footTimeRate (Settings, On foot): an hour a real minute by default, and real time in the car.
+// What the game says is in sayingsConfig.js; a say here is a key there, or plain text.
 export const GAME = {
+  clock: { onFootHoursPerMinute: 1 }, // game hours per real minute on foot: 24 minutes is a day. In the car it's always real time.
+
   // What a person is doing. The game picks one of these for every rate below.
   // still, walking, running, sitting, sleeping, driving
   stats: {
     energy: {
       label: 'Energy', start: 100,
       perHour: { still: -6, walking: -7, running: -16, sitting: -4.5, sleeping: 12.5, driving: -6 }, // awake about 16 h; 8 h asleep fills it
-      warn: [[25, 'You are getting tired.'], [10, 'You are exhausted. Find a bed soon.']],
+      warn: [[25, 'tired'], [10, 'exhausted']],
     },
     hunger: {
       label: 'Hunger', start: 90,
       perHour: { still: -4, walking: -4.5, running: -7, sitting: -3.8, sleeping: -2, driving: -4 }, // hungry after about 6 h, empty after a day; slower asleep
-      warn: [[40, 'You could eat something.'], [20, 'You are hungry.'], [8, 'You are starving.']],
+      warn: [[40, 'peckish'], [20, 'hungry'], [8, 'starving']],
     },
     thirst: {
       label: 'Thirst', start: 90,
       perHour: { still: -6, walking: -7, running: -12, sitting: -5.5, sleeping: -2.5, driving: -6 }, // about 2 litres a day: dry in about 16 h awake
-      warn: [[40, 'You are thirsty.'], [15, 'You badly need a drink.']],
+      warn: [[40, 'thirsty'], [15, 'parched']],
     },
     bladder: {
       label: 'Restroom #1', start: 90,
       perHour: { still: -14, walking: -14, running: -14, sitting: -14, sleeping: -6, driving: -14 }, // every 4 h or so by choice, about 7 h at the limit; slower asleep
-      warn: [[35, 'You need the restroom soon.'], [15, 'You really need the restroom.']],
-      accident: { resetTo: 100, health: -1, say: 'You could not hold it. Not your best moment.' },
+      warn: [[35, 'needToGo'], [15, 'reallyNeedToGo']],
+      accident: { resetTo: 100, health: -1, say: 'accidentOne' },
     },
     bowels: {
       label: 'Restroom #2', start: 90,
       perHour: { still: -2.8, walking: -3, running: -3, sitting: -2.8, sleeping: -1.5, driving: -2.8 }, // about once a day, and a day and a half at the limit
-      warn: [[30, 'You will need the restroom before long.'], [12, 'You urgently need the restroom.']],
-      accident: { resetTo: 100, health: -3, say: 'That was an accident you won\'t forget.' },
+      warn: [[30, 'needToGoTwo'], [12, 'reallyNeedToGoTwo']],
+      accident: { resetTo: 100, health: -3, say: 'accidentTwo' },
     },
     phone: {
       label: 'Phone', start: 100,
       perHour: { all: -2.5 }, // about 40 h on standby
       using: { screen: -10, light: -15, music: -6 }, // added while these are on: 8 h of screen, 5 h of light, 12 h of music
       charging: 50,           // empty to full in 2 h
-      warn: [[20, 'Your phone is at 20%.'], [5, 'Your phone is about to die.']],
+      warn: [[20, 'phoneLow'], [5, 'phoneVeryLow']],
     },
     flashlight: {
       label: 'Flashlight', start: 100,
       perHour: { all: -0.05 }, // keeps its charge for months when off
       using: { light: -20 },  // 5 h on a charge
       charging: 25,           // empty to full in 4 h
-      warn: [[20, 'Your flashlight is getting dim.'], [5, 'Your flashlight is nearly out.']],
+      warn: [[20, 'flashlightLow'], [5, 'flashlightVeryLow']],
     },
   },
 
@@ -55,11 +57,11 @@ export const GAME = {
     healWhenWell: 0.5,        // per hour with nothing below wellAbove
     healAsleep: 2,            // per hour asleep, as well
     wellAbove: 25,
-    warn: [[40, 'You feel unwell.'], [15, 'You are in a bad way. Eat, drink and rest.']],
+    warn: [[40, 'unwell'], [15, 'veryUnwell']],
   },
 
   // When energy or health reaches 0 you drop where you stand, and come round later, in the same state of need but alive. There's no game over.
-  collapse: { hours: 6, reviveHealth: 25, reviveEnergyAtLeast: 30, say: 'You collapsed, and came round {hours} hours later.' },
+  collapse: { hours: 6, reviveHealth: 25, reviveEnergyAtLeast: 30, say: 'collapsed' },
   sleep: { wakeHour: 7, mostHours: 10, leastHours: 1 }, // a bed sleeps until wakeHour, within these
   tiredRunShare: 0.5,         // with energy at caution, how much of the gap between walking and running speed is left; at critical there's no running
 
@@ -110,16 +112,16 @@ export const GAME = {
 
   // Machines that hand something over, once each, when they have it.
   machines: {
-    vendingMachine: { chance: 0.4, give: 'Candy bar', say: 'It drops a candy bar.', empty: 'It\'s sold out.' },
-    coffeeMachine: { chance: 0.5, give: 'Cup of coffee', say: 'You pour a coffee.', empty: 'The coffee machine is out of beans.' },
+    vendingMachine: { chance: 0.4, give: 'Candy bar', say: 'vendingGive', empty: 'vendingEmpty' },
+    coffeeMachine: { chance: 0.5, give: 'Cup of coffee', say: 'coffeeGive', empty: 'coffeeEmpty' },
   },
 
   // Stat changes from using things where they stand, without taking them anywhere. works: the chance this one does, decided once.
   uses: {
-    toilet: { bladder: 100, bowels: 100, say: 'That\'s better.', count: 'restroom' },
-    stall: { bladder: 100, bowels: 100, say: 'That\'s better.', count: 'restroom' },
-    sink: { works: 0.5, thirst: 25, bladder: -6, say: 'You drink from the tap.', dry: 'Nothing comes out of the tap.', count: 'drink' },
-    basin: { works: 0.5, thirst: 25, bladder: -6, say: 'You drink from the tap.', dry: 'Nothing comes out of the tap.', count: 'drink' },
+    toilet: { bladder: 100, bowels: 100, say: 'relief', count: 'restroom' },
+    stall: { bladder: 100, bowels: 100, say: 'relief', count: 'restroom' },
+    sink: { works: 0.5, thirst: 25, bladder: -6, say: 'drinkTap', dry: 'tapDry', count: 'drink' },
+    basin: { works: 0.5, thirst: 25, bladder: -6, say: 'drinkTap', dry: 'tapDry', count: 'drink' },
     bath: { energy: 4, say: 'You run the water for a moment and rinse your face.' },
     treadmill: { energy: -6, thirst: -5, say: 'You jog for a minute.' },
     benchPress: { energy: -5, thirst: -3, say: 'You lift it twice and put it down.' },

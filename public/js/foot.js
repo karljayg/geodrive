@@ -13,6 +13,7 @@ import { FURNISHED, coreNear, coreOf, frameOf as buildingFrame, layoutFloor, pla
 import { parseFurniture } from './furniture.js';
 import { buildingWithin, carWalls, distanceToCar, enterBuilding, GET_IN_REACH, leaveBuilding, newWalker, frameOf, placeCamera, spawnSpot, stepClearOfThings, stepWalker, wayToCar } from './footWalker.js';
 import { GAME } from './gameConfig.js';
+import { say } from './sayings.js';
 import { Overture } from './overture.js';
 import { TORCHES, lightMap, sunAt, windowsOn } from './roomLight.js';
 import { Terrain } from './terrain.js';
@@ -294,7 +295,7 @@ export class Foot {
     let say = result.say;
     if (result.give && this.onFound && !this.onFound(result.give)) {
       if (result.taken) plan.state[this.level].taken.pop();
-      return 'Your bag is full.';
+      return say('bagFull');
     }
     if (result.taken) {
       const { furnishing } = this.room, gone = entry;
@@ -441,11 +442,11 @@ export class Foot {
   useOutlet() {
     if (this.charging) {
       this.charging = false;
-      return 'Unplugged.';
+      return say('unplugged');
     }
-    if (!this.outletHere().works) return 'This outlet has no power.';
+    if (!this.outletHere().works) return say('outletDead');
     this.charging = true;
-    return 'Charging. Stay close, or you\'ll unplug.';
+    return say('charging');
   }
 
   // Whether something is plugged in, which walking out of reach ends.

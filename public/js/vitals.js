@@ -1,5 +1,6 @@
 // The person's needs: what's left of each, how fast it's going, and a running record of what's happened. All numbers come from gameConfig.js. Pure, tested in node.
 import { GAME } from './gameConfig.js';
+import { say as line } from './sayings.js';
 
 const STORE = 'geodrive_vitals_v1';
 const STEP = 0.25;  // game hours at most in one go, so passing a night still crosses each warning in order
@@ -120,7 +121,7 @@ export class Vitals {
     this.stats[name] = accident.resetTo;
     this.stats.health = clamp(this.stats.health + accident.health);
     this.state.totals.accidents++;
-    events.push({ type: 'accident', stat: name, say: accident.say });
+    events.push({ type: 'accident', stat: name, say: line(accident.say) });
   }
 
   // Says each level once on the way down, and again only after the stat has come back above it.
@@ -139,7 +140,7 @@ export class Vitals {
     warned[name] = reached.level;
     if (hours - (warnedAt[name] ?? -Infinity) < this.config.warnEveryHours / 8) return;
     warnedAt[name] = hours;
-    events.push({ type: 'warn', stat: name, say: reached.say });
+    events.push({ type: 'warn', stat: name, say: line(reached.say) });
   }
 
   // Applies a list of stat changes from the config, returning the same. A counted thing goes in the totals.
@@ -178,7 +179,7 @@ export class Vitals {
     stats.health = Math.max(stats.health, reviveHealth);
     stats.energy = Math.max(stats.energy, reviveEnergyAtLeast);
     this.save();
-    return { hours, say: say.replace('{hours}', hours), events };
+    return { hours, say: line(say, { hours }), events };
   }
 
   canRun() {

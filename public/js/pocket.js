@@ -1,6 +1,7 @@
 // What the person has on them once out of the car: a phone, a compass, a notepad and a bag, along the bottom of the view.
 // The tray and the phone are plain DOM. To add something later, add it to TRAY (and ART), or to APPS for a phone app and its open function.
 import { clockText } from './daylight.js';
+import { say } from './sayings.js';
 import { drawNav } from './dash.js';
 import { ART } from './pocketArt.js';
 import { BAG_SLOTS, CAR_SLOTS, CONTACTS, PocketData, addRecent, bearingToCar, compassName, distanceText, noteTitle, songParts, turnToCar } from './pocketData.js';
@@ -77,7 +78,7 @@ export class Pocket {
   // --- Opening and closing --------------------------------------------------------------------------------------
 
   openApp(id) {
-    if (this.calls.phoneDead()) return this.calls.say('Your phone is dead. Find a working outlet.');
+    if (this.calls.phoneDead()) return this.calls.say('phoneDead');
     if (id === 'torch') return this.calls.phoneLight(); // it does its one job, rather than opening
     if (this.app === 'notes' && this.note) this.data.closeNote(this.note);
     this.note = null;
@@ -140,12 +141,12 @@ export class Pocket {
   pressSlot(id, side) {
     if (!this.calls.nearCar()) {
       if (id === 'Flashlight') this.calls.flashlight();
-      else if (!this.useItem(id)) this.bagPanel.querySelector('.empty').textContent = `There's no use for ${id.toLowerCase()} right now.`;
+      else if (!this.useItem(id)) this.bagPanel.querySelector('.empty').textContent = say('noUse', { name: id.toLowerCase() });
       return;
     }
     const moved = this.data.move(id, side === 'bag');
     if (moved && id === 'Flashlight' && side === 'bag') this.calls.stowed();
-    if (!moved) this.bagPanel.querySelector('.empty').textContent = side === 'bag' ? 'The car is full.' : 'Your bag is full.';
+    if (!moved) this.bagPanel.querySelector('.empty').textContent = say(side === 'bag' ? 'carFull' : 'bagFull');
     else this.renderBag();
   }
 

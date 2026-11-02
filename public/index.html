@@ -30,7 +30,7 @@
   <div id="notice"></div>
   <div id="asking"></div>
   <div id="footHint"></div>
-  <div id="locked" role="status"><b>Sorry you can't get in. It's locked.</b><span id="lockedType"></span></div>
+  <div id="locked" role="status"><b id="lockedSay"></b><span id="lockedType"></span></div>
   <div id="liftPanel" role="dialog" aria-label="Lift"><div class="liftHead"><b>Lift</b><button id="liftClose" type="button" aria-label="Stay on this floor">✕</button></div><div id="liftFloors"></div></div>
   <div id="pockets"></div>
   <div id="signalLeft">◀</div>
@@ -71,7 +71,7 @@
   </div>
   <div class="centre">
     <div class="navTop">
-      <span id="eta"></span>
+      <span id="eta" title="Estimated arrival time, time left and miles left"></span>
       <div class="navMetrics">
         <div id="apiPanel" class="apiPanel" tabindex="0">
           <span id="apiSummary" title="Hover for billed calls and the other requests this page">API 0</span>
@@ -79,7 +79,7 @@
         </div>
         <span id="perf" title="Frames per second, the slowest frame in the last second, and JavaScript memory"></span>
       </div>
-      <span id="clock"></span>
+      <span id="clock" title="The time now in the game"></span>
     </div>
     <div class="navBox">
       <canvas id="navScreen" title="Click to change the range" aria-label="Navigation screen"></canvas>
@@ -87,7 +87,7 @@
       <div id="navTown"></div>
     </div>
     <div class="trip">
-      <span>TIME <b id="hud-elapsed">0:00</b></span>
+      <span title="Time since this trip's first movement, stops included. It stops while you're out of the car.">ELAPSED <b id="hud-elapsed">0:00</b></span>
       <span>MILES <b id="hud-miles">0.00 mi</b></span>
       <span>TOP <b id="hud-top">0 mph</b></span>
       <span>AVG <b id="hud-average">0 mph</b></span>
@@ -186,8 +186,6 @@
     <input id="walkSpeed" data-setting="walkSpeed" type="range" min="1" max="15" step="0.5">
     <label for="runSpeed">Running speed (Shift) <span data-value="runSpeed"></span></label>
     <input id="runSpeed" data-setting="runSpeed" type="range" min="2" max="30" step="0.2">
-    <label for="footTimeRate">Time on foot <span data-value="footTimeRate"></span></label>
-    <input id="footTimeRate" data-setting="footTimeRate" type="range" min="0.25" max="6" step="0.25">
   </section>
   <section>
     <h3>Time of day</h3>

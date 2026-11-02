@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { actionsOf, questionsFor, thingsNear, uniqueChoices, usableNear, useThing, withoutTaken, switchNeedsKey, switchSpots, useSwitch } from '../public/js/footActions.js';
+import { SAYINGS } from '../public/js/sayingsConfig.js';
 import { ITEMS, parseFurniture } from '../public/js/furniture.js';
 import { frameOf } from '../public/js/furnish.js';
 import { SIT_FRAME, personParts, poseAt } from '../public/js/footPerson.js';
@@ -56,9 +57,9 @@ test('opening something finds at most one thing, the same every time for that bu
   const finds = new Set();
   for (let n = 0; n < 40; n++) {
     const plan = {}, fridge = entry('fridge', n, 0), first = useThing(fridge, plan, 1, 'b'), again = useThing(fridge, plan, 1, 'b');
-    assert.match(again.say, /Nothing else/);
+    assert.ok(SAYINGS.nothingElse.some((l) => l.replace('{name}', 'fridge') === again.say), again.say);
     assert.equal(again.give, undefined);
-    assert.deepEqual(useThing(fridge, {}, 1, 'b'), first, 'the same for this building');
+    assert.equal(useThing(fridge, {}, 1, 'b').give, first.give, 'the same for this building');
     if (first.give) finds.add(first.give);
   }
   assert.ok(finds.size >= 2, 'some variety');
@@ -106,14 +107,14 @@ test('about a quarter of large buildings need a key for their switches, and neve
 
 test('a switch that needs a key says so, works with one, and stays working', () => {
   const plan = {};
-  assert.equal(useSwitch(plan, 1, true, false), 'Light switch not enabled, find key.');
+  assert.ok(SAYINGS.switchLocked.includes(useSwitch(plan, 1, true, false)));
   assert.ok(!plan.state?.[1]?.lights);
-  assert.equal(useSwitch(plan, 1, true, true), 'Lights on.');
+  assert.ok(SAYINGS.lightsOn.includes(useSwitch(plan, 1, true, true)));
   assert.equal(plan.state[1].lights, true);
-  assert.equal(useSwitch(plan, 1, true, false), 'Lights off.', 'without the key now');
-  assert.equal(useSwitch(plan, 2, true, false), 'Lights on.', 'on any floor');
+  assert.ok(SAYINGS.lightsOff.includes(useSwitch(plan, 1, true, false)), 'without the key now');
+  assert.ok(SAYINGS.lightsOn.includes(useSwitch(plan, 2, true, false)), 'on any floor');
   const open = {};
-  assert.equal(useSwitch(open, 1, false, false), 'Lights on.');
+  assert.ok(SAYINGS.lightsOn.includes(useSwitch(open, 1, false, false)));
 });
 
 test('what is in reach comes nearest first, and F offers no question twice nor more than a number can pick', () => {

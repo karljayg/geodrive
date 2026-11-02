@@ -3,6 +3,7 @@
 import { dice, hashText } from './buildings.js';
 import { ITEMS } from './furniture.js';
 import { GAME } from './gameConfig.js';
+import { say as line } from './sayings.js';
 
 const REACH = 1.2;       // m from a thing's edge that it can be used
 const DONE = new Set(['sit', 'sleep', 'open', 'search', 'pick up', 'use', 'switch', 'write']);
@@ -24,7 +25,7 @@ const nameOf = (item) => NAMES[item] || item.replace(/[A-Z]/g, (c) => ` ${c.toLo
 // What using something says. A thing can also give something, as a cash machine gives cash.
 const USES = {
   atm: { say: 'The cash machine gives you some cash.', give: 'Cash' }, vendingMachine: {}, coffeeMachine: {},
-  sink: { say: 'You wash your hands.' }, basin: { say: 'You wash your hands.' }, toilet: { say: 'That\'s better.' }, stall: { say: 'That\'s better.' }, bath: { say: 'You run the water for a moment.' }, stove: { say: 'The ring clicks on and off.' },
+  sink: { say: 'washHands' }, basin: { say: 'washHands' }, toilet: { say: 'That\'s better.' }, stall: { say: 'That\'s better.' }, bath: { say: 'You run the water for a moment.' }, stove: { say: 'The ring clicks on and off.' },
   proStove: { say: 'The burners roar, then you turn them off.' }, microwave: { say: 'It hums and beeps.' }, toaster: { say: 'Pop.' }, washer: { say: 'It rumbles through a cycle.' }, screen: { say: 'It asks for a password.' },
   treadmill: { say: 'You jog for a minute.' }, benchPress: { say: 'You lift it twice and put it down.' }, punchBag: { say: 'Thud.' }, weightRack: { say: 'Heavier than it looks.' }, poolTable: { say: 'You knock a ball in.' },
   ticketMachine: { say: 'It prints a ticket.', give: 'Ticket' }, tellerCounter: { say: 'The teller is on a break.' }, printer: { say: 'It\'s out of paper.' }, machine: { say: 'It whirrs into life and stops.' },
@@ -95,12 +96,12 @@ export function switchNeedsKey(plan, footprint, buildingId) {
 // F at a switch. hasKey: there's one in the bag, which, once used, leaves this building's switches working. Returns what to say.
 export function useSwitch(plan, floor, needsKey, hasKey) {
   if (needsKey && !plan.switchesOn) {
-    if (!hasKey) return 'Light switch not enabled, find key.';
+    if (!hasKey) return line('switchLocked');
     plan.switchesOn = true;
   }
   const state = stateOf(plan, floor);
   state.lights = !state.lights;
-  return state.lights ? 'Lights on.' : 'Lights off.';
+  return line(state.lights ? 'lightsOn' : 'lightsOff');
 }
 
 // What can be done with a thing, as the catalogue says, in the order it says it: the first is F, the second Shift+F.
@@ -150,32 +151,32 @@ export function useThing(entry, plan, floor, buildingId, second = false) {
   if (action === 'sit' || action === 'sleep') return { pose: action, say: action === 'sleep' ? 'You lie down.' : '' };
   if (action === 'pick up') {
     state.taken.push(id);
-    return { give: name[0].toUpperCase() + name.slice(1), taken: true, say: `You pick up the ${name}.` };
+    return { give: name[0].toUpperCase() + name.slice(1), taken: true, say: line('pickUp', { name }) };
   }
   if (action === 'open' || action === 'search') {
     const finds = GAME.finds[item], chance = GAME.findChance[item] ?? GAME.findChance.default;
-    if (state.opened.includes(id)) return { say: `Nothing else in the ${name}.` };
+    if (state.opened.includes(id)) return { say: line('nothingElse', { name }) };
     state.opened.push(id);
     const roll = dice(hashText(`${buildingId}:${floor}:${id}`));
-    if (!finds || roll() >= chance) return { say: `The ${name} is empty.` };
+    if (!finds || roll() >= chance) return { say: line('emptyThing', { name }) };
     const found = finds[Math.floor(roll() * finds.length)];
-    return { give: found, say: `In the ${name}: ${found.toLowerCase()}.` };
+    return { give: found, say: line('foundIn', { name, found: found.toLowerCase() }) };
   }
   if (action === 'switch') return { say: SWITCHES[item] };
   if (action === 'write') return { say: 'You doodle on it and wipe it off.' };
   const machine = GAME.machines[item];
   if (machine) {
-    if (state.opened.includes(id)) return { say: machine.empty };
+    if (state.opened.includes(id)) return { say: line(machine.empty) };
     state.opened.push(id);
-    return dice(hashText(`${buildingId}:${floor}:${id}`))() < machine.chance ? { say: machine.say, give: machine.give } : { say: machine.empty };
+    return dice(hashText(`${buildingId}:${floor}:${id}`))() < machine.chance ? { say: line(machine.say), give: machine.give } : { say: line(machine.empty) };
   }
   const effect = GAME.uses[item];
   if (effect) {
-    if (effect.works !== undefined && dice(hashText(`${buildingId}:${floor}:${id}:works`))() >= effect.works) return { say: effect.dry };
-    return { say: effect.say, effect, count: effect.count };
+    if (effect.works !== undefined && dice(hashText(`${buildingId}:${floor}:${id}:works`))() >= effect.works) return { say: line(effect.dry) };
+    return { say: line(effect.say), effect, count: effect.count };
   }
   const use = USES[item];
-  return use.give ? { say: use.say, give: use.give } : { say: use.say };
+  return use.give ? { say: line(use.say), give: use.give } : { say: line(use.say) };
 }
 
 // Where someone sitting or lying on a thing goes, in the frame: its middle, facing as it does.

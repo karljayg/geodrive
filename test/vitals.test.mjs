@@ -2,6 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { GAME } from '../public/js/gameConfig.js';
 import { Vitals } from '../public/js/vitals.js';
+import { SAYINGS } from '../public/js/sayingsConfig.js';
+import { say } from '../public/js/sayings.js';
 import { outletSpots, useThing } from '../public/js/footActions.js';
 import { ITEMS } from '../public/js/furniture.js';
 
@@ -172,7 +174,7 @@ test('machines give once at most, and a toilet relieves both needs', () => {
     const plan = {}, machine = entry('vendingMachine', i, 0), first = useThing(machine, plan, 1, 'b'), again = useThing(machine, plan, 1, 'b');
     if (first.give) some++;
     assert.equal(again.give, undefined);
-    assert.equal(again.say, GAME.machines.vendingMachine.empty);
+    assert.ok(SAYINGS.vendingEmpty.includes(again.say), again.say);
   }
   assert.ok(some > 20 && some < 60);
   const toilet = useThing(entry('toilet'), {}, 1, 'b');
@@ -183,7 +185,7 @@ test('some taps work and always the same ones', () => {
   const results = Array.from({ length: 200 }, (_, i) => useThing(entry('sink', i, 0), {}, 1, 'b'));
   const works = results.filter((r) => r.effect).length;
   assert.ok(works > 60 && works < 140, `${works}`);
-  assert.deepEqual(useThing(entry('sink', 3, 0), {}, 1, 'b'), results[3]);
+  assert.equal(!!useThing(entry('sink', 3, 0), {}, 1, 'b').effect, !!results[3].effect);
 });
 
 test('every floor has an outlet to look for, some work, and the same ones each time', () => {
@@ -194,4 +196,31 @@ test('every floor has an outlet to look for, some work, and the same ones each t
   let works = 0, all = 0;
   for (let i = 0; i < 200; i++) for (const s of outletSpots(record, null, `b${i}`, 1)) { all++; if (s.works) works++; }
   assert.ok(Math.abs(works / all - GAME.outlets.workingChance) < 0.1);
+});
+
+test('sayings take turns through every line before repeating, and never twice running', () => {
+  const lines = { k: ['one', 'two', 'three', 'four'] };
+  const said = Array.from({ length: 40 }, () => say('k', {}, lines));
+  for (let i = 1; i < said.length; i++) assert.notEqual(said[i], said[i - 1]);
+  for (let i = 0; i + 4 <= said.length; i += 4) assert.equal(new Set(said.slice(i, i + 4)).size, 4);
+});
+
+test('sayings fill their blanks, and anything that is not a key is said as written', () => {
+  assert.equal(say('b', { name: 'fridge' }, { b: ['The {name} is empty.'] }), 'The fridge is empty.');
+  assert.equal(say('Just plain text.'), 'Just plain text.');
+});
+
+test('every say in the config is a real key, and the common ones have several lines', () => {
+  const keys = [];
+  for (const stat of [...Object.values(GAME.stats), GAME.health]) {
+    keys.push(...(stat.warn || []).map(([, key]) => key));
+    if (stat.accident) keys.push(stat.accident.say);
+  }
+  keys.push(GAME.collapse.say);
+  for (const machine of Object.values(GAME.machines)) keys.push(machine.say, machine.empty);
+  for (const use of Object.values(GAME.uses)) { if (use.dry) keys.push(use.dry); }
+  for (const key of keys) assert.ok(SAYINGS[key]?.length, key);
+  for (const key of ['nothingHere', 'lightsOn', 'lightsOff', 'emptyThing', 'bagFull', 'locked', 'relief']) assert.ok(SAYINGS[key].length >= 3, key);
+  assert.ok(SAYINGS.switchLocked.every((l) => /key/i.test(l)), 'every wording says a key is needed');
+  assert.ok(SAYINGS.locked.every((l) => /locked/i.test(l)));
 });
