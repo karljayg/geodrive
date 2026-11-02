@@ -1,6 +1,6 @@
 # Shared worlds: plan
 
-Status: stage 0 built, apart from its measurement on real screens. Nothing shared exists yet. Written 2026-11-02. Numbers marked "measured" were tested on the code and server as they stood that day.
+Status: stage 0 built and measured on the owner's machine. Nothing shared exists yet. Written 2026-11-02. Numbers marked "measured" were tested on the code and server as they stood that day.
 
 ## The idea
 Today every browser is its own world. This adds worlds that several people play in together, reached by invite. The invite replaces the Share button (`J`) and its link.
@@ -380,7 +380,7 @@ Adding them is the catch: 8 people's 136 models at once lost about 400 ms, worke
 
 **So:**
 - Each car look is built once, and its 69 KB model shared.
-- A person's 17 frames are 174 KB each, 3 MB in all, one set per look. Add a person's models only when they come within 300 m, one per frame, never in one go.
+- A person's 17 frames are 174 KB each, 3 MB in all, one set per look. Add a person's models only when they come within 300 m, one per frame and one person at a time, about 6 s apart, never in one go. See the second run under "Stages".
 - Show people and driven cars within 1.5 km, and parked cars within 300 m, the nearest 20. Beyond that a person is a badge on the phone and nav screen.
 - Write to a model only when it has moved, using the same `moved` test as `syncScene`.
 - Bridges: the same `RELATIVE_TO_MESH` switch as your own car, sent in presence.
@@ -409,7 +409,25 @@ Each ends deployed, with the sandbox unchanged.
 
 Done so far: 1 to 3. `world.js` holds the world object. The sandbox uses the same keys and the same behaviour as before. `?world=walktest` is a practice world in the browser, with its own saves and no server: it starts on foot with no car, keeps its own clock and hides what a shared world won't allow.
 
-Still to do, and only possible on a real screen in front of someone: 4. On the machine to test, open `?world=walktest` (or the sandbox, parked), put the window full screen and in front, and run `__geodrive.crowdTest()` in the console. It adds seven people with name tags, seven driven cars and twenty parked ones the way the game will, one a frame, prints a table, logs a `crowd` event and removes them all, with no Google call beyond the page's map load. It sets `notInView` if the browser was throttling it. A run from a window out of sight on 2026-11-02 placed all 153 models and cleaned up, but its frame rates were meaningless.
+Measured below on the owner's machine. To repeat 4 on another machine, open `?world=walktest` (or the sandbox, parked), put the window full screen and in front, and run `__geodrive.crowdTest()` in the console. It adds seven people with name tags, seven driven cars and twenty parked ones the way the game will, one a frame, prints a table, logs a `crowd` event and removes them all, with no Google call beyond the page's map load. It sets `notInView` if the browser was throttling it. A run from a window out of sight on 2026-11-02 placed all 153 models and cleaned up, but its frame rates were meaningless.
+
+**First real run, the owner's machine, 2026-11-02:** 120 fps with nobody and adding all 153 models never dropped below 15 ms a frame. Everyone moving held 77 fps (p95 17 ms), and with the camera turning 56 fps (p95 32 ms, slowest frame 90 ms). But the game froze once for 8.8 s, after everything was on, and once more for 750 ms. So adding one model a frame doesn't protect anything: the map does its work on the models later, in one go. Until that's understood, the plan's "17 frames per person" and 8 players aren't proven. The test now adds each person in turn, three with all 17 frames and four with 5, and has a baseline with the camera turning, to find the cause.
+
+**Second run, same machine (32 threads, window 1061 x 901), adding people in turn, about 6 s apart:**
+
+| On the map | fps | p95 | Slowest frame |
+|---|---|---|---|
+| Nobody | 120 | 8.5 ms | 11 ms |
+| Nobody, camera turning | 105 | 15.7 ms | 58 ms |
+| Adding 27 cars | 116 | 11 ms | 35 ms |
+| Adding a person with 17 models (3 of them) | 103 to 119 | 9 to 16 ms | 17 to 69 ms |
+| Adding a person with 5 models (4 of them) | 115 to 120 | 9 ms | 15 to 78 ms |
+| All 105 models, moving | 84 | 15.9 ms | 21 ms |
+| All 105 moving, camera turning | 76 | 19.5 ms | 25 ms |
+
+No freeze. Sets of 17 cost no more than sets of 5 when added, so the number of frames isn't the trouble, and people keep all 17. What changed from the first run is the pace: all 153 models within about 5 s froze for 8.8 s, and spaced out they didn't. That's two runs, one with 48 fewer models, so it points at pace rather than proves it. **Rule for stage 1: only one person's models are added at a time, about 6 s after the last.** A name tag and standing model show at once, so nobody is invisible while waiting. This suits a world where people join one at a time; the hard case is walking up to a group, which is the one to watch. The moving figures show 7 others cost about 30 fps here, from 105 to 76 with the camera turning, which leaves room.
+
+**Stage 0's gate is met on the owner's machine, and 8 players stands.** A weak machine is still untested, as this one is strong. The performance log's `peers` and `fps` will show it as soon as someone joins on one.
 
 **Stage 1. People.** On foot only, so for testing rather than for inviting friends yet.
 1. Service, Apache file, key and deploy changes (after asking).
