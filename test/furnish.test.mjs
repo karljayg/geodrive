@@ -122,8 +122,9 @@ test('every home has the basics, whatever its shape', () => {
   for (const [name, p] of Object.entries(SHAPES)) {
     for (let seed = 0; seed < 25; seed++) {
       const record = lay(p, hashText(`${name}${seed}`)), zones = record.zones.map((z) => z[0]), items = record.items.map((i) => i[0]);
-      assert.ok(zones.includes('living'), `${name} ${seed} rooms ${zones}`);
-      if (name !== 'small') for (const wanted of ['kitchen', 'bathroom']) assert.ok(zones.includes(wanted), `${name} ${seed} rooms ${zones}`);
+      const open = zones.includes('openLiving');
+      assert.ok(zones.includes('living') || open, `${name} ${seed} rooms ${zones}`);
+      if (name !== 'small') for (const wanted of open ? ['bathroom'] : ['kitchen', 'bathroom']) assert.ok(zones.includes(wanted), `${name} ${seed} rooms ${zones}`);
       assert.ok(items.includes('sofa') || items.includes('tvStand'), `${name} ${seed}: ${items}`);
       if (zones.includes('bathroom')) assert.ok(items.includes('toilet'), `${name} ${seed}: no toilet in ${items}`);
       if (zones.includes('kitchen')) assert.ok(items.includes('stove') || items.includes('fridge'), `${name} ${seed}: no kitchen in ${items}`);
@@ -917,5 +918,26 @@ test('outside walls have windows facing into the room, on the same side as the w
     assert.ok(z >= 0.9 && z <= 2.4);
     const inward = (x + nx - 10) ** 2 + (y + ny - 5) ** 2 < (x - 10) ** 2 + (y - 5) ** 2;
     assert.ok(inward, 'a window faces the room, or culling would hide it');
+    assert.ok(x > 0 && x < 20 && y > 0 && y < 10, `and stands inside the wall, or the wall hides it: ${x}, ${y}`);
   }
+});
+
+test('homes come in different shapes, by size and chance, saved in the plan', () => {
+  const kinds = {}, sizes = [[9, 7], [14, 10], [22, 14]];
+  for (const [w, d] of sizes) {
+    for (let seed = 0; seed < 30; seed++) {
+      const plan = { type: 'home', floors: 1, style: 'modern' }, p = rectangle(w, d), record = layoutFloor([p], plan, 1, models, dice(hashText(`kind${w}${seed}`)));
+      (kinds[w] ||= {})[plan.homeKind] = ((kinds[w] || {})[plan.homeKind] || 0) + 1;
+      if (plan.homeKind === 'openPlan') {
+        const items = record.items.map((i) => i[0]);
+        assert.ok(record.zones.some((z) => z[0] === 'openLiving'), record.zones.map((z) => z[0]).join());
+        for (const item of ['stove', 'sofa', 'diningTable']) assert.ok(items.includes(item), `open plan has a ${item}: ${items}`);
+      }
+    }
+  }
+  assert.deepEqual(Object.keys(kinds[9]), ['cottage']);
+  assert.deepEqual(Object.keys(kinds[22]), ['large']);
+  assert.ok(kinds[14].openPlan >= 3 && kinds[14].standard >= 10, JSON.stringify(kinds[14]));
+  const big = layoutFloor([rectangle(22, 14)], { type: 'home', floors: 1, style: 'modern' }, 1, models, dice(4));
+  assert.ok(big.zones.filter((z) => z[0] === 'bedroom').length >= 2);
 });

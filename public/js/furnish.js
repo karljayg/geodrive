@@ -22,7 +22,14 @@ const MIN_SHARE = 0.5;     // of its target, the least a part of the floor can h
 const GROUND_ZONES = [['living', 28], ['kitchen', 15], ['bathroom', 6], ['hall', 6], ['dining', 14], ['study', 10], ['laundry', 6]];
 const SINGLE_ZONES = [['living', 28], ['kitchen', 15], ['bathroom', 6], ['bedroom', BEDROOM], ['hall', 6], ['bedroom', BEDROOM], ['dining', 14], ['study', 10], ['laundry', 6], ['bedroom', BEDROOM]];
 // A home's rooms from the front door in: what guests see first, and the bedrooms furthest. Dividing keeps this order, so they end up at opposite ends.
-const HOME_ORDER = { hall: 0, living: 1, dining: 2, kitchen: 3, study: 4, laundry: 5, bathroom: 6, bedroom: 7 };
+const HOME_ORDER = { hall: 0, living: 1, openLiving: 1, dining: 2, kitchen: 3, workshop: 3.5, study: 4, laundry: 5, bathroom: 6, bedroom: 7 };
+// Homes aren't all alike. Chosen once by size and dice, and saved in the plan as homeKind. first: rooms it always tries, then as many others as fit.
+const HOME_KINDS = {
+  cottage: { single: [['living', 22], ['kitchen', 12], ['bathroom', 6], ['bedroom', 14], ['bedroom', 12]], ground: [['living', 22], ['kitchen', 12], ['bathroom', 6]], upper: [['bedroom', 14], ['bathroom', 6], ['bedroom', 12]], first: 3 },
+  openPlan: { single: [['openLiving', 50], ['bathroom', 6], ['bedroom', BEDROOM], ['hall', 6], ['bedroom', BEDROOM], ['study', 10], ['bedroom', BEDROOM]], ground: [['openLiving', 55], ['bathroom', 6], ['hall', 6], ['study', 10]], upper: [['bedroom', BEDROOM], ['bathroom', 6], ['bedroom', BEDROOM], ['study', 10], ['bedroom', BEDROOM]], first: 3 },
+  large: { single: [['living', 30], ['kitchen', 18], ['bathroom', 7], ['bedroom', 20], ['hall', 8], ['dining', 16], ['bedroom', BEDROOM], ['bathroom', 6], ['study', 12], ['laundry', 7], ['workshop', 25], ['bedroom', BEDROOM]], ground: [['living', 30], ['kitchen', 18], ['bathroom', 7], ['hall', 8], ['dining', 16], ['study', 12], ['laundry', 7], ['workshop', 25]], upper: [['bedroom', 22], ['bathroom', 7], ['bedroom', BEDROOM], ['bedroom', BEDROOM], ['bathroom', 6], ['study', 10], ['bedroom', BEDROOM]], first: 4 },
+};
+const COTTAGE_UNDER = 75, LARGE_OVER = 170, OPEN_PLAN_CHANCE = 0.3; // m², m²
 const UPPER_ZONES = [['bedroom', BEDROOM], ['bathroom', 6], ['bedroom', BEDROOM], ['study', 10], ['bedroom', BEDROOM], ['bathroom', 6]];
 const TOILETS = ['toilets', 14], STOCK = ['stock', 16], DESKS = ['openPlan', 60], MEETING = ['meeting', 22], OFFICE = ['privateOffice', 14], BREAK = ['breakRoom', 16];
 // For each type: the zones of a ground floor, then of those above, in order of need. first: how many it always tries. then: repeated
@@ -80,6 +87,7 @@ const MOST_SOLIDS = 200;   // things on a floor that stop you, which is also wha
 const CHECK_BUDGET = 4e6; // grid cells a floor may look at to check nothing is shut off, which is what bounds how long it takes
 const WINDOW = 45;         // m from the centre that a huge floor is furnished; past that it's an open hall, for now
 const ROOM_WIDTH = {
+  openLiving: 4.5,
   gymFloor: 5, poolHall: 7, auditorium: 7, auditorium2: 8, pitch: 12, stand: 6, barRoom: 4, fastFoodFloor: 4, bakeryShop: 3, laundryRoom: 3, concourse: 6, platform: 6, gasShop: 3.5, workBay: 7, showroom: 6, foyer: 4, bankLobby: 3.5,
   engineBay: 8, eventHall: 7, stacks: 5, readingRoom: 4, playRoom: 4, cells: 3.5, bunkRoom: 4, dormRoom: 3,
   living: 3, bedroom: 2.8, dining: 2.8, kitchen: 2.5, hotelRoom: 3, openPlan: 4, meeting: 3, privateOffice: 2.5, breakRoom: 2.5, bankHall: 5, vault: 3, restaurantDining: 4, restaurantKitchen: 3, cafe: 3.5,
@@ -142,6 +150,23 @@ const RECIPES = {
     { item: 'bin', at: 'wall' },
   ],
   corridor: [],
+  openLiving: [
+    { item: 'rug', at: 'centre', must: true },
+    { item: 'fridge', at: 'wall', name: 'run', must: true },
+    { item: 'stove', at: 'beside', of: 'run', name: 'run', must: true },
+    { item: 'sink', at: 'beside', of: 'run', name: 'run', must: true },
+    { item: 'counter', at: 'beside', of: 'run', name: 'run', also: 'top', must: true },
+    { item: 'microwave', at: 'on', of: 'top' },
+    { item: 'sofa', at: 'wall', name: 'seat', must: true },
+    { item: 'tvStand', at: 'across', of: 'seat', name: 'stand', must: true },
+    { item: 'tv', at: 'on', of: 'stand', must: true },
+    { item: 'coffeeTable', at: 'front', of: 'seat' },
+    { item: 'diningTable', at: 'centre', name: 'table', must: true },
+    { item: 'chair', at: 'around', of: 'table', must: true, count: 4 },
+    { item: 'floorLamp', at: 'beside', of: 'seat' },
+    { item: 'plant', at: 'wall', loose: true },
+    { item: 'bookcase', at: 'wall' },
+  ],
   shopUnit: [
     { item: 'frontDesk', at: 'wall', name: 'desk', must: true },
     { item: 'till', at: 'on', of: 'desk', must: true },
@@ -867,7 +892,7 @@ const FLOORS = {
   bedroom: ['a79c8e', '8f9aa3', 'b5a795', '9c8d86'],
 };
 const FLOOR_KIND = {
-  engineBay: 'hard', gearRoom: 'hard', bunkRoom: 'bedroom', policeFront: 'smart', cells: 'hard', postCounter: 'smart', sorting: 'hard', eventHall: 'room', stacks: 'room', readingRoom: 'bedroom', playRoom: 'bedroom', dormRoom: 'bedroom', bankLobby: 'smart', gymFloor: 'hard', studio: 'room', lockerRoom: 'wet', poolHall: 'tile', foyer: 'smart', auditorium: 'dark', auditorium2: 'dark', pitch: 'grass', stand: 'hard', barRoom: 'room', fastFoodFloor: 'kitchen', bakeryShop: 'kitchen', bakeryKitchen: 'kitchen', laundryRoom: 'wet', concourse: 'smart', platform: 'hard', gasShop: 'smart', workBay: 'hard', showroom: 'smart', shopUnit: 'smart', security: 'smart', baggage: 'smart', loadingBay: 'hard', produce: 'smart', corridor: 'office', landing: 'smart', mailroom: 'smart', parkingDeck: 'hard', examRoom: 'wet', operatingRoom: 'wet', scanRoom: 'wet', nurseStation: 'wet', clinicWaiting: 'smart', kennels: 'wet', pharmacyFloor: 'smart', salonFloor: 'smart', careRoom: 'bedroom', lounge: 'room',
+  engineBay: 'hard', gearRoom: 'hard', bunkRoom: 'bedroom', policeFront: 'smart', cells: 'hard', postCounter: 'smart', sorting: 'hard', eventHall: 'room', stacks: 'room', readingRoom: 'bedroom', playRoom: 'bedroom', dormRoom: 'bedroom', bankLobby: 'smart', gymFloor: 'hard', studio: 'room', lockerRoom: 'wet', poolHall: 'tile', foyer: 'smart', auditorium: 'dark', auditorium2: 'dark', pitch: 'grass', stand: 'hard', barRoom: 'room', fastFoodFloor: 'kitchen', bakeryShop: 'kitchen', bakeryKitchen: 'kitchen', laundryRoom: 'wet', concourse: 'smart', platform: 'hard', gasShop: 'smart', workBay: 'hard', showroom: 'smart', shopUnit: 'smart', security: 'smart', baggage: 'smart', loadingBay: 'hard', produce: 'smart', openLiving: 'room', corridor: 'office', landing: 'smart', mailroom: 'smart', parkingDeck: 'hard', examRoom: 'wet', operatingRoom: 'wet', scanRoom: 'wet', nurseStation: 'wet', clinicWaiting: 'smart', kennels: 'wet', pharmacyFloor: 'smart', salonFloor: 'smart', careRoom: 'bedroom', lounge: 'room',
   bathroom: 'wet', laundry: 'wet', toilets: 'wet', ward: 'wet', hospitalWaiting: 'wet', kitchen: 'kitchen', breakRoom: 'kitchen', restaurantKitchen: 'kitchen', cafeteria: 'kitchen', bedroom: 'bedroom', hotelRoom: 'bedroom',
   openPlan: 'office', privateOffice: 'office', meeting: 'office', schoolOffice: 'office', records: 'office', classroom: 'office', workshop: 'hard', racking: 'hard', machines: 'hard', hangarBay: 'hard', stock: 'hard', vault: 'hard', gym: 'hard',
   lobby: 'smart', bankHall: 'smart', salesFloor: 'smart', aisles: 'smart', foodCourt: 'smart', checkIn: 'smart', gates: 'smart', gallery: 'smart', worshipHall: 'smart', cafe: 'room', restaurantDining: 'room',
@@ -1485,6 +1510,17 @@ function zonesFor(plan, floor, area) {
     }
     return zones;
   }
+  const kind = HOME_KINDS[plan.homeKind];
+  if (kind) {
+    const list = floor > 1 ? kind.upper : plan.floors > 1 ? kind.ground : kind.single, zones = list.slice(0, kind.first);
+    let total = zones.reduce((sum, z) => sum + z[1], 0);
+    for (const zone of list.slice(kind.first)) {
+      if (total + zone[1] > area * USABLE) continue;
+      zones.push(zone);
+      total += zone[1];
+    }
+    return zones;
+  }
   const { floors } = plan, [list, essential] = floor > 1 ? [UPPER_ZONES, ESSENTIAL.upper] : floors > 1 ? [GROUND_ZONES, ESSENTIAL.ground] : [SINGLE_ZONES, ESSENTIAL.single];
   const zones = list.slice(0, essential);
   let total = zones.reduce((sum, z) => sum + z[1], 0);
@@ -1854,6 +1890,10 @@ export function layoutFloor(pieces, plan, floor, models, roll) {
   const axis = plan.core?.axis ?? axisOf(pieces), frame = frameOf(pieces, axis);
   const area = pieces.reduce((sum, p) => sum + p.rings.reduce((inner, ring) => inner + signedArea(ring.pts), 0), 0);
   // The zones are in order of need, so when they don't all fit, the last one goes and the whole floor is tried again.
+  if (plan.type === 'home' && plan.homeKind === undefined) {
+    const chance = roll();
+    plan.homeKind = area < COTTAGE_UNDER ? 'cottage' : area > LARGE_OVER ? 'large' : chance < OPEN_PLAN_CHANCE ? 'openPlan' : 'standard';
+  }
   const window = (WINDOW * 2) ** 2, wanted = zonesFor(plan, floor, Math.min(area, window)), doors = [], cell = area >= COARSE_FROM ? COARSE_CELL : FINE_CELL;
   let grid, cuts, rooms;
   const whole = () => ({ i0: 0, i1: grid.nu - 1, j0: 0, j1: grid.nv - 1 });

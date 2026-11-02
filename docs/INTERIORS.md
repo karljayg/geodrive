@@ -102,6 +102,9 @@ Reviewed 2026-11-02 against what real buildings are like, with an audit of every
 - **Corridors.** Apartments, hotel and dorm floors, care home floors and schools have rooms off corridors, each with a front door. A hotel room has its own bathroom.
 - **Shape and share.** Rooms stay within about 4.5 times as long as wide where possible, and a room gets a share of what a floor can hold by its size, so no room is left empty.
 
+## Different home shapes
+Each home is chosen once and saved as `homeKind`: a cottage under 75 m², with few rooms and no hall; a large home over 170 m², with a study, laundry, workshop, more bedrooms and a second bathroom; otherwise usually the standard home, or about 3 in 10 open plan, with kitchen, dining and living in one room.
+
 ## Every building looks different
 Each building gets a look when first furnished, saved in its plan: one wood, three fabrics and a wall colour from a continuous range, and a floor for each kind of room, all within what its style allows (modern, traditional, cheap, luxury). Rooms draw on it, so a home holds together and no two match.
 

@@ -124,7 +124,7 @@ function doorsOf(furnishing, pieces) {
 function addWindows(mesh, w, floor, doorSpots) {
   const length = Math.hypot(w.bx - w.ax, w.by - w.ay);
   if (length < WINDOW_EVERY * 0.7) return;
-  const count = Math.max(1, Math.round(length / WINDOW_EVERY)), ux = (w.ax - w.bx) / length, uy = (w.ay - w.by) / length, nx = -uy, ny = ux;
+  const count = Math.max(1, Math.round(length / WINDOW_EVERY)), ux = (w.ax - w.bx) / length, uy = (w.ay - w.by) / length, nx = uy, ny = -ux; // into the room
   for (let n = 0; n < count; n++) {
     const along = (length * (n + 0.5)) / count, cx = w.bx + ux * along, cy = w.by + uy * along;
     if (doorSpots.some((d) => Math.hypot(d.x - cx, d.y - cy) < WINDOW_WIDTH)) continue;
