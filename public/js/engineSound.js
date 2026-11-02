@@ -43,6 +43,7 @@ export class EngineAudio {
     this.roadBus = bus();
     this.windBus = bus();
     this.fxBus = bus();
+    this.musicBus = bus();
 
     // Recorded layers pass through a filter and an overall level.
     this.body = ctx.createBiquadFilter();
@@ -83,6 +84,7 @@ export class EngineAudio {
     this.roadBus.gain.setTargetAtTime(s.roadVolume * 2, now, 0.02);
     this.windBus.gain.setTargetAtTime(s.windVolume * 2, now, 0.02);
     this.fxBus.gain.setTargetAtTime(s.signalVolume, now, 0.02);
+    this.musicBus.gain.setTargetAtTime(s.musicVolume, now, 0.02);
   }
 
   fetchBuffer(file) {

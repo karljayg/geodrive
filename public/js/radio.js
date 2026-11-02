@@ -79,16 +79,24 @@ export class Radio {
     this.area = '';
     this.retries = 0;
     this.searchedAt = null;
+    this.held = null; // why something else has stopped it, while it stays on and tuned
+    this.level = 1; // the listener's volume
+    this.fade = 1; // share of that level, while fading
+    this.fadeIn = 0; // seconds to come back after being held
+    this.heardAt = -Infinity; // ms when it last played or was asked to
     this.audio.addEventListener('playing', () => {
+      if (this.held) return this.audio.pause();
       this.retries = 0;
       this.say('Playing');
+      this.fadeTo(1, this.fadeIn);
       if (this.songStation !== this.current?.id) this.askSong(this.current?.id);
     });
     this.audio.addEventListener('waiting', () => this.say('Buffering…'));
-    this.audio.addEventListener('error', () => { if (this.on && this.current) this.skipDead(); });
+    this.audio.addEventListener('error', () => { if (this.on && this.current && !this.held) this.skipDead(); });
   }
 
   say(status) {
+    if (this.status === 'Playing' && status !== 'Playing') this.heardAt = performance.now();
     this.status = status;
     this.onChange();
   }
@@ -188,6 +196,7 @@ export class Radio {
   setPower(on) {
     this.on = on;
     if (on) {
+      this.heardAt = performance.now();
       if (this.current) this.tune(this.current);
       else if (this.stations.length) this.tune(this.firstStation());
       else this.say('Finding stations…');
@@ -221,17 +230,23 @@ export class Radio {
     this.setPower(true);
   }
 
-  // Stops sound without turning the radio off, for the pause screen. Leaves the station and UI as they were.
-  hold() {
-    if (!this.on) return;
-    this.stopSong();
-    this.audio.pause();
-  }
-
-  // Plays again after hold(), retuning so a live stream catches up rather than buffering silence.
-  release() {
-    if (!this.on || !this.current) return;
-    this.tune(this.current);
+  // Stops sound without turning the radio off, leaving the station and power as they were: for the pause screen, a scene, or music being off.
+  // reason shows on the display, null plays again, retuning so a live stream catches up rather than buffering silence. Choosing a station or power meanwhile takes effect then.
+  setHeld(reason, fadeOut = 0, fadeIn = 0) {
+    if (reason === this.held) return;
+    const was = this.held;
+    this.held = reason;
+    if (reason) {
+      if (!was) {
+        this.stopSong();
+        this.fadeTo(0, this.status === 'Playing' ? fadeOut : 0, () => { if (this.held) this.audio.pause(); });
+      }
+      if (this.on) this.say(reason);
+      return;
+    }
+    this.fadeIn = fadeIn;
+    if (!this.on) return this.fadeTo(1, 0);
+    this.setPower(true);
   }
 
   setBand(band) {
@@ -262,6 +277,8 @@ export class Radio {
     if (!station) return this.say('No stations on this band here');
     this.current = station;
     this.stopSong();
+    if (this.held) return this.say(this.held);
+    this.heardAt = performance.now();
     this.say('Tuning…');
     this.audio.src = station.url;
     this.audio.play().catch((err) => {
@@ -281,6 +298,32 @@ export class Radio {
   }
 
   setVolume(volume) {
-    this.audio.volume = Math.max(0, Math.min(1, volume));
+    this.level = Math.max(0, Math.min(1, volume));
+    this.audio.volume = this.level * this.fade;
+  }
+
+  // Moves the share of the volume in steps. A phone browser may ignore volume, and then only the stop at the end is heard.
+  fadeTo(share, seconds, done = () => {}) {
+    clearInterval(this.fadeTimer);
+    const from = this.fade, began = performance.now();
+    const step = () => {
+      const f = seconds > 0 ? Math.min(1, (performance.now() - began) / (seconds * 1000)) : 1;
+      this.fade = from + (share - from) * f;
+      this.audio.volume = this.level * this.fade;
+      if (f === 1) {
+        clearInterval(this.fadeTimer);
+        done();
+      }
+    };
+    if (seconds > 0) this.fadeTimer = setInterval(step, 50);
+    step();
+  }
+
+  // Has it, or is it about to have, sound? 'starting' covers tuning and short dropouts: graceMs from when it was last heard or asked to play.
+  soundState(graceMs, now = performance.now()) {
+    if (!this.on) return 'off';
+    if (this.held) return 'starting'; // only asked when nothing needs it held any more
+    if (this.status === 'Playing') return 'playing';
+    return now - this.heardAt < graceMs ? 'starting' : 'off';
   }
 }

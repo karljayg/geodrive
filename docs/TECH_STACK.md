@@ -5,7 +5,7 @@ A plain static website with no framework and no build step. All game logic runs 
 ## Front end
 - Plain JavaScript (ES modules), HTML and CSS
 - No npm packages, in the game or its tooling
-- Web Audio API for engine, road and wind sound (FLAC loops from the CC0 Muted.io pack), `<audio>` for radio, canvas for gauges and the nav screen
+- Web Audio API for engine, road and wind sound (FLAC loops from the CC0 Muted.io pack), `<audio>` for radio, `<audio>` streamed into Web Audio for the soundtrack (MP3s in `public/audio/music`, 36 MB, fetched only as played, no Google cost), canvas for gauges and the nav screen
 
 ## Map and car
 - 3D map: Google Maps JavaScript API, photorealistic 3D element (`Map3DElement`)
@@ -51,7 +51,9 @@ Google usage and spend can only be seen in Google Cloud Console; the API key can
 | `synthEngine.js` | Synth engine: electric, option, fallback | Browser, by ear |
 | `share.js` | Share links | Yes |
 | `session.js` | Saves the trip across a refresh | Browser |
-| `radio.js` | Station search, bands, tuning, playback | Parsing yes, playback browser |
+| `radio.js` | Station search, bands, tuning, playback, holding for a scene | Parsing and holding yes, playback browser |
+| `musicConfig.js`, `music.js` | Soundtrack moods and songs; which mood, when to fade, what's next | Yes |
+| `musicPlayer.js` | Plays and crossfades the soundtrack | Browser (`public/_music.html`, not deployed) |
 | `carModel.js` | Builds car models and pictures by type and colour | Yes |
 | `daylight.js` | Time-of-day tint | Yes |
 | `headlights.js` | Headlight beam pattern | Yes |

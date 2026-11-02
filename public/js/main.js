@@ -19,6 +19,9 @@ import { bagSound } from './sounds.js';
 import { apiPanelRows, describeMachine, observeBrowser, PerfLog } from './perflog.js';
 import { newGearbox, stepGearbox } from './gearbox.js';
 import { frequencyText, Radio } from './radio.js';
+import { chooseMusic, Scenes } from './music.js';
+import { MUSIC } from './musicConfig.js';
+import { Soundtrack } from './musicPlayer.js';
 import { clearRoute, loadRoute, loadSession, saveRoute, saveSession } from './session.js';
 import { DEFAULTS, saveSettings, settings } from './settings.js';
 import { decodeShare, encodeShare, packShare, shareSummary } from './share.js';
@@ -101,7 +104,7 @@ function sfx(name) {
   soundTimedAt = now;
   setTimeout(() => perfLog.event('sound', { name, state: before.state, baseMs: Math.round(before.base * 1000), outputMs: Math.round(before.output * 1000), behindMs: Math.round(before.behind * 1000), clockMs: Math.round((engine.timing().at - before.at) * 1000), wallMs: Math.round(performance.now() - now) }), SOUND_CLOCK_MS);
 }
-let soundThrottle = 0, savedAt = 0, radioResume = false, radioHeld = false;
+let soundThrottle = 0, savedAt = 0, radioResume = false;
 const SOUND_THROTTLE_RISE = 1.1; // s for a held W to reach full throttle in the sound; the car's acceleration doesn't change
 const SAVE_EVERY = 2000; // ms between saving the trip
 const gearbox = newGearbox();
@@ -128,6 +131,8 @@ const LOCKED_TIME = 2800; // ms
 let carRadio = null; // what the car's radio was doing when they got out
 let pocket = null; // the phone, compass, notepad and bag, made the first time someone gets out
 let people = null, foot = null, footLoading = false, lookX = 0, lookY = 0, touchLook = null; // the walk in progress, while out of the car
+const scenes = new Scenes(MUSIC);
+let soundtrack = null, musicTest = null; // musicTest: the mood picked in Settings, heard over everything
 const debug = { hold: false, car, pos, keys, roads, tiles, perfLog }; // window.__geodrive, for checks from the console
 
 function loadStart() {
@@ -678,6 +683,18 @@ function applySound() {
   radio.setVolume(settings.muted ? 0 : settings.radioVolume * settings.masterVolume);
   engine.applySettings(settings);
   turnKnob(el('volumeKnob'), -135 + settings.radioVolume * 270);
+  updateMusic();
+}
+
+// The soundtrack and radio decide together, here: chooseMusic says what should sound. Runs on a timer rather than the game loop, which stops in a hidden tab.
+// Scenes come from soundtrack.scene(name) and soundtrack.endScene(name), the way for anything in the game to set the mood.
+function updateMusic() {
+  if (!soundtrack) return;
+  const now = performance.now() / 1000;
+  const stopped = settings.musicOff ? 'All music off in Settings' : paused ? 'Paused' : document.hidden && !settings.musicWhenHidden ? 'Waiting for you to come back' : null;
+  const { mood, holdRadio } = chooseMusic({ hour: settings.hour, scenes: scenes.active(now), radio: radio.soundState(MUSIC.radioGrace * 1000), test: musicTest, blocked: !!stopped }, MUSIC);
+  radio.setHeld(holdRadio ? stopped || 'Stopped for now' : null, stopped ? 0 : MUSIC.radioFade, MUSIC.radioFadeIn);
+  soundtrack.update(mood);
 }
 
 // Every clock reads settings.hour. Pausing or a dialog stops it, and it's saved now and then so a refresh keeps the time.
@@ -749,7 +766,7 @@ function frame(t) {
     updateHud(t);
     perfLog.spend('dash', performance.now() - dashBegan);
   } else if (map && !foot) {
-    // Paused or in a dialog: the engine goes quiet. Pause also holds the radio (see setPaused).
+    // Paused or in a dialog: the engine goes quiet. Pause also holds the radio and soundtrack (see updateMusic).
     const profile = profileFor(settings.carProfile);
     if (!previewing()) engine.update({ rpm: gearbox.rpm, load: 0, speedMph: 0, car: profile, running: false });
   }
@@ -1658,13 +1675,8 @@ function setPaused(on) {
       el('pauseTitle').textContent = 'Paused';
       renderTrip();
     }
-    // Mute the radio while paused, but remember it so resume can bring it back.
-    radioHeld = radio.on;
-    if (radioHeld) radio.hold();
-  } else if (radioHeld) {
-    radioHeld = false;
-    if (radio.on) radio.release();
   }
+  updateMusic();
 }
 
 el('pauseButton').addEventListener('click', () => setPaused(!paused));
@@ -1944,6 +1956,7 @@ function showSettings() {
   if (model) model.scale = settings.carScale; // fixed in world units, so the car shrinks with the map when zooming out
   foot?.setCar(settings.carProfile, settings.carScale);
   applySound();
+  showMusicNow();
 }
 
 el('carProfile').replaceChildren(...Object.entries(CAR_PROFILES).map(([id, car]) => {
@@ -2117,6 +2130,35 @@ function toggleMute() {
   saveSettings();
   notice(settings.muted ? 'Sound muted. Press M to turn it back on.' : 'Sound on.', 2000);
 }
+// Starts at the first click or key press, the one moment every browser allows it.
+function startMusic() {
+  if (soundtrack?.ctx || !engine.ctx) return;
+  soundtrack = new Soundtrack(MUSIC, (song) => {
+    perfLog.event('music', song || { mood: null });
+    showMusicNow();
+  });
+  soundtrack.start(engine.ctx, engine.musicBus);
+  soundtrack.scene = (name) => { scenes.start(name, performance.now() / 1000); updateMusic(); };
+  soundtrack.endScene = (name) => { scenes.end(name); updateMusic(); };
+  debug.soundtrack = soundtrack;
+  setInterval(updateMusic, 500);
+  updateMusic();
+}
+
+function showMusicNow() {
+  const playing = soundtrack?.nowPlaying();
+  el('musicNow').textContent = playing ? `Playing: ${MUSIC.moods[playing.mood].label} · ${playing.file}` : radio.on ? 'The radio has it.' : 'No soundtrack playing.';
+}
+
+el('musicTest').replaceChildren(new Option('Follow the game', ''), ...Object.entries(MUSIC.moods).map(([id, mood]) => new Option(mood.songs.length ? mood.label : `${mood.label} (no songs yet)`, id)));
+el('musicTest').addEventListener('input', () => {
+  musicTest = el('musicTest').value || null; // for this visit only
+  engine.start();
+  startMusic();
+  updateMusic();
+});
+document.addEventListener('visibilitychange', updateMusic);
+
 // Pressed once, by mouse: left focused, Space or Enter would press it again.
 const onClick = (id, run) => el(id).addEventListener('click', (e) => { e.currentTarget.blur(); run(); });
 onClick('leaveButton', pressL);
@@ -2138,6 +2180,7 @@ for (const kind of ['pointerdown', 'keydown']) {
       radioResume = false;
       if (!(kind === 'pointerdown' && el('radioPower').contains(event.target))) setRadioPower(true);
     }
+    startMusic(); // after the radio, which it would otherwise play over for a moment
   }, { capture: true });
 }
 window.addEventListener('pagehide', () => {

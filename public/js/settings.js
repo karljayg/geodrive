@@ -10,6 +10,9 @@ export const DEFAULTS = {
   engineVolume: 0.6,
   enginePitch: 1,
   radioVolume: 0.7,
+  musicVolume: 0.35, // the soundtrack; each mood's and song's own levels are in musicConfig.js
+  musicOff: false, // no soundtrack, radio or phone music; the engine and effects carry on
+  musicWhenHidden: true, // radio and soundtrack keep playing in another tab or window
   signalVolume: 0.5,
   engineSound: 'recorded', // or 'synth'
   audioPreset: 'balanced', // quiet, balanced or sport; sound only
@@ -23,7 +26,7 @@ export const DEFAULTS = {
   mapMemory: 512, // MB the 3D map may keep
   mapScale: 0.8, // share of the window's width and height the map draws at; the graphics chip's biggest single load
   mapLabels: true, // road and place names on the map, or photographs only
-  radioOn: true,
+  radioOn: false,
   radioStation: { id: 'a4d806b2-8d6a-4cd1-9000-3224e106a0bb', name: 'HOT 995 - WIHT-FM 99.5 Washington', url: 'https://stream.revma.ihrhls.com/zc2509', band: 'FM', frequency: 99.5, local: true },
 };
 

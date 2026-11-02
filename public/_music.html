@@ -1,0 +1,36 @@
+<!doctype html><meta charset="utf-8"><title>music</title><style>body{margin:0;background:#17202a;color:#eee;font:14px system-ui}div{display:flex;flex-wrap:wrap;gap:6px;padding:12px}button{padding:8px 12px;font:inherit}pre{padding:0 12px;white-space:pre-wrap}</style>
+<div id="moods"></div><pre id="out">Click a mood. No map, no map charge.</pre>
+<script type="module">
+// Each mood, and what's playing, without the game. Not deployed.
+import { MUSIC } from './js/musicConfig.js';
+import { Soundtrack } from './js/musicPlayer.js';
+const box = document.getElementById('moods'), out = document.getElementById('out');
+box.innerHTML = `${Object.keys(MUSIC.moods).map((m) => `<button data-mood="${m}">${m}</button>`).join('')}<button data-mood="">stop</button>`;
+const log = [];
+const track = new Soundtrack(MUSIC, (song) => log.push(`${(performance.now() / 1000).toFixed(1)}s ${song ? `${song.mood}: ${song.file}` : 'stopped'}`));
+let ctx, analyser, want = null;
+box.addEventListener('click', (event) => {
+  if (!('mood' in event.target.dataset)) return;
+  if (!ctx) {
+    ctx = new AudioContext();
+    analyser = ctx.createAnalyser();
+    analyser.connect(ctx.destination);
+    track.start(ctx, analyser);
+    setInterval(tick, 250);
+  }
+  ctx.resume();
+  want = event.target.dataset.mood || null;
+  window.__want = want;
+  track.update(want);
+});
+function level() {
+  const data = new Float32Array(analyser.fftSize);
+  analyser.getFloatTimeDomainData(data);
+  return Math.sqrt(data.reduce((sum, v) => sum + v * v, 0) / data.length);
+}
+function tick() {
+  track.update(want);
+  out.textContent = `level ${level().toFixed(4)}\n${track.players.map((p) => `${p.song?.file ?? '-'} gain ${p.gain.gain.value.toFixed(2)} at ${p.audio.currentTime.toFixed(1)}`).join('\n')}\n\n${log.join('\n')}`;
+}
+window.__music = { track, level, log, MUSIC, set: (m) => { want = m; track.update(m); } };
+</script>
