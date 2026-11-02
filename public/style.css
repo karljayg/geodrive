@@ -32,7 +32,11 @@ header button:hover { background: #ffffff1f; color: #fff; }
 .brand { font-weight: 800; letter-spacing: .08em; font-size: 11px; margin: 0 6px 0 2px; }
 .where { font-size: 12px; font-weight: 650; color: #fff; margin-left: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .brand b { color: #69d9ba; }
-#notice { position: absolute; top: 44px; left: 8px; max-width: 420px; padding: 10px 15px; border-radius: 9px; background: #923822e0; font-size: 13px; line-height: 1.4; display: none; }
+/* What the person or driver is thinking: a bubble over their head, with its trail of little clouds leading down to them. */
+#notice { position: absolute; left: 50%; bottom: 42%; transform: translateX(-50%); width: max-content; max-width: min(340px, calc(100vw - 32px)); padding: 12px 18px; border-radius: 26px; background: #fffffff2; color: #1c2630; box-shadow: 0 6px 20px #0005; font-size: 13.5px; line-height: 1.35; text-align: center; display: none; }
+#notice::before, #notice::after { content: ""; position: absolute; border-radius: 50%; background: #fffffff2; box-shadow: 0 3px 8px #0004; }
+#notice::before { left: calc(50% - 16px); bottom: -11px; width: 15px; height: 15px; }
+#notice::after { left: calc(50% - 3px); bottom: -25px; width: 8px; height: 8px; }
 
 kbd { display: inline-flex; min-width: 24px; justify-content: center; border: 1px solid #607080; border-bottom-width: 3px; border-radius: 5px; background: #ffffff13; color: #fff; padding: 0 5px; line-height: 20px; font: inherit; font-size: 11px; margin-right: 3px; }
 
