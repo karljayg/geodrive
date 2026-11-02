@@ -20,7 +20,8 @@ const TILE_REACH = 200;      // m around the person that buildings and water mus
 const TERRAIN_ZOOM = 15;     // about 5 m a sample at these latitudes; the drive's zoom 12 is too coarse to walk on
 const LOOK_EVERY = 1000;     // ms between checking which tiles are wanted
 const RETRY_AFTER = 15000;   // ms before a tile that failed is tried again
-const ROOM_BACKDROP = [0.05, 0.06, 0.08];
+const ROOM_SKY = [0.42, 0.58, 0.76];
+const INDOOR_LIGHT = 0.62; // how much of the room stays lit however dark it is outside, as the lights are on
 const NEAR = 2, FAR = 400;   // m from the camera
 const INDOOR_RANGE = 0.45;   // of the camera's distance outdoors, as furniture is small from there
 export const PERSON_SIZE = 1.1; // times real size, which is hard to follow from the driving camera
@@ -370,10 +371,11 @@ export class Foot {
   renderRoom(hour) {
     const view = { ...this.view, range: this.view.range * INDOOR_RANGE };
     const aspect = gl.fit(), { eye, target } = placeCamera(this.walker, view);
-    const tint = tintAt(hour).map((v) => 0.2 + 0.8 * (v / 255));
+    const daylight = tintAt(hour).map((v) => v / 255), tint = daylight.map((v) => INDOOR_LIGHT + (1 - INDOOR_LIGHT) * v);
+    const sky = ROOM_SKY.map((v, i) => (v * daylight[i]) / tint[i]); // outside goes properly dark, though the room doesn't
     gl.begin({
       viewProj: multiply(perspective(this.view.fov, aspect, NEAR, FAR), lookAt(eye, target)),
-      eye, tint, sky: ROOM_BACKDROP, fogFrom: FAR, fogTo: FAR * 2,
+      eye, tint, sky, fogFrom: FAR, fogTo: FAR * 2,
     });
     gl.draw(this.room.mesh, translate(0, 0, this.room.floor));
     const w = this.walker, n = PERSON_SIZE;

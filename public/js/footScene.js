@@ -13,6 +13,8 @@ const INNER_WALL_COLOUR = [0.9, 0.88, 0.83];
 const INNER_WALL_HEIGHT = 1.1; // m, waist high, so walls never hide the person from the camera above
 const INNER_WALL_THICK = 0.12; // m
 const ZONE_FLOOR_LIFT = 0.04;  // m
+const WINDOW_EVERY = 3.4, WINDOW_WIDTH = 1.5, WINDOW_LOW = 0.95, WINDOW_HIGH = 2.3; // m
+const WINDOW_GLASS = [0.62, 0.8, 0.95], WINDOW_FRAME = [0.93, 0.92, 0.88];
 const CORE_SCHEME = { wood: 'a58a6c', fabric: '6f7a80', accent: '6f7a80', floor: 'a8a8a0' }; // stairs and lifts belong to no room
 
 export class Mesh {
@@ -111,10 +113,34 @@ function addFurnishing(mesh, pieces, record, { models, colours }) {
   }
 }
 
+// Where the front door is, as a window doesn't go there.
+function doorsOf(furnishing, pieces) {
+  if (!furnishing) return [];
+  const frame = frameOf(pieces, furnishing.record.axis);
+  return furnishing.record.items.filter(([item]) => item === 'frontDoor').map(([, , u, v]) => frame.toWorld(u, v));
+}
+
+// Evenly spaced windows on the inside of an outside wall, a little in front of it: a frame, and sky in it.
+function addWindows(mesh, w, floor, doorSpots) {
+  const length = Math.hypot(w.bx - w.ax, w.by - w.ay);
+  if (length < WINDOW_EVERY * 0.7) return;
+  const count = Math.max(1, Math.round(length / WINDOW_EVERY)), ux = (w.ax - w.bx) / length, uy = (w.ay - w.by) / length, nx = -uy, ny = ux;
+  for (let n = 0; n < count; n++) {
+    const along = (length * (n + 0.5)) / count, cx = w.bx + ux * along, cy = w.by + uy * along;
+    if (doorSpots.some((d) => Math.hypot(d.x - cx, d.y - cy) < WINDOW_WIDTH)) continue;
+    const pane = (half, z0, z1, off, colour) => {
+      const x0 = cx - ux * half + nx * off, y0 = cy - uy * half + ny * off, x1 = cx + ux * half + nx * off, y1 = cy + uy * half + ny * off;
+      mesh.quad([x0, y0, floor + z0], [x1, y1, floor + z0], [x1, y1, floor + z1], [x0, y0, floor + z1], colour);
+    };
+    pane(WINDOW_WIDTH / 2 + 0.07, WINDOW_LOW - 0.07, WINDOW_HIGH + 0.07, 0.02, WINDOW_FRAME);
+    pane(WINDOW_WIDTH / 2, WINDOW_LOW, WINDOW_HIGH, 0.03, WINDOW_GLASS);
+  }
+}
+
 // The floor of a building from inside, with all its pieces, as a tile edge can cut a building in two. furnishing: { record, furniture } if it has any.
 export function roomMesh(place, building, floor, furnishing) {
   const mesh = new Mesh(), top = floor + ROOM_HEIGHT, pieces = building.pieces || [building], look = furnishing?.record.look;
-  const outer = look?.outer ? hexColour(look.outer) : ROOM_WALL_COLOUR;
+  const outer = look?.outer ? hexColour(look.outer) : ROOM_WALL_COLOUR, doorSpots = doorsOf(furnishing, pieces);
   for (const piece of pieces) {
     const roof = roofOf(piece);
     for (let i = 0; i < roof.length; i += 3) {
@@ -124,6 +150,7 @@ export function roomMesh(place, building, floor, furnishing) {
     }
     for (const w of place.walls(piece)) {
       mesh.quad([w.bx, w.by, floor], [w.ax, w.ay, floor], [w.ax, w.ay, top], [w.bx, w.by, top], outer);
+      addWindows(mesh, w, floor, doorSpots);
     }
   }
   if (furnishing) addFurnishing(mesh, pieces, furnishing.record, furnishing.furniture);

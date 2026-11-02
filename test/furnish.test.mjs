@@ -906,3 +906,16 @@ test('a mall has a walkway with different shops off it, an airport has security 
   assert.ok(zones('supermarket', 50, 35).items.includes('produceStand'));
   assert.ok(zones('museum', 50, 30).items.includes('wallPicture'));
 });
+
+test('outside walls have windows facing into the room, on the same side as the wall', () => {
+  const p = rectangle(20, 10), place = new Place(ORIGIN);
+  place.addTile('t', { buildings: [p], lands: [], waters: [], roads: [] });
+  const data = roomMesh(place, p, 0), glass = [];
+  for (let i = 0; i < data.length; i += 9) if (Math.abs(data[i + 6] - 0.62) < 0.01 && Math.abs(data[i + 8] - 0.95) < 0.01) glass.push([data[i], data[i + 1], data[i + 2], data[i + 3], data[i + 4]]);
+  assert.ok(glass.length >= 6 * 8, `${glass.length} glass vertices`);
+  for (const [x, y, z, nx, ny] of glass) {
+    assert.ok(z >= 0.9 && z <= 2.4);
+    const inward = (x + nx - 10) ** 2 + (y + ny - 5) ** 2 < (x - 10) ** 2 + (y - 5) ** 2;
+    assert.ok(inward, 'a window faces the room, or culling would hide it');
+  }
+});
