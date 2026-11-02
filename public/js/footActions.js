@@ -22,7 +22,7 @@ const FINDS = {
   box: ['Old newspapers', 'Packing tape', 'Holiday lights'], bin: ['Crumpled receipt', 'Empty can'], cashCart: ['Bundle of cash'], toolChest: ['Wrench', 'Screwdriver', 'Tape measure'], medCart: ['Bandages', 'Thermometer'],
   storeShelf: ['Tin of beans', 'Bottle of water', 'Pack of batteries'], clothesRack: ['Denim jacket', 'Silk scarf'], displayTable: ['Gift card', 'Sunglasses'], displayCase: ['Old coin', 'Museum guide'],
   palletRack: ['Box of parts', 'Roll of tape'], bookStack: ['Library book', 'Old atlas'], gearRack: ['Fire helmet', 'Gloves'], walkInFridge: ['Tray of steaks', 'Crate of milk'], toyBox: ['Toy car', 'Teddy bear'],
-  fridgeCase: ['Sandwich', 'Cold drink'], breadRack: ['Fresh loaf', 'Croissant'], vendingMachine: ['Candy bar'], petCage: ['Dog biscuit'],
+  produceStand: ['Apple', 'Banana'], fridgeCase: ['Sandwich', 'Cold drink'], breadRack: ['Fresh loaf', 'Croissant'], vendingMachine: ['Candy bar'], petCage: ['Dog biscuit'],
 };
 // What using something says. A thing can also give something, as a cash machine gives cash.
 const USES = {
@@ -32,7 +32,7 @@ const USES = {
   treadmill: { say: 'You jog for a minute.' }, benchPress: { say: 'You lift it twice and put it down.' }, punchBag: { say: 'Thud.' }, weightRack: { say: 'Heavier than it looks.' }, poolTable: { say: 'You knock a ball in.' },
   ticketMachine: { say: 'It prints a ticket.', give: 'Ticket' }, tellerCounter: { say: 'The teller is on a break.' }, printer: { say: 'It\'s out of paper.' }, machine: { say: 'It whirrs into life and stops.' },
   carLift: { say: 'The lift rises a little.' }, examTable: { say: 'The paper crinkles.' }, scanner: { say: 'It hums for a moment.' }, turnstile: { say: 'It clicks round.' }, workbench: { say: 'You tidy the tools.' },
-  scales: { say: 'It reads nothing.' },
+  scales: { say: 'It reads nothing.' }, xrayBelt: { say: 'The belt creeps forward.' },
 };
 const SWITCHES = { tv: 'The TV flickers on and off.', radio: 'A burst of music, and you turn it off.', tableLamp: 'Click. Click.', floorLamp: 'Click. Click.', surgeryLamp: 'It blazes, and you turn it off.', speakerStand: 'A burst of static.' };
 

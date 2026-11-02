@@ -108,6 +108,13 @@ export const ITEMS = {
   vendingMachine: { models: ['vendingMachine'], built: true, use: ['use'] },
   breadRack: { models: ['breadRack'], built: true, use: ['search'] },
   speakerStand: { models: ['speakerSmall'], use: ['switch'] },
+  rollerDoor: { models: ['rollerDoor'], built: true },
+  securityArch: { models: ['securityArch'], built: true },
+  xrayBelt: { models: ['xrayBelt'], built: true, use: ['use'] },
+  baggageBelt: { models: ['baggageBelt'], built: true },
+  luggageCart: { models: ['luggageCart'], built: true, use: ['move'] },
+  wallPicture: { models: ['wallPicture'], built: true },
+  produceStand: { models: ['produceStand'], built: true, use: ['search'] },
   mailboxes: { models: ['mailboxes'], built: true, use: ['open', 'search'] },
   noticeBoard: { models: ['noticeBoard'], built: true },
   frontDoor: { models: ['frontDoor'], built: true, solid: false },
@@ -212,6 +219,13 @@ const BUILT = {
   turnstile: () => [[0, 0, 0, 1, 0.12, 0.5, 'metalLight'], [0.45, 0, 0.75, 0.85, 0.35, 0.02, 'metal'], [0.9, 0, 0, 1, 0.12, 0.5, 'metalLight']],
   vendingMachine: () => [[0, 0, 0, 1.9, 0.5, 0.4, 'carpet'], [-0.1, 0.41, 0.6, 1.8, 0.33, 0.01, 'glass'], [0.33, 0.41, 0.9, 1.6, 0.09, 0.01, 'metalDark'], [-0.1, 0.42, 0.2, 0.45, 0.33, 0.01, 'metalDark']],
   breadRack: () => { const boxes = [[-0.75, 0, 0, 1.7, 0.03, 0.25, 'wood'], [0.75, 0, 0, 1.7, 0.03, 0.25, 'wood']]; for (let z = 0; z < 4; z++) { boxes.push([0, 0, 0.2 + z * 0.45, 0.24 + z * 0.45, 0.75, 0.25, 'wood']); for (let i = 0; i < 4; i++) boxes.push([-0.5 + i * 0.33, 0, 0.24 + z * 0.45, 0.36 + z * 0.45, 0.13, 0.15, 'lamp']); } return boxes; },
+  rollerDoor: () => { const boxes = [[0, -0.05, 0, 3.4, 2.2, 0.05, 'metalMedium'], [-2.25, -0.05, 0, 3.6, 0.1, 0.1, 'lamp'], [2.25, -0.05, 0, 3.6, 0.1, 0.1, 'lamp'], [0, -0.05, 3.4, 3.6, 2.35, 0.1, 'lamp'], [0, 0.4, 0, 0.12, 2.2, 0.4, 'lamp']]; for (let z = 0.3; z < 3.3; z += 0.5) boxes.push([0, 0.01, z, z + 0.05, 2.2, 0.01, 'metalDark']); return boxes; },
+  securityArch: () => [[-0.55, 0, 0, 2.2, 0.08, 0.25, 'metalLight'], [0.55, 0, 0, 2.2, 0.08, 0.25, 'metalLight'], [0, 0, 2.2, 2.4, 0.63, 0.25, 'metalLight'], [0, 0.26, 2.25, 2.35, 0.2, 0.01, 'plant']],
+  xrayBelt: () => [[0, 0, 0.7, 0.85, 0.35, 1.8, 'metalDark'], [0, 0, 0.85, 1.6, 0.42, 0.7, 'metalLight'], [-0.4, 1.2, 0, 0.7, 0.03, 0.3, 'metal'], [0.4, 1.2, 0, 0.7, 0.03, 0.3, 'metal'], [-0.4, -1.2, 0, 0.7, 0.03, 0.3, 'metal'], [0.4, -1.2, 0, 0.7, 0.03, 0.3, 'metal'], [0, 1.2, 0.85, 1.05, 0.25, 0.3, 'carpetBlue']],
+  baggageBelt: () => [[0, 0, 0, 0.45, 3.5, 0.65, 'metalMedium'], [0, 0, 0.45, 0.5, 3.4, 0.55, 'metalDark'], [-2, 0, 0.5, 0.85, 0.3, 0.2, 'carpet'], [-0.4, 0.1, 0.5, 0.8, 0.25, 0.2, 'carpetBlue'], [1.6, -0.05, 0.5, 0.95, 0.28, 0.22, 'metalDark']],
+  luggageCart: () => [[0, 0, 0.2, 0.26, 0.3, 0.55, 'metal'], [0, -0.53, 0.26, 1.1, 0.28, 0.02, 'metal'], [-0.26, 0.45, 0, 0.2, 0.03, 0.08, 'metalDark'], [0.26, 0.45, 0, 0.2, 0.03, 0.08, 'metalDark'], [0, 0.1, 0.26, 0.6, 0.22, 0.35, 'carpet']],
+  wallPicture: () => [[0, 0, 1.2, 2.1, 0.7, 0.03, 'woodDark'], [0, 0.04, 1.28, 2.02, 0.6, 0.01, 'carpetBlue'], [-0.2, 0.05, 1.32, 1.7, 0.25, 0.01, 'carpet'], [0.25, 0.05, 1.6, 1.95, 0.2, 0.01, 'lamp']],
+  produceStand: () => [[0, 0, 0, 0.7, 0.9, 0.5, 'wood'], [-0.45, 0.1, 0.7, 0.9, 0.4, 0.35, 'plant'], [0.45, 0.1, 0.7, 0.88, 0.4, 0.35, 'carpet'], [-0.45, -0.3, 0.7, 1.05, 0.4, 0.15, 'lamp'], [0.45, -0.3, 0.7, 1.05, 0.4, 0.15, 'plant']],
   mailboxes: () => {
     const boxes = [[0, 0, 0.5, 1.75, 0.85, 0.12, 'metalMedium'], [-0.75, 0, 0, 0.5, 0.05, 0.1, 'metalDark'], [0.75, 0, 0, 0.5, 0.05, 0.1, 'metalDark']];
     for (let i = 0; i < 6; i++) for (let j = 0; j < 4; j++) boxes.push([-0.67 + i * 0.268, 0.13, 0.57 + j * 0.28, 0.82 + j * 0.28, 0.115, 0.01, 'metalLight']);

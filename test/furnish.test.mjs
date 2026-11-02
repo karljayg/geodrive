@@ -887,3 +887,22 @@ test('over the limit, a building someone has done things in keeps its floors lon
   assert.ok(store.floor('touched', 1), 'though it is the oldest');
   assert.equal(store.floor('later', 1), null);
 });
+
+test('a mall has a walkway with different shops off it, an airport has security and baggage, and a warehouse loading bays', () => {
+  const zones = (type, w, d, floor = 1, floors = 2) => {
+    const p = rectangle(w, d), plan = { type, floors, style: 'modern' };
+    plan.core = coreOf([p], plan, models, dice(1));
+    const record = layoutFloor([p], plan, floor, models, dice(hashText(`second${type}`)));
+    return { names: record.zones.map((z) => z[0]), items: record.items.map((i) => i[0]) };
+  };
+  const mall = zones('mall', 100, 60);
+  assert.ok(mall.names.includes('corridor') && mall.names.includes('foodCourt'), mall.names.join());
+  assert.ok(new Set(mall.names.filter((n) => ['shopUnit', 'cafe', 'salonFloor', 'pharmacyFloor', 'bakeryShop', 'fastFoodFloor'].includes(n))).size >= 2, 'not all the same shop');
+  const airport = zones('terminal', 200, 80);
+  for (const zone of ['checkIn', 'security', 'baggage']) assert.ok(airport.names.includes(zone), airport.names.join());
+  assert.ok(airport.items.includes('securityArch') && airport.items.includes('baggageBelt'));
+  const shed = zones('warehouse', 100, 60, 1, 1);
+  assert.ok(shed.names.includes('loadingBay') && shed.items.includes('rollerDoor') && shed.items.includes('forklift'), shed.names.join());
+  assert.ok(zones('supermarket', 50, 35).items.includes('produceStand'));
+  assert.ok(zones('museum', 50, 30).items.includes('wallPicture'));
+});

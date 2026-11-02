@@ -57,8 +57,8 @@ const TYPE_ZONES = {
   restaurant: { ground: [['restaurantDining', 60], ['restaurantKitchen', 25], TOILETS], upper: [['restaurantDining', 60], STOCK], then: [['restaurantDining', 50]] },
   cafe: { ground: [['cafe', 40], TOILETS, STOCK], upper: [['cafe', 40]] },
   shop: { ground: [['salesFloor', 60], STOCK], upper: [['salesFloor', 60], STOCK], then: [['salesFloor', 80]] },
-  supermarket: { ground: [['aisles', 300], STOCK], upper: [STOCK], then: [['aisles', 300]] },
-  mall: { ground: [['salesFloor', 200], ['foodCourt', 300], TOILETS], then: [['salesFloor', 200], ['salesFloor', 300], STOCK] },
+  supermarket: { ground: [['produce', 80], ['aisles', 300], STOCK], upper: [STOCK], then: [['aisles', 300]] },
+  mall: { ground: [['salesFloor', 200], ['foodCourt', 300], TOILETS], then: [['salesFloor', 200], ['salesFloor', 300], STOCK] }, // only if too small for a walkway; see CORRIDORS
   school: { ground: [['classroom', 55], ['cafeteria', 120], ['schoolOffice', 20], TOILETS], upper: [['classroom', 55], ['classroom', 55], TOILETS], then: [['classroom', 55]] },
   hospital: { ground: [['hospitalWaiting', 60], ['examRoom', 16], ['examRoom', 16], ['scanRoom', 25], TOILETS], upper: [['ward', 50], ['nurseStation', 18], ['operatingRoom', 35], TOILETS], then: [['ward', 50], ['examRoom', 16], ['operatingRoom', 35], OFFICE] },
   clinic: { ground: [['clinicWaiting', 25], ['examRoom', 14], TOILETS], upper: [['examRoom', 14], ['examRoom', 14]], then: [['examRoom', 14], OFFICE] },
@@ -68,10 +68,10 @@ const TYPE_ZONES = {
   nursingHome: { ground: [['lobby', 30], ['lounge', 50], ['restaurantDining', 50], ['restaurantKitchen', 22], TOILETS], upper: [['careRoom', 20], ['careRoom', 20], ['nurseStation', 16], TOILETS], then: [['careRoom', 20]] },
   worship: { ground: [['worshipHall', 120]], upper: [['worshipHall', 80]] },
   museum: { ground: [['gallery', 120], TOILETS], upper: [['gallery', 120]], then: [['gallery', 150]] },
-  warehouse: { ground: [['racking', 300], ['workshop', 25]], then: [['racking', 400]] },
+  warehouse: { ground: [['loadingBay', 150], ['racking', 300], ['schoolOffice', 20]], then: [['racking', 400], ['loadingBay', 120]] },
   factory: { ground: [['machines', 200], ['workshop', 25], ['schoolOffice', 20]], upper: [DESKS, STOCK], then: [['machines', 300]] },
   hangar: { ground: [['hangarBay', 200], ['workshop', 25]] },
-  terminal: { ground: [['checkIn', 300], ['foodCourt', 200], TOILETS], upper: [['gates', 400], ['foodCourt', 200], TOILETS], then: [['gates', 400]] },
+  terminal: { ground: [['checkIn', 300], ['security', 120], ['baggage', 200], ['foodCourt', 200], TOILETS], upper: [['gates', 400], ['foodCourt', 200], TOILETS], then: [['gates', 400], ['salesFloor', 120]] },
 };
 export const FURNISHED = new Set(['home', ...Object.keys(TYPE_ZONES)]); // the types that have rooms
 const MOST_ZONES = 12;     // on a floor; past this it's just bigger rooms
@@ -97,6 +97,7 @@ const CORRIDORS = {
   hotel: { unit: 'suite', room: 'hotelRoom', width: 5, most: 16, upperOnly: true, upper: ['stock'] },
   dorm: { unit: 'room', room: 'dormRoom', width: 4.5, most: 14, upperOnly: true, upper: ['bathroom'] },
   nursingHome: { unit: 'room', room: 'careRoom', width: 5, most: 12, upperOnly: true, upper: ['nurseStation', 'toilets'] },
+  mall: { unit: 'room', room: ['shopUnit', 'shopUnit', 'shopUnit', 'cafe', 'salonFloor', 'pharmacyFloor', 'bakeryShop', 'fastFoodFloor'], width: 11, most: 14, walkway: 6, shared: ['foodCourt', 'toilets'], upper: ['foodCourt', 'toilets'] },
   school: { unit: 'room', room: 'classroom', width: 8, most: 12, shared: ['lobby', 'cafeteria', 'schoolOffice', 'toilets'], upper: ['toilets'] },
 };
 const LIFT_FROM = 4;       // floors from which a building has a lift as well as stairs, and a lobby to take it from
@@ -141,6 +142,44 @@ const RECIPES = {
     { item: 'bin', at: 'wall' },
   ],
   corridor: [],
+  shopUnit: [
+    { item: 'frontDesk', at: 'wall', name: 'desk', must: true },
+    { item: 'till', at: 'on', of: 'desk', must: true },
+    { item: 'clothesRack', at: 'rows', count: 6, must: true, aisle: 1.4, gap: 0.6 },
+    { item: 'mannequin', at: 'wall', loose: true, must: true },
+    { item: 'mannequin', at: 'wall', loose: true },
+    { item: 'storeShelf', at: 'wall' },
+    { item: 'displayTable', at: 'centre' },
+  ],
+  security: [
+    { item: 'securityArch', at: 'rows', count: 3, must: true, aisle: 4, gap: 3.5, with: [{ item: 'xrayBelt', at: 'beside', must: true }] },
+    { item: 'queueRope', at: 'rows', count: 6, aisle: 1, gap: 0.1 },
+    { item: 'frontDesk', at: 'wall', must: true },
+    { item: 'bin', at: 'wall' },
+  ],
+  baggage: [
+    { item: 'baggageBelt', at: 'rows', count: 3, must: true, aisle: 4, gap: 3 },
+    { item: 'luggageCart', at: 'wall', loose: true, must: true },
+    { item: 'luggageCart', at: 'wall', loose: true },
+    { item: 'departureBoard', at: 'wall', must: true },
+    { item: 'seatRow', at: 'wall' },
+  ],
+  loadingBay: [
+    { item: 'rollerDoor', at: 'wall', name: 'dock', must: true },
+    { item: 'rollerDoor', at: 'beside', of: 'dock', name: 'dock', must: true },
+    { item: 'rollerDoor', at: 'beside', of: 'dock', name: 'dock' },
+    { item: 'forklift', at: 'centre', must: true },
+    { item: 'pallet', at: 'wall', must: true },
+    { item: 'pallet', at: 'wall' },
+    { item: 'pallet', at: 'wall' },
+    { item: 'box', at: 'wall', loose: true },
+    { item: 'toolChest', at: 'wall' },
+  ],
+  produce: [
+    { item: 'produceStand', at: 'rows', count: 12, must: true, aisle: 1.6, gap: 0.5 },
+    { item: 'fridgeCase', at: 'wall' },
+    { item: 'bin', at: 'wall' },
+  ],
   bankLobby: [
     { item: 'rug', at: 'centre', must: true },
     { item: 'frontDesk', at: 'wall', name: 'desk', must: true },
@@ -692,6 +731,10 @@ const RECIPES = {
     { item: 'sideTable', at: 'wall' },
   ],
   gallery: [
+    { item: 'wallPicture', at: 'wall', must: true },
+    { item: 'wallPicture', at: 'wall', must: true },
+    { item: 'wallPicture', at: 'wall' },
+    { item: 'wallPicture', at: 'wall' },
     { item: 'displayCase', at: 'rows', count: 12, must: true, aisle: 2.2, gap: 2 },
     { item: 'plinth', at: 'wall' },
     { item: 'plinth', at: 'wall' },
@@ -824,7 +867,7 @@ const FLOORS = {
   bedroom: ['a79c8e', '8f9aa3', 'b5a795', '9c8d86'],
 };
 const FLOOR_KIND = {
-  engineBay: 'hard', gearRoom: 'hard', bunkRoom: 'bedroom', policeFront: 'smart', cells: 'hard', postCounter: 'smart', sorting: 'hard', eventHall: 'room', stacks: 'room', readingRoom: 'bedroom', playRoom: 'bedroom', dormRoom: 'bedroom', bankLobby: 'smart', gymFloor: 'hard', studio: 'room', lockerRoom: 'wet', poolHall: 'tile', foyer: 'smart', auditorium: 'dark', auditorium2: 'dark', pitch: 'grass', stand: 'hard', barRoom: 'room', fastFoodFloor: 'kitchen', bakeryShop: 'kitchen', bakeryKitchen: 'kitchen', laundryRoom: 'wet', concourse: 'smart', platform: 'hard', gasShop: 'smart', workBay: 'hard', showroom: 'smart', corridor: 'office', landing: 'smart', mailroom: 'smart', parkingDeck: 'hard', examRoom: 'wet', operatingRoom: 'wet', scanRoom: 'wet', nurseStation: 'wet', clinicWaiting: 'smart', kennels: 'wet', pharmacyFloor: 'smart', salonFloor: 'smart', careRoom: 'bedroom', lounge: 'room',
+  engineBay: 'hard', gearRoom: 'hard', bunkRoom: 'bedroom', policeFront: 'smart', cells: 'hard', postCounter: 'smart', sorting: 'hard', eventHall: 'room', stacks: 'room', readingRoom: 'bedroom', playRoom: 'bedroom', dormRoom: 'bedroom', bankLobby: 'smart', gymFloor: 'hard', studio: 'room', lockerRoom: 'wet', poolHall: 'tile', foyer: 'smart', auditorium: 'dark', auditorium2: 'dark', pitch: 'grass', stand: 'hard', barRoom: 'room', fastFoodFloor: 'kitchen', bakeryShop: 'kitchen', bakeryKitchen: 'kitchen', laundryRoom: 'wet', concourse: 'smart', platform: 'hard', gasShop: 'smart', workBay: 'hard', showroom: 'smart', shopUnit: 'smart', security: 'smart', baggage: 'smart', loadingBay: 'hard', produce: 'smart', corridor: 'office', landing: 'smart', mailroom: 'smart', parkingDeck: 'hard', examRoom: 'wet', operatingRoom: 'wet', scanRoom: 'wet', nurseStation: 'wet', clinicWaiting: 'smart', kennels: 'wet', pharmacyFloor: 'smart', salonFloor: 'smart', careRoom: 'bedroom', lounge: 'room',
   bathroom: 'wet', laundry: 'wet', toilets: 'wet', ward: 'wet', hospitalWaiting: 'wet', kitchen: 'kitchen', breakRoom: 'kitchen', restaurantKitchen: 'kitchen', cafeteria: 'kitchen', bedroom: 'bedroom', hotelRoom: 'bedroom',
   openPlan: 'office', privateOffice: 'office', meeting: 'office', schoolOffice: 'office', records: 'office', classroom: 'office', workshop: 'hard', racking: 'hard', machines: 'hard', hangarBay: 'hard', stock: 'hard', vault: 'hard', gym: 'hard',
   lobby: 'smart', bankHall: 'smart', salesFloor: 'smart', aisles: 'smart', foodCourt: 'smart', checkIn: 'smart', gates: 'smart', gallery: 'smart', worshipHall: 'smart', cafe: 'room', restaurantDining: 'room',
@@ -1538,7 +1581,7 @@ function corridorFloor(grid, plan, floor, roll, doors, spec) {
   if (!whole) return null;
   const { cell } = grid, along = whole.i1 - whole.i0 >= whole.j1 - whole.j0, cells = (metres) => Math.round(metres / cell);
   const aLo = along ? whole.i0 : whole.j0, aHi = along ? whole.i1 : whole.j1, bLo = along ? whole.j0 : whole.i0, bHi = along ? whole.j1 : whole.i1;
-  const corridor = cells(CORRIDOR), side = cells(FLAT_DEPTH_MIN);
+  const corridor = cells(spec.walkway ?? CORRIDOR), side = cells(FLAT_DEPTH_MIN);
   if (bHi - bLo + 1 < corridor + side || aHi - aLo + 1 < cells(FLAT_WIDTH)) return null;
   const rectOf = (a0, a1, b0, b1) => trim(grid, along ? { i0: a0, i1: a1, j0: b0, j1: b1 } : { i0: b0, i1: b1, j0: a0, j1: a1 });
   const cuts = [], rooms = [], frontDoors = [];
@@ -1624,7 +1667,7 @@ function corridorFloor(grid, plan, floor, roll, doors, spec) {
     }
     if (spec.unit === 'room') {
       addFrontDoor(door(entry), line, towards);
-      room(spec.room, a0, a1, b0, b1);
+      room(Array.isArray(spec.room) ? pick(spec.room, roll) : spec.room, a0, a1, b0, b1);
       continue;
     }
     if (spec.unit === 'suite') {
