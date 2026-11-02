@@ -7,11 +7,12 @@ import { tintAt } from './daylight.js';
 import { FootGl, bearing, lookAt, multiply, perspective, swing, translate } from './footGl.js';
 import { Place, fromLocal, parseTile, toLocal } from './footData.js';
 import { SIT_FRAME, personFloats } from './footPerson.js';
-import { SWITCH_REACH, switchNeedsKey, switchSpots, useSwitch, poseSpot, usableNear, usePrompt, useThing, withoutTaken } from './footActions.js';
+import { SWITCH_REACH, outletSpots, switchNeedsKey, switchSpots, useSwitch, poseSpot, usableNear, usePrompt, useThing, withoutTaken } from './footActions.js';
 import { roomMesh } from './footScene.js';
 import { FURNISHED, coreNear, coreOf, frameOf as buildingFrame, layoutFloor, plainFloor, solidsOf, upgradeFloor, worldBearing } from './furnish.js';
 import { parseFurniture } from './furniture.js';
 import { buildingWithin, carWalls, distanceToCar, enterBuilding, GET_IN_REACH, leaveBuilding, newWalker, frameOf, placeCamera, spawnSpot, stepClearOfThings, stepWalker, wayToCar } from './footWalker.js';
+import { GAME } from './gameConfig.js';
 import { Overture } from './overture.js';
 import { TORCHES, lightMap, sunAt, windowsOn } from './roomLight.js';
 import { Terrain } from './terrain.js';
@@ -50,8 +51,9 @@ function personMesh(frame) {
 
 export class Foot {
   // tiles: the RoadTiles that fetches the same map tiles for driving. view: the camera to match.
-  constructor({ canvas, origin, heading, profile, scale, tiles, view, onLocked, onFound, onSlept, hasKey }) {
+  constructor({ canvas, origin, heading, profile, scale, tiles, view, onLocked, onFound, onSlept, hasKey, onUsed }) {
     this.hasKey = hasKey;
+    this.onUsed = onUsed; // something in a room did something to the person's stats
     if (!gl) gl = new FootGl(canvas);
     gl.onRestored = () => this.rebuildAll();
     this.view = view;
@@ -236,7 +238,7 @@ export class Foot {
       record = furnished ? layoutFloor(building.pieces, plan, this.level, furniture.models, dice(hashText(`${id}:${this.level}`))) : plainFloor(plan, this.level);
       if (furnished) saved.saveFloor(id, this.level, record); // with the building's look, which it has now if it hadn't
     }
-    const furnishing = { record: withoutTaken(record, plan, this.level), furniture };
+    const furnishing = { record: withoutTaken(record, plan, this.level), furniture, level: this.level };
     cache.set(this.level, furnishing);
     return furnishing;
   }
@@ -277,10 +279,12 @@ export class Foot {
   useHere(second = false) {
     if (this.pose) return this.standUp();
     if (!second && this.switchHere()) return this.useLightSwitch();
+    if (!second && this.outletHere()) return this.useOutlet();
     const entry = this.thingHere();
     if (!entry) return null;
     const building = this.walker.inside, { plan } = building, result = useThing(entry, plan, this.level, building.buildingId, second);
     if (result.pose) return this.takePose(entry, result);
+    if (result.effect) this.onUsed?.(result.effect, result.count);
     let say = result.say;
     if (result.give && this.onFound && !this.onFound(result.give)) {
       if (result.taken) plan.state[this.level].taken.pop();
@@ -304,8 +308,8 @@ export class Foot {
     this.walker.facing = facing;
     this.walker.height = 0;
     this.walker.rise = 0;
-    if (result.pose === 'sleep') this.onSlept?.();
-    return result.pose === 'sleep' ? 'You sleep until morning. Press F or walk to get up.' : 'Press F or walk to get up.';
+    if (result.pose === 'sleep') return `${this.onSlept?.() || 'You sleep.'} Press F or walk to get up.`;
+    return 'Press F or walk to get up.';
   }
 
   standUp() {
@@ -419,6 +423,41 @@ export class Foot {
     return switchSpots(record, building.plan.core).some((spot) => Math.hypot(spot.u - u, spot.v - v) <= SWITCH_REACH);
   }
 
+  // The power point in reach, or null.
+  outletHere() {
+    const building = this.walker.inside, record = this.room?.furnishing?.record;
+    if (!building?.plan || !record) return null;
+    const { u, v } = buildingFrame(building.pieces, record.axis).toFrame(this.walker.x, this.walker.y);
+    return outletSpots(record, building.plan.core, building.buildingId, this.level).find((spot) => Math.hypot(spot.u - u, spot.v - v) <= GAME.outlets.reach) || null;
+  }
+
+  // F at a power point: plugged in until F again or walking away.
+  useOutlet() {
+    if (this.charging) {
+      this.charging = false;
+      return 'Unplugged.';
+    }
+    if (!this.outletHere().works) return 'This outlet has no power.';
+    this.charging = true;
+    return 'Charging. Stay close, or you\'ll unplug.';
+  }
+
+  // Whether something is plugged in, which walking out of reach ends.
+  chargingNow() {
+    if (this.charging && !this.outletHere()) {
+      this.charging = false;
+      return false;
+    }
+    return !!this.charging;
+  }
+
+  // What the person is doing, for how fast they tire.
+  activity() {
+    if (this.pose) return 'sitting';
+    const { frame } = this.posture();
+    return frame === 0 ? 'still' : frame <= 8 ? 'walking' : 'running';
+  }
+
   useLightSwitch() {
     const building = this.walker.inside, pieces = building.pieces, footprint = pieces.reduce((sum, p) => sum + (p.maxX - p.minX) * (p.maxY - p.minY), 0);
     const said = useSwitch(building.plan, this.level, switchNeedsKey(building.plan, footprint, building.buildingId), this.hasKey?.());
@@ -513,6 +552,7 @@ export class Foot {
       const here = planLabel(plan, this.level), near = this.coreHere();
       if (this.pose) return `${here} · press F or walk to get up`;
       if (this.switchHere()) return `${here} · F to switch the lights ${this.roomLightsOn() ? 'off' : 'on'}`;
+      if (this.outletHere()) return `${here} · ${this.charging ? 'charging · F to unplug' : 'F to plug in here'}`;
       const thing = this.thingHere();
       if (thing && !near) return `${here} · ${usePrompt(thing)}`;
       if (near === 'lift') return `${here} · press L for the lift`;

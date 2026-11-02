@@ -20,6 +20,7 @@ const APPS = [
   { id: 'messages', label: 'Messages', art: 'messages' },
   { id: 'map', label: 'Map', art: 'map' },
   { id: 'torch', label: 'Flashlight', art: 'torch' },
+  { id: 'health', label: 'Health', art: 'health' },
 ];
 const REFRESH = 100;       // ms between updates of the live figures
 const MAP_REFRESH = 333;   // ms, as for the nav screen
@@ -76,6 +77,7 @@ export class Pocket {
   // --- Opening and closing --------------------------------------------------------------------------------------
 
   openApp(id) {
+    if (this.calls.phoneDead()) return this.calls.say('Your phone is dead. Find a working outlet.');
     if (id === 'torch') return this.calls.phoneLight(); // it does its one job, rather than opening
     if (this.app === 'notes' && this.note) this.data.closeNote(this.note);
     this.note = null;
@@ -132,18 +134,27 @@ export class Pocket {
     if (item.id === 'Flashlight' && this.calls.onFoot()) {
       this.calls.flashlight();
       this.close();
-    } else this.pressSlot(item.id, 'bag');
+    } else if (!this.useItem(item.id)) this.pressSlot(item.id, 'bag');
   }
 
   pressSlot(id, side) {
     if (!this.calls.nearCar()) {
       if (id === 'Flashlight') this.calls.flashlight();
+      else if (!this.useItem(id)) this.bagPanel.querySelector('.empty').textContent = `There's no use for ${id.toLowerCase()} right now.`;
       return;
     }
     const moved = this.data.move(id, side === 'bag');
     if (moved && id === 'Flashlight' && side === 'bag') this.calls.stowed();
     if (!moved) this.bagPanel.querySelector('.empty').textContent = side === 'bag' ? 'The car is full.' : 'Your bag is full.';
     else this.renderBag();
+  }
+
+  // Eats, drinks or takes one of it, if it's that sort of thing.
+  useItem(id) {
+    if (!this.calls.useItem(id)) return false;
+    this.data.takeFromBag(id);
+    this.renderBag();
+    return true;
   }
 
   // Something found, for the bag. False if the bag is full.
@@ -183,6 +194,10 @@ export class Pocket {
     const button = e.target.closest('button, [data-open-note], [data-thread], [data-dial-contact]');
     if (!button) return;
     if (button.dataset.slot) return this.pressSlot(button.dataset.slot, button.dataset.side);
+    if ('healthReset' in button.dataset) {
+      this.calls.vitals().vitals.reset();
+      return this.renderHealth();
+    }
     const { tray, app, thread, digit, dialContact, radius } = button.dataset;
     if (tray) this.press(tray);
     else if ('close' in button.dataset) this.closePhone();
@@ -219,6 +234,7 @@ export class Pocket {
     else if (app === 'call') this.renderCall();
     else if (app === 'messages') this.renderMessages();
     else if (app === 'map') this.renderMap();
+    else if (app === 'health') this.renderHealth();
   }
 
   title(text, extra = '') {
@@ -226,6 +242,19 @@ export class Pocket {
   }
 
   // Room for two more rows of apps, for what comes later.
+  // Each need, how fast it's going and how long is left, and what's happened so far. Numbers are all from the vitals, for fine-tuning as much as for playing.
+  renderHealth() {
+    const { vitals, rates, rows } = this.calls.vitals(), { config, stats, state } = vitals, t = state.totals;
+    const span = (hours) => (hours === null ? '—' : hours >= 48 ? `${Math.round(hours / 24)} days` : `${hours.toFixed(1)} h`);
+    const row = (name) => {
+      const label = name === 'health' ? config.health.label : config.stats[name].label, rate = rates[name];
+      return `<tr><th>${label}</th><td>${Math.round(stats[name])}%</td><td>${rate > 0 ? '+' : ''}${rate.toFixed(1)}/h</td><td>${span(vitals.hoursLeft(name, rates))}</td></tr>`;
+    };
+    this.area.innerHTML = `${this.title('Health')}<table class="healthTable"><tr><td></td><td>Now</td><td>Rate</td><td>Left</td></tr>${rows.map(row).join('')}</table>
+      <p class="healthTotals">Day ${Math.floor(state.hours / 24) + 1}. Eaten ${t.food}, drinks ${t.drink}, restroom ${t.restroom}, accidents ${t.accidents}, slept ${t.sleeps} times, collapsed ${t.collapses}.</p>
+      <button class="healthReset" data-health-reset>Start over</button>`;
+  }
+
   renderHome() {
     this.area.innerHTML = `<div class="homeGrid">${APPS.map((a, i) => `<button class="appIcon" data-app="${a.id}" title="${a.label} (${i + 1})">${picture(a.art)}<kbd>${i + 1}</kbd><span>${a.label}</span></button>`).join('')}</div>
       <p class="homeHelp">Click an app, or press its number.<br>Press <kbd>0</kbd> to come back here.</p>`;
@@ -368,7 +397,7 @@ export class Pocket {
     this.bagPanel.classList.toggle('withCar', near);
     this.bagPanel.innerHTML = `<div class="bagHead"><span class="bagArt">${picture('bag')}</span><h2>Bag</h2><small>${bag.length} of ${BAG_SLOTS}</small><button data-close-bag aria-label="Close">✕</button></div>
       <div class="bagGrid">${slots(bag, BAG_SLOTS, 'bag')}</div>
-      <p class="empty">${near ? 'Click something, or press its number, to move it between your bag and the car.' : 'Stand next to the car to reach its storage.'}${this.data.bagHas('Flashlight') ? ` Press ${(this.data.bag.findIndex((i) => i.id === 'Flashlight') + 1) % 10} or V to turn on the flashlight.` : ''}</p>
+      <p class="empty">${near ? 'Click something, or press its number, to move it between your bag and the car.' : 'Stand next to the car to reach its storage.'}${this.data.bagHas('Flashlight') ? ` Press ${(this.data.bag.findIndex((i) => i.id === 'Flashlight') + 1) % 10} or V to turn on the flashlight.` : ''} A number eats, drinks or uses what's in that slot.</p>
       ${near ? `<div class="bagHead carHead"><h2>Car storage</h2><small>${car.length} of ${CAR_SLOTS}</small></div><div class="bagGrid carGrid">${slots(car, CAR_SLOTS, 'car')}</div>` : ''}`;
   }
 
@@ -405,6 +434,10 @@ export class Pocket {
       this.write('trayClock', this.root.querySelector('[data-tray-clock]'), time);
       this.root.querySelector('.trayDial .hour').style.transform = `rotate(${(at.hour % 12) * 30}deg)`;
       this.root.querySelector('.trayDial .minute').style.transform = `rotate(${(at.hour % 1) * 360}deg)`;
+    }
+    if (this.app === 'health' && now - (this.healthDrawn || 0) > 1000) {
+      this.healthDrawn = now;
+      this.renderHealth();
     }
     if (this.app) this.write('clock', this.root.querySelector('[data-clock]'), clockText(at.hour));
     const metres = Math.hypot(on.x, on.y), bearing = bearingToCar(on.x, on.y);

@@ -2,9 +2,9 @@
 // What has happened is kept in the building's plan by floor, not in the saved layout, so a layout can be redone without losing it.
 import { dice, hashText } from './buildings.js';
 import { ITEMS } from './furniture.js';
+import { GAME } from './gameConfig.js';
 
 const REACH = 1.2;       // m from a thing's edge that it can be used
-const EMPTY_CHANCE = 0.3; // of something that can be opened having nothing in it
 const DONE = new Set(['sit', 'sleep', 'open', 'search', 'pick up', 'use', 'switch', 'write']);
 const NOT_USED_HERE = new Set(['stairs', 'stairwell', 'lift']); // L does those
 export const SWITCH_REACH = 1.5; // m from a light switch that it can be used
@@ -21,20 +21,10 @@ const NAMES = {
 };
 const nameOf = (item) => NAMES[item] || item.replace(/[A-Z]/g, (c) => ` ${c.toLowerCase()}`);
 
-// What can be found in what. Anything that opens without a list here is simply empty.
-const FINDS = {
-  fridge: ['Milk', 'Leftover pizza', 'Orange juice', 'Cold soda'], counter: ['Can of soup', 'Box of cereal', 'Cutlery'], wardrobe: ['Old jacket', 'Spare keys', 'Shoebox'],
-  nightstand: ['Flashlight', 'Paperback', 'Reading glasses'], sideTable: ['Batteries', 'Pack of cards', 'Old letters'], tvStand: ['TV remote', 'Old DVD'], bathCabinet: ['Toothpaste', 'Plasters', 'Aspirin'],
-  bookcase: ['Novel', 'Atlas', 'Photo album'], desk: ['Stapler', 'Notebook', 'USB stick', BUILDING_KEY], filingCabinet: ['Old invoices', 'Paperclips', 'Sealed envelope', BUILDING_KEY], locker: ['Gym towel', 'Padlock', 'Trainers', BUILDING_KEY],
-  box: ['Old newspapers', 'Packing tape', 'Holiday lights'], bin: ['Crumpled receipt', 'Empty can'], cashCart: ['Bundle of cash'], toolChest: ['Wrench', 'Screwdriver', 'Tape measure', BUILDING_KEY], medCart: ['Bandages', 'Thermometer'],
-  storeShelf: ['Tin of beans', 'Bottle of water', 'Pack of batteries'], clothesRack: ['Denim jacket', 'Silk scarf'], displayTable: ['Gift card', 'Sunglasses'], displayCase: ['Old coin', 'Museum guide'],
-  palletRack: ['Box of parts', 'Roll of tape'], bookStack: ['Library book', 'Old atlas'], gearRack: ['Fire helmet', 'Gloves'], walkInFridge: ['Tray of steaks', 'Crate of milk'], toyBox: ['Toy car', 'Teddy bear'],
-  produceStand: ['Apple', 'Banana'], fridgeCase: ['Sandwich', 'Cold drink'], breadRack: ['Fresh loaf', 'Croissant'], vendingMachine: ['Candy bar'], petCage: ['Dog biscuit'],
-};
 // What using something says. A thing can also give something, as a cash machine gives cash.
 const USES = {
-  atm: { say: 'The cash machine gives you some cash.', give: 'Cash' }, vendingMachine: { say: 'It drops a candy bar.', give: 'Candy bar' }, coffeeMachine: { say: 'You pour a coffee.', give: 'Cup of coffee' },
-  sink: { say: 'You wash your hands.' }, basin: { say: 'You wash your hands.' }, toilet: { say: 'That\'s better.' }, bath: { say: 'You run the water for a moment.' }, stove: { say: 'The ring clicks on and off.' },
+  atm: { say: 'The cash machine gives you some cash.', give: 'Cash' }, vendingMachine: {}, coffeeMachine: {},
+  sink: { say: 'You wash your hands.' }, basin: { say: 'You wash your hands.' }, toilet: { say: 'That\'s better.' }, stall: { say: 'That\'s better.' }, bath: { say: 'You run the water for a moment.' }, stove: { say: 'The ring clicks on and off.' },
   proStove: { say: 'The burners roar, then you turn them off.' }, microwave: { say: 'It hums and beeps.' }, toaster: { say: 'Pop.' }, washer: { say: 'It rumbles through a cycle.' }, screen: { say: 'It asks for a password.' },
   treadmill: { say: 'You jog for a minute.' }, benchPress: { say: 'You lift it twice and put it down.' }, punchBag: { say: 'Thud.' }, weightRack: { say: 'Heavier than it looks.' }, poolTable: { say: 'You knock a ball in.' },
   ticketMachine: { say: 'It prints a ticket.', give: 'Ticket' }, tellerCounter: { say: 'The teller is on a break.' }, printer: { say: 'It\'s out of paper.' }, machine: { say: 'It whirrs into life and stops.' },
@@ -79,6 +69,19 @@ export function switchSpots(record, core) {
     });
   }
   if (!fronts.length && core) add(core.clear[0] - 0.3, core.clear[1] - 0.3, true);
+  return spots;
+}
+
+// Where a floor's power points are, in the frame, the same ones every time, and whether each works. Low on inner walls, and always one by the front door or stairs, so there's something to find.
+export function outletSpots(record, core, buildingId, floor, config = GAME.outlets) {
+  const roll = dice(hashText(`${buildingId}:${floor}:outlets`)), spots = [], add = (u, v) => spots.push({ u, v, works: roll() < config.workingChance });
+  const first = switchSpots(record, core)[0];
+  if (first) add(first.u + 0.45, first.v + 0.45);
+  for (const [u0, v0, u1, v1] of record.walls) {
+    if (spots.length >= config.mostPerFloor) break;
+    if (Math.hypot(u1 - u0, v1 - v0) < config.leastWall || roll() >= config.wallChance) continue;
+    add((u0 + u1) / 2, (v0 + v1) / 2);
+  }
   return spots;
 }
 
@@ -139,16 +142,27 @@ export function useThing(entry, plan, floor, buildingId, second = false) {
     return { give: name[0].toUpperCase() + name.slice(1), taken: true, say: `You pick up the ${name}.` };
   }
   if (action === 'open' || action === 'search') {
-    const finds = FINDS[item];
+    const finds = GAME.finds[item], chance = GAME.findChance[item] ?? GAME.findChance.default;
     if (state.opened.includes(id)) return { say: `Nothing else in the ${name}.` };
     state.opened.push(id);
     const roll = dice(hashText(`${buildingId}:${floor}:${id}`));
-    if (!finds || roll() < EMPTY_CHANCE) return { say: `The ${name} is empty.` };
+    if (!finds || roll() >= chance) return { say: `The ${name} is empty.` };
     const found = finds[Math.floor(roll() * finds.length)];
     return { give: found, say: `In the ${name}: ${found.toLowerCase()}.` };
   }
   if (action === 'switch') return { say: SWITCHES[item] };
   if (action === 'write') return { say: 'You doodle on it and wipe it off.' };
+  const machine = GAME.machines[item];
+  if (machine) {
+    if (state.opened.includes(id)) return { say: machine.empty };
+    state.opened.push(id);
+    return dice(hashText(`${buildingId}:${floor}:${id}`))() < machine.chance ? { say: machine.say, give: machine.give } : { say: machine.empty };
+  }
+  const effect = GAME.uses[item];
+  if (effect) {
+    if (effect.works !== undefined && dice(hashText(`${buildingId}:${floor}:${id}:works`))() >= effect.works) return { say: effect.dry };
+    return { say: effect.say, effect, count: effect.count };
+  }
   const use = USES[item];
   return use.give ? { say: use.say, give: use.give } : { say: use.say };
 }

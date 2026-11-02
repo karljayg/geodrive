@@ -72,6 +72,9 @@ Titles travel in the stream as ICY metadata, which `<audio>` hides and most stat
 - `settings.hour` is the one game clock, moved by `tickClock` in `main.js`: real time at the wheel, `settings.footTimeRate` game hours a real minute on foot. Anything shown from it must key on `clockText`, not the raw hour, which changes every frame.
 - The camera on foot is the driving camera at half its range (`placeCamera`, `syncFootScene`), so it doesn't dodge walls.
 
+## Needs and the clock
+All numbers except the clock's speed (`settings.footTimeRate`) are in `public/js/gameConfig.js`, per game hour, each with the real figure it came from; tune there and nowhere else. `vitals.js` (pure, tested) holds the stats, 100 being good, and `pass` returns events for `sayEvents` in `main.js`. `advanceTime` runs the clock, an hour a real minute on foot and real time in the car, while nothing is paused. Stats are saved in `geodrive_vitals_v1` every 20 s. To tune from play: the performance log has a column for each stat and the hour, `vital` events mark accidents, collapses, sleeps and what was used, and the phone's Health app shows rates and totals. `__geodrive.vitals` is there in the console. Outlets (`outletSpots`) and tap and machine results are decided by hash, so they don't change between visits and aren't saved.
+
 ## Start point
 The header, nav screen and tab title show the current town (`refreshTown`: a billed reverse geocode, see API costs). The dialog on load keeps the default or overrides it with an address (Google Geocoding), and an override is saved in the browser's `localStorage`. Every start is put on the nearest road.
 
@@ -90,6 +93,7 @@ The header, nav screen and tab title show the current town (`refreshTown`: a bil
 - `public/js/pocket.js`: the phone, compass, notepad and bag on foot, and `pocketData.js` (pure, tested) and `pocketArt.js`. To add one: an entry in `TRAY` or `APPS`, a picture in `ART`, and for an app a render function.
 - `public/js/footActions.js`: what F does to things, and what they hold. Pure, tested. What has happened is in `plan.state` by floor, not the saved layout.
 - `public/js/roomLight.js`: light in a room from its windows and the sun, and what a carried light reaches. Pure, tested.
+- `public/js/gameConfig.js`: every survival number. `public/js/vitals.js`: the person's needs. Pure, tested.
 - `public/js/buildings.js`: what a building is, its floors and the saved record. Pure, tested.
 - `public/js/furnish.js`: lays out a floor. `public/js/furniture.js`: the item catalogue and models. Pure, tested. `scripts/build-furniture.mjs`: makes `public/furniture.bin` from `assets/kenney-furniture`.
 - `public/js/footData.js`: buildings, land, water, roads, POIs and trees from a tile, in metres. Pure, tested. `public/js/footWalker.js`: the person, what stops them, the camera. Pure, tested. `public/js/footScene.js`: room meshes. `public/js/footPerson.js`: the person's joints, gaits and baked frames. Pure, tested. Pure, tested. `public/js/footGl.js`: the renderer, with tested matrix helpers. `public/js/foot.js`: streams chunks and ties these together.

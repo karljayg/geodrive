@@ -1,4 +1,6 @@
 import { BUILDING_KEY } from './footActions.js';
+import { GAME } from './gameConfig.js';
+import { Vitals } from './vitals.js';
 import { newCar, stepCar } from './physics.js';
 import { distance, easeAngle, leadDistance, move } from './camera.js';
 import { FLAG_ONEWAY, RoadNet } from './road.js';
@@ -661,6 +663,7 @@ let clockSavedAt = 0;
 function tickClock(t, seconds) {
   if (debug.hold || dialogOpen || paused) return;
   settings.hour = advanceHour(settings.hour, seconds, !!foot, settings.footTimeRate);
+  passNeeds(t, seconds * (foot ? settings.footTimeRate / 60 : 1 / 3600));
   if (t - clockSavedAt > 15000) {
     clockSavedAt = t;
     saveSettings();
@@ -738,7 +741,7 @@ function footInput(dt) {
   const input = {
     forward: (keys.has('w') || keys.has('arrowup') ? 1 : 0) - (keys.has('s') || keys.has('arrowdown') ? 1 : 0),
     strafe: (keys.has('d') || keys.has('arrowright') ? 1 : 0) - (keys.has('a') || keys.has('arrowleft') ? 1 : 0),
-    jump: keys.has(' ') || jumpPressed, run: keys.has('shift'), walkSpeed: settings.walkSpeed, runSpeed: settings.runSpeed, lookX: lookX * LOOK_SENSITIVITY + ((keys.has('e') ? 1 : 0) - (keys.has('q') ? 1 : 0)) * FOOT_TURN * dt,
+    jump: keys.has(' ') || jumpPressed, run: keys.has('shift') && vitals.canRun(), walkSpeed: settings.walkSpeed, runSpeed: settings.runSpeed, lookX: lookX * LOOK_SENSITIVITY + ((keys.has('e') ? 1 : 0) - (keys.has('q') ? 1 : 0)) * FOOT_TURN * dt,
   };
   lookX = lookY = 0;
   jumpPressed = false;
@@ -831,7 +834,7 @@ async function getOut() {
     const { Foot, PERSON_SIZE: personSize } = await import('./foot.js'); // only those who walk load any of this
     await makePeople();
     (await pocketReady()).close();
-    foot = new Foot({ hasKey: () => pocket.data.bagHas(BUILDING_KEY), onLocked: showLocked, onFound: (name) => pocket.collect(name), onSlept: sleepUntilMorning, canvas: el('foot'), origin: { lat: pos.lat, lng: pos.lng }, heading: car.heading, profile: settings.carProfile, scale: settings.carScale, tiles, view: { tilt: CAMERAS[0].tilt, range: CAMERAS[0].range * FOOT_RANGE_SHARE, fov: FOV_Y, below: CAR_BELOW_CENTRE } });
+    foot = new Foot({ onUsed: (effect, count) => { vitals.apply(effect, count); }, hasKey: () => pocket.data.bagHas(BUILDING_KEY), onLocked: showLocked, onFound: (name) => pocket.collect(name), onSlept: sleepUntilMorning, canvas: el('foot'), origin: { lat: pos.lat, lng: pos.lng }, heading: car.heading, profile: settings.carProfile, scale: settings.carScale, tiles, view: { tilt: CAMERAS[0].tilt, range: CAMERAS[0].range * FOOT_RANGE_SHARE, fov: FOV_Y, below: CAR_BELOW_CENTRE } });
     showPerson(personSize);
   } catch (err) {
     console.warn('getting out:', err);
@@ -953,6 +956,17 @@ async function pocketReady() {
     onTyping: () => keys.clear(), // or a key held down would keep walking
     nearCar: () => !foot || foot.canGetIn(),
     onFoot: () => !!foot,
+    phoneDead: () => vitals.stats.phone <= 0,
+    say: (text) => notice(text, 2500),
+    useItem: (name) => {
+      const said = vitals.consume(name);
+      if (said) {
+        notice(said, 2500);
+        perfLog.event('vital', { used: name });
+      }
+      return !!said;
+    },
+    vitals: () => ({ vitals, rates: vitals.rates(doingNow()), rows: VITAL_ROWS }),
     flashlight: () => carryLight('flash'),
     phoneLight: () => carryLight('phone'),
     stowed: () => { if (foot?.light === 'flash') carryLight('flash'); }, // it can't stay on in the car
@@ -964,6 +978,7 @@ async function pocketReady() {
 function carryLight(kind) {
   if (!foot) return;
   if (kind === 'flash' && !pocket?.data.bagHas('Flashlight')) return notice('Your flashlight isn\'t in your bag. It may be in the car.', 2500);
+  if (foot.light !== kind && vitals.stats[kind === 'flash' ? 'flashlight' : 'phone'] <= 0) return notice(kind === 'flash' ? 'Your flashlight is dead.' : 'Your phone is dead.', 2500);
   const on = foot.toggleLight(kind);
   lightKey = '';
   notice(on ? (kind === 'flash' ? 'Flashlight on. V turns it off.' : 'Phone light on.') : 'Light off.', 1500);
@@ -975,10 +990,98 @@ async function openStorage() {
   else ready.openStorage();
 }
 
+// A bed: time passes asleep and says how long.
 function sleepUntilMorning() {
-  settings.hour = 7;
+  const hours = vitals.sleepHours(settings.hour);
+  sayEvents(vitals.sleep(hours));
+  settings.hour = (settings.hour + hours) % 24;
   applyDaylight();
   saveSettings();
+  vitals.save();
+  perfLog.event('vital', { sleep: hours });
+  return `You sleep for ${Math.round(hours)} hours.`;
+}
+
+// --- The clock and the person's needs -------------------------------------------------------------------------
+
+const vitals = new Vitals();
+let vitalsSavedAt = 0, vitalsDrawnAt = 0;
+
+function doingNow() {
+  if (!foot) return { activity: 'driving', music: false };
+  const charging = foot.chargingNow();
+  return {
+    activity: foot.activity(), screen: !!pocket?.app, light: foot.light, music: !!(radio.on && pocket?.app === 'music'),
+    charging, chargingFlashlight: charging && !!pocket?.data.bagHas('Flashlight'),
+  };
+}
+
+// The person's needs go with the game clock (`tickClock`), so they run faster on foot than in the car.
+function passNeeds(t, hours) {
+  if (!map) return;
+  sayEvents(vitals.pass(hours, doingNow()));
+  if (t - vitalsDrawnAt > 500) {
+    vitalsDrawnAt = t;
+    drawVitals();
+  }
+  if (t - vitalsSavedAt > GAME.saveEverySeconds * 1000) {
+    vitalsSavedAt = t;
+    vitals.save();
+  }
+}
+
+function sayEvents(events) {
+  for (const event of events) {
+    if (event.say) notice(event.say, 4000);
+    if (event.type === 'accident' || event.type === 'collapse') perfLog.event('vital', event);
+    if (event.type === 'full') notice(`${GAME.stats[event.stat].label} fully charged.`, 2500);
+    if (event.type === 'empty' && event.stat === 'phone') {
+      if (foot?.light === 'phone') foot.toggleLight('phone');
+      pocket?.closePhone();
+      if (radio.on && foot) radio.setPower(false);
+      notice('Your phone is dead. Find a working outlet.', 4000);
+      lightKey = '';
+    }
+    if (event.type === 'empty' && event.stat === 'flashlight') {
+      if (foot?.light === 'flash') foot.toggleLight('flash');
+      notice('Your flashlight is dead. Batteries or a working outlet will fix it.', 4000);
+      lightKey = '';
+    }
+    if (event.type === 'collapse') collapseNow();
+  }
+}
+
+function collapseNow() {
+  const { hours, say, events } = vitals.collapse();
+  settings.hour = (settings.hour + hours) % 24;
+  if (foot?.light) foot.toggleLight(foot.light);
+  lightKey = '';
+  applyDaylight();
+  for (const event of events) if (event.say) notice(event.say, 4000);
+  notice(say, 6000);
+}
+
+const VITAL_ROWS = ['health', 'energy', 'hunger', 'thirst', 'bladder', 'bowels', 'phone', 'flashlight'];
+const VITAL_LOW = 25;
+let vitalsShown = {};
+
+// Bars in the corner of the view, full being good, written only when one has moved.
+function drawVitals() {
+  const box = el('vitals'), charging = !!foot?.charging;
+  if (!box.childElementCount) {
+    box.innerHTML = VITAL_ROWS.map((name) => `<div class="vital" data-vital="${name}"><span>${name === 'health' ? GAME.health.label : GAME.stats[name].label}</span><i><b></b></i></div>`).join('');
+    vitalsShown = {};
+  }
+  for (const name of VITAL_ROWS) {
+    const value = Math.round(vitals.stats[name]), said = `${value}|${charging}`;
+    if (vitalsShown[name] === said) continue;
+    vitalsShown[name] = said;
+    const row = box.querySelector(`[data-vital="${name}"]`);
+    row.querySelector('b').style.width = `${value}%`;
+    row.classList.toggle('low', value <= VITAL_LOW);
+    row.classList.toggle('charging', charging && (name === 'phone' || (name === 'flashlight' && pocket?.data.bagHas('Flashlight'))));
+    row.title = `${value}%`;
+  }
 }
 
 function pressL() {
@@ -1520,6 +1623,8 @@ function sampleLog(t) {
     fsd: fsd ? 1 : 0,
     lights: settings.headlights ? 1 : 0,
     dark: darknessAt(settings.hour),
+    hour: settings.hour,
+    ...Object.fromEntries(VITAL_ROWS.map((name) => [name, vitals.stats[name]])),
   });
 }
 
@@ -1886,7 +1991,7 @@ async function boot() {
     }
     window.__geodrive = Object.assign(debug, {
       foot: () => foot, settings, gearbox, saveTrip, engine, radio, map, model, ground: () => ground, match: () => match, onBridge: () => onBridge, placeCar, pressSignal,
-      trip: () => trip, paused: () => paused, nav: () => ({ fsd, destination, route, routeIndex, signal, lane, laneNow }),
+      vitals, GAME, trip: () => trip, paused: () => paused, nav: () => ({ fsd, destination, route, routeIndex, signal, lane, laneNow }),
     });
   } catch (err) {
     notice('Could not load the map: ' + err.message);

@@ -19,6 +19,7 @@ export const COLUMNS = [
   'routePoints', 'lineVertices', 'range', 'cam', 'fsd', 'lights', 'dark',
   'geocodes', 'routes', 'elevations',         // billed Google calls in this sample
   'footChunks', 'footTriangles',              // the walking world in view, 0 while driving
+  'hour', 'health', 'energy', 'hunger', 'thirst', 'bladder', 'bowels', 'phone', 'flashlight', // game clock and the person's needs, 100 being good
 ];
 
 // The three calls Google bills apart from the map load. Order is the hover panel, billed section last.
