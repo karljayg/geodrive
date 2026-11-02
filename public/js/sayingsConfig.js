@@ -2,6 +2,8 @@
 // {name}, {found} and {hours} are filled in where a line uses them.
 export const SAYINGS = {
   // Crashes, in a shared world
+  restInBed: ['You lie still. You\'re too badly hurt to sleep it off. Stay here, and let someone bring you what you need.', 'You lie down carefully. Rest will help, if someone keeps you fed.'],
+  useFromBed: ['{found}', '{found}'],
   injuredCrash: ['That hurt. You\'re badly hurt.', 'Everything hurts. You\'re in a bad way.'],
   injuredHit: ['A car hit you. You\'re badly hurt.', 'You\'ve been hit. You can barely stand.'],
   // A car that won't go, in a shared world

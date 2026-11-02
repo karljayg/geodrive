@@ -404,6 +404,7 @@ export class Pocket {
     };
     this.area.innerHTML = `${this.title('Health')}<table class="healthTable"><tr><td></td><td>Now</td><td>Rate</td><td>Left</td></tr>${rows.map(row).join('')}</table>
       ${this.calls.world?.lives() >= 2 ? `<p class="healthLives">${this.calls.world.lives()} lives</p>` : ''}
+      ${this.calls.world?.criticalLeft() !== null && this.calls.world ? `<p class="healthCritical">Critical: ${Math.ceil(this.calls.world.criticalLeft())} hours to live without care. Lie in a bed and let someone bring you food.</p>` : ''}
       <p class="healthTotals">Day ${Math.floor(state.hours / 24) + 1}. Eaten ${t.food}, drinks ${t.drink}, restroom ${t.restroom}, accidents ${t.accidents}, slept ${t.sleeps} times, collapsed ${t.collapses}.</p>
       ${this.calls.world ? '' : '<button class="healthReset" data-health-reset>Start over <span class="keyHint">(X)</span></button>'}`;
   }

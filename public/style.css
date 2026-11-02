@@ -533,3 +533,4 @@ body:not(.onFoot) #previews { bottom: auto; top: 76px; }
 .speechBubble.note { padding: 5px 12px; font-size: 13px; color: #fff; background: #0d1621d9; }
 .speechBubble.note::after { display: none; }
 .speechBubble.leaving { opacity: 0; }
+.healthCritical { margin: 6px 0 0; font-size: 13px; font-weight: 650; color: #ff8a7a; }

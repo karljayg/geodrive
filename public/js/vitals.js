@@ -54,7 +54,7 @@ export class Vitals {
   rates(doing) {
     const { stats, health } = this.config, rates = {};
     for (const [name, stat] of Object.entries(stats)) {
-      let rate = stat.perHour.all ?? stat.perHour[doing.activity] ?? 0;
+      let rate = stat.perHour.all ?? stat.perHour[doing.activity === 'resting' ? 'sleeping' : doing.activity] ?? 0; // resting in bed uses up what sleep does
       if (name === 'energy' && rate > 0 && doing.energyShare !== undefined) rate *= doing.energyShare;
       if (name === 'phone') {
         if (doing.screen) rate += stat.using.screen;
@@ -68,6 +68,10 @@ export class Vitals {
     const empties = Object.entries(health.lossWhenEmpty).filter(([name]) => this.stats[name] <= 0);
     let healthRate = empties.reduce((sum, [, loss]) => sum + loss, 0);
     const needs = Object.keys(health.lossWhenEmpty);
+    if (this.isCritical) {
+      rates.health = healthRate + (empties.length ? 0 : doing.activity === 'resting' ? health.healInBed : health.healWhenCritical);
+      return rates;
+    }
     if (!empties.length && needs.every((name) => this.stats[name] > health.wellAbove)) healthRate += health.healWhenWell;
     if (!empties.length && doing.activity === 'sleeping') healthRate += health.healAsleep;
     rates.health = healthRate;
@@ -107,9 +111,34 @@ export class Vitals {
     return events;
   }
 
+  get isCritical() {
+    return this.stats.health <= this.config.health.criticalBelow;
+  }
+
+  // Hours left at this rate of being critical, or null if they aren't.
+  criticalHoursLeft() {
+    return this.isCritical ? Math.max(0, this.config.health.criticalHours - (this.state.criticalHours ?? 0)) : null;
+  }
+
+  // Too long in a bad way kills. Once, as it's up to the world what that means: in the sandbox, nothing.
+  countCritical(hours, events) {
+    const { state } = this;
+    if (!this.isCritical) {
+      state.criticalHours = 0;
+      state.succumbed = false;
+      return;
+    }
+    state.criticalHours = (state.criticalHours ?? 0) + hours;
+    if (state.criticalHours >= this.config.health.criticalHours && !state.succumbed) {
+      state.succumbed = true;
+      events.push({ type: 'succumb' });
+    }
+  }
+
   stepOnce(hours, doing, events) {
     const { state, stats } = this, rates = this.rates(doing);
     state.hours += hours;
+    this.countCritical(hours, events);
     if (doing.activity === 'sleeping') state.totals.hoursAsleep += hours;
     for (const [name, rate] of Object.entries(rates)) {
       const before = stats[name];

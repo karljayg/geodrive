@@ -1251,12 +1251,19 @@ function pressUse() {
     syncLift();
     return;
   }
-  if (foot.pose) {
+  if (answerAsked()) return;
+  const bedside = foot.pose?.kind === 'sleep' ? foot.dropsInReach() : [];
+  if (foot.pose && !bedside.length) {
     foot.standUp();
     sfx('sit');
     return;
   }
-  if (answerAsked()) return;
+  if (foot.pose) { // lying down, someone may have left things within reach, which spares getting up
+    return ask([
+      ...bedside.map((drop) => ({ label: `Use the ${drop.name.toLowerCase()}?`, run: () => useFromBed(drop) })),
+      { label: 'Get up?', run: () => { foot.standUp(); sfx('sit'); return ''; } },
+    ], { x: foot.walker.x, y: foot.walker.y, level: foot.level, inside: foot.walker.inside });
+  }
   const choices = foot.choices();
   if (!choices.length) return notice(foot.lookHere() || say('nothingHere'), 2500);
   ask(choices, { x: foot.walker.x, y: foot.walker.y, level: foot.level, inside: foot.walker.inside });
@@ -1487,6 +1494,7 @@ async function openStorage() {
 
 // A bed: time passes asleep and says how long.
 function sleepUntilMorning() {
+  if (vitals.isCritical) return say('restInBed'); // no sleeping it off: they stay lying here, and heal if they're looked after
   const hours = vitals.sleepHours(world.clock.hour);
   sayEvents(vitals.sleep(hours));
   world.clock.skip(hours);
@@ -1536,7 +1544,7 @@ function doingNow() {
   if (!foot) return { activity: 'driving', music: false };
   const charging = foot.chargingNow();
   return {
-    activity: foot.activity(), screen: !!pocket?.app, light: foot.light, music: !!(radio.on && pocket?.app === 'music'),
+    activity: foot.pose?.kind === 'sleep' && vitals.isCritical ? 'resting' : foot.activity(), screen: !!pocket?.app, light: foot.light, music: !!(radio.on && pocket?.app === 'music'),
     charging, chargingFlashlight: charging && !!pocket?.data.bagHas('Flashlight'),
   };
 }
@@ -1566,6 +1574,7 @@ function sayEvents(events) {
     if (event.type === 'full') sfx('charged');
     if (event.type === 'empty' && (event.stat === 'phone' || event.stat === 'flashlight')) sfx('powerDown');
     if (event.type === 'collapse') sfx('collapse');
+    if (event.type === 'succumb' && world.rules.people) world.link.ask({ t: 'succumb' });
     if (event.type === 'accident' || event.type === 'collapse') perfLog.event('vital', event);
     if (event.type === 'full') notice(say('charged', { name: GAME.stats[event.stat].label }), 2500);
     if (event.type === 'empty' && event.stat === 'phone') {
@@ -1586,8 +1595,20 @@ function sayEvents(events) {
 
 const tipFor = (name) => (name === 'health' ? GAME.health : GAME.stats[name]).tip;
 
+// Taking what's been left by the bed and using it, without getting up.
+async function useFromBed(drop) {
+  const ready = await pocketReady();
+  if (!ready.collect(drop.name)) return notice(say('bagFull'), 2500);
+  foot.removeDrop(drop.id);
+  dropsSyncedAt = -Infinity;
+  if (!ready.useItem(drop.name)) notice(say('pickUp', { name: drop.name.toLowerCase() }), 2500);
+  return '';
+}
+
 function collapseNow() {
+  const wasCritical = vitals.isCritical, before = vitals.stats.health;
   const { hours, say, events } = vitals.collapse();
+  if (world.rules.people && wasCritical) vitals.stats.health = Math.max(1, before); // passing out doesn't mend anyone
   world.clock.skip(hours);
   if (foot?.light) foot.toggleLight(foot.light);
   lightKey = '';
@@ -2735,8 +2756,10 @@ async function iDied({ lives, how, by, at }) {
   dialogOpen = true;
   keys.clear();
   const place = at ?? (foot ? foot.where() : pos), figures = { days: Math.floor(vitals.state.hours / 24) + 1, walked: walkFigures(vitals.state.walked).distance };
-  if (how !== 'hit' && peopleView) peopleView.explode(place);
-  sfx('explosion');
+  if (how === 'crash') {
+    peopleView?.explode(place);
+    sfx('explosion');
+  }
   await leaveBelongings(place);
   vitals.reset();
   world.you.lives = lives;
@@ -2746,7 +2769,7 @@ async function iDied({ lives, how, by, at }) {
   fsd = false;
   car.speed = 0;
   if (lives > 0) {
-    notice(`You died. ${lives} ${lives === 1 ? 'life' : 'lives'} left.`, GAME.crash.respawnSeconds * 1000);
+    notice(`${how === 'injuries' ? 'You died of your injuries' : 'You died'}. ${lives} ${lives === 1 ? 'life' : 'lives'} left.`, GAME.crash.respawnSeconds * 1000);
     setTimeout(async () => {
       const others = world.people.othersOnline.map((member) => world.people.lastKnown(member.id)).filter(Boolean);
       await beginAfterDeath(others[0] ?? place);
@@ -2792,7 +2815,7 @@ async function leaveBelongings(place) {
 function showFinalDeath({ how, by, days, walked }) {
   world.link.close();
   world.forgetHere(browserStorage());
-  const cause = how === 'hit' ? `You were hit by ${world.nameOf(by) ?? 'a car'}.` : 'You died in a crash.';
+  const cause = how === 'hit' ? `You were hit by ${world.nameOf(by) ?? 'a car'}.` : how === 'injuries' ? 'You died of your injuries.' : 'You died in a crash.';
   const managers = world.managerNames.filter((name) => name !== world.you.name).join(' or ');
   const box = el('worldEntry');
   box.innerHTML = '<div class="startBox"><h1>You\'re dead</h1><p data-cause></p><dl id="tripStats"><div><dt>Days lived</dt><dd data-days></dd></div><div><dt>Walked</dt><dd data-walked></dd></div></dl><p data-ask></p><div class="row"><button class="primary" type="button" data-sandbox>Play in my sandbox</button></div></div>';
@@ -2876,6 +2899,7 @@ function peopleCalls() {
       });
     },
     lives: () => world.people.member(world.you.id)?.lives ?? 0,
+    criticalLeft: () => vitals.criticalHoursLeft(),
     managerLine: () => `${world.managerNames.join(' and ')} can make invites.`,
     threads: threadsNow,
     messages: (id) => world.chat.messages(titled(id === 'group' ? null : id)).map((line) => ({ text: line.text, mine: line.sender === world.you.id, from: line.thread === 'group' && line.sender !== world.you.id ? world.nameOf(line.sender) : null })),
@@ -2901,8 +2925,8 @@ async function startPeople() {
   world.whereAmI = whereIAm;
   world.on.died = ({ member, lives, how, by, at }) => {
     if (world.you.id !== member) {
-      if (at) { sfxNear(at); if (how === 'crash') peopleView.explode(at); }
-      notice(`${world.nameOf(member)} ${how === 'hit' ? 'was hit by a car' : 'died in a crash'}${lives > 0 ? '.' : ', for good.'}`, 5000);
+      if (at && how === 'crash') { sfxNear(at); peopleView.explode(at); }
+      notice(`${world.nameOf(member)} ${how === 'hit' ? 'was hit by a car' : how === 'injuries' ? 'died of their injuries' : 'died in a crash'}${lives > 0 ? '.' : ', for good.'}`, 5000);
       return;
     }
     iDied({ lives, how, by, at });

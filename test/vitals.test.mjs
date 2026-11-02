@@ -303,3 +303,51 @@ test('going says what was done, and the label stays where it happened', async ()
   marks.add('peed', 39, -77); marks.add('pooped', 39, -77);
   assert.equal(marks.list.length, 2, 'only the newest are kept');
 });
+
+test('critical: a day of it kills, once, and getting better starts the count again', () => {
+  const v = fresh();
+  v.stats.health = 10;
+  assert.equal(v.isCritical, true);
+  assert.equal(v.criticalHoursLeft(), GAME.health.criticalHours);
+  const feed = () => { v.stats.hunger = 100; v.stats.thirst = 100; v.stats.energy = 100; v.stats.bladder = 100; v.stats.bowels = 100; };
+  let events = [];
+  for (let i = 0; i < 12; i++) { feed(); events = events.concat(v.pass(1, { activity: 'still' })); }
+  assert.ok(!events.some((e) => e.type === 'succumb'));
+  assert.ok(v.criticalHoursLeft() <= 12.01);
+  v.stats.health = 1;
+  for (let i = 0; i < 12; i++) { feed(); events = events.concat(v.pass(1, { activity: 'still' })); }
+  assert.equal(events.filter((e) => e.type === 'succumb').length, 1);
+  for (let i = 0; i < 3; i++) { feed(); events = events.concat(v.pass(1, { activity: 'still' })); }
+  assert.equal(events.filter((e) => e.type === 'succumb').length, 1, 'once');
+  v.stats.health = 50;
+  v.pass(0.25, { activity: 'still' });
+  assert.equal(v.criticalHoursLeft(), null);
+  v.stats.health = 10;
+  assert.equal(v.criticalHoursLeft(), GAME.health.criticalHours, 'and it starts afresh');
+});
+
+test('hurt badly, moving about heals very slowly, and lying in bed fed heals better', () => {
+  const rate = (doing, change = {}) => {
+    const v = fresh();
+    Object.assign(v.stats, { health: 5, hunger: 80, thirst: 80, energy: 80 }, change);
+    return v.rates(doing).health;
+  };
+  assert.equal(rate({ activity: 'walking' }), GAME.health.healWhenCritical);
+  assert.equal(rate({ activity: 'resting' }), GAME.health.healInBed);
+  assert.ok(rate({ activity: 'resting' }) > rate({ activity: 'walking' }) * 5);
+  assert.ok(rate({ activity: 'resting' }, { hunger: 0 }) < 0, 'with nothing to eat, bed won\'t save them');
+  const notBad = fresh();
+  Object.assign(notBad.stats, { health: 60, hunger: 80, thirst: 80, energy: 80 });
+  assert.equal(notBad.rates({ activity: 'walking' }).health, GAME.health.healWhenWell, 'and it only applies when they\'re critical');
+});
+
+test('resting in bed uses up what sleep does, not what being up does', () => {
+  const v = fresh(), up = v.rates({ activity: 'walking' }), resting = v.rates({ activity: 'resting' });
+  assert.ok(resting.energy > 0, 'it restores energy');
+  assert.ok(resting.hunger > up.hunger, 'and hunger comes on slower');
+});
+
+test('a day of healing from the worst, in bed and fed, gets someone out of it in time', () => {
+  const { criticalBelow, healInBed, criticalHours } = GAME.health;
+  assert.ok((criticalBelow - 1) / healInBed < criticalHours);
+});

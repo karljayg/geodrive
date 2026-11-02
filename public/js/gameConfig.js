@@ -67,6 +67,8 @@ export const GAME = {
     healWhenWell: 0.5,        // per hour with nothing below wellAbove
     healAsleep: 2,            // per hour asleep, as well
     wellAbove: 25,
+    // At or below criticalBelow someone is in a bad way. They heal only a little on their feet, faster lying in a bed if they don't run out of food and water, and criticalHours of it kills them.
+    criticalBelow: 15, criticalHours: 24, healWhenCritical: 0.1, healInBed: 1,
     warn: [[40, 'unwell'], [15, 'veryUnwell']],
   },
 
