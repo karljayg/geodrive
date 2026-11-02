@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { actionsOf, usableNear, usePrompt, useThing, withoutTaken, switchNeedsKey, switchSpots, useSwitch } from '../public/js/footActions.js';
+import { actionsOf, questionsFor, thingsNear, uniqueChoices, usableNear, useThing, withoutTaken, switchNeedsKey, switchSpots, useSwitch } from '../public/js/footActions.js';
 import { ITEMS, parseFurniture } from '../public/js/furniture.js';
 import { frameOf } from '../public/js/furnish.js';
 import { SIT_FRAME, personParts, poseAt } from '../public/js/footPerson.js';
@@ -21,8 +21,9 @@ test('what can be done with a thing comes from the catalogue, and stairs are lef
   assert.deepEqual(actionsOf('stairs'), []);
   assert.deepEqual(actionsOf('lift'), []);
   assert.deepEqual(actionsOf('rug'), []);
-  assert.match(usePrompt(entry('microwave')), /F to use the microwave · Shift\+F to pick up the microwave/);
-  assert.match(usePrompt(entry('bed')), /F to sleep on the bed/);
+  assert.deepEqual(questionsFor(entry('microwave')).map((q) => q.label), ['Use the microwave?', 'Pick up the microwave?']);
+  assert.deepEqual(questionsFor(entry('microwave')).map((q) => q.second), [false, true]);
+  assert.equal(questionsFor(entry('bed'))[0].label, 'Sleep on the bed?');
 });
 
 test('every thing that says it can be used can be, and says something', () => {
@@ -113,4 +114,13 @@ test('a switch that needs a key says so, works with one, and stays working', () 
   assert.equal(useSwitch(plan, 2, true, false), 'Lights on.', 'on any floor');
   const open = {};
   assert.equal(useSwitch(open, 1, false, false), 'Lights on.');
+});
+
+test('what is in reach comes nearest first, and F offers no question twice nor more than a number can pick', () => {
+  const frame = { axis: 0, toFrame: (x, y) => ({ u: x, v: y }) }, models = Object.fromEntries(['fridge', 'toilet', 'bed'].map((item) => [ITEMS[item].models[0], { w: 0.6, d: 0.6, h: 1 }]));
+  const record = { items: [entry('fridge', 1.5, 0), entry('toilet', 0.6, 0), entry('bed', 30, 30)] };
+  assert.deepEqual(thingsNear(record, frame, models, 0, 0, 0).map((e) => e[0]), ['toilet', 'fridge'], 'nearest first, and the far one left out');
+  const many = Array.from({ length: 20 }, (_, i) => ({ label: `Thing ${i % 12}?` }));
+  assert.equal(uniqueChoices(many).length, 9);
+  assert.equal(new Set(uniqueChoices(many).map((c) => c.label)).size, 9);
 });

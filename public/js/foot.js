@@ -7,7 +7,7 @@ import { tintAt } from './daylight.js';
 import { FootGl, bearing, lookAt, multiply, perspective, swing, translate } from './footGl.js';
 import { Place, fromLocal, parseTile, toLocal } from './footData.js';
 import { SIT_FRAME, personFloats } from './footPerson.js';
-import { SWITCH_REACH, outletSpots, switchNeedsKey, switchSpots, useSwitch, poseSpot, usableNear, usePrompt, useThing, withoutTaken } from './footActions.js';
+import { SWITCH_REACH, outletSpots, switchNeedsKey, switchSpots, useSwitch, poseSpot, questionsFor, thingsNear, uniqueChoices, useThing, withoutTaken } from './footActions.js';
 import { roomMesh } from './footScene.js';
 import { FURNISHED, coreNear, coreOf, frameOf as buildingFrame, layoutFloor, plainFloor, solidsOf, upgradeFloor, worldBearing } from './furnish.js';
 import { parseFurniture } from './furniture.js';
@@ -268,20 +268,26 @@ export class Foot {
     stepClearOfThings(this.walker, this.world);
   }
 
-  // The thing in reach to use, as an entry of the floor's items, or null.
-  thingHere() {
+  // What could be done from here, to confirm before anything happens: { label, run }, run saying what happened. The nearest things first.
+  choices() {
     const building = this.walker.inside, record = this.room?.furnishing?.record;
-    if (!building?.plan || !record || !furniture) return null;
-    return usableNear(record, buildingFrame(building.pieces, record.axis), furniture.models, this.walker.x, this.walker.y, this.walker.facing);
+    if (!building?.plan || !record || !furniture || this.pose) return [];
+    const list = [];
+    if (this.switchHere()) list.push({ label: this.roomLightsOn() ? 'Turn off the lights?' : 'Turn on the lights?', run: () => this.useLightSwitch() });
+    if (this.outletHere()) list.push({ label: this.charging ? 'Unplug?' : 'Plug in here?', run: () => this.useOutlet() });
+    const near = thingsNear(record, buildingFrame(building.pieces, record.axis), furniture.models, this.walker.x, this.walker.y, this.walker.facing);
+    for (const entry of near) for (const { label, second } of questionsFor(entry)) list.push({ label, run: () => this.useEntry(entry, second) });
+    return uniqueChoices(list);
   }
 
-  // F, or Shift+F for a thing's second use. Returns what to say, or null if there's nothing to use.
-  useHere(second = false) {
-    if (this.pose) return this.standUp();
-    if (!second && this.switchHere()) return this.useLightSwitch();
-    if (!second && this.outletHere()) return this.useOutlet();
-    const entry = this.thingHere();
-    if (!entry) return null;
+  // What F will offer, for the hint.
+  fHint() {
+    const choices = this.choices();
+    return choices.length > 1 ? `F to choose from ${choices.length}` : choices.length ? `F: ${choices[0].label}` : '';
+  }
+
+  // Does what was confirmed. Returns what to say.
+  useEntry(entry, second) {
     const building = this.walker.inside, { plan } = building, result = useThing(entry, plan, this.level, building.buildingId, second);
     if (result.pose) return this.takePose(entry, result);
     if (result.effect) this.onUsed?.(result.effect, result.count);
@@ -551,15 +557,13 @@ export class Foot {
       if (this.picking) return `Lift · floor ${this.picking.floor} of ${plan.floors} · click a floor, or type it · L goes`;
       const here = planLabel(plan, this.level), near = this.coreHere();
       if (this.pose) return `${here} · press F or walk to get up`;
-      if (this.switchHere()) return `${here} · F to switch the lights ${this.roomLightsOn() ? 'off' : 'on'}`;
-      if (this.outletHere()) return `${here} · ${this.charging ? 'charging · F to unplug' : 'F to plug in here'}`;
-      const thing = this.thingHere();
-      if (thing && !near) return `${here} · ${usePrompt(thing)}`;
-      if (near === 'lift') return `${here} · press L for the lift`;
+      const offered = this.fHint(), also = offered ? ` · ${offered}` : '';
+      if (near === 'lift') return `${here} · press L for the lift${also}`;
       if (near === 'stairs') {
-        if (this.level >= plan.floors) return `${here} · press L to go downstairs`;
-        return this.level > GROUND_FLOOR ? `${here} · L upstairs, Shift+L downstairs` : `${here} · press L to go upstairs`;
+        if (this.level >= plan.floors) return `${here} · press L to go downstairs${also}`;
+        return (this.level > GROUND_FLOOR ? `${here} · L upstairs, Shift+L downstairs` : `${here} · press L to go upstairs`) + also;
       }
+      if (offered) return `${here}${this.charging ? ' · charging' : ''}${also}`;
       return this.level > GROUND_FLOOR ? `${here} · find the stairs to go down` : `${here} · press L to go back out`;
     }
     if (this.canGetIn()) return 'Press L to get in';

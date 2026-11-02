@@ -803,6 +803,7 @@ function runFoot(t, dt) {
   if (!live) return;
   if (radio.on) refreshStations();
   syncLift();
+  checkAsking();
   applyDaylight(); // a carried light turns with the person
   if (foot.walker.inside && !foot.roomLightsOn() && !toldLights) {
     toldLights = true;
@@ -868,6 +869,7 @@ function stopFoot() {
   foot.stop();
   foot = null;
   pocket?.close();
+  stopAsking();
   lightKey = '';
   if (carRadio) radio.putBack(carRadio);
   carRadio = null;
@@ -929,11 +931,48 @@ function showLocked(type) {
   lockedTimer = setTimeout(() => box.classList.remove('show'), LOCKED_TIME);
 }
 
-// F on foot: use what's in reach. Shift+F is its second use, if it has one.
-function pressUse(second = false) {
-  const said = foot.useHere(second);
-  if (said === null) return notice('There is nothing here to use.', 1500);
+// F on foot asks first, as there may be nothing to do yet, and walking away is the answer no. One thing: F again says yes. Several: a number picks one.
+const WALK_AWAY = 0.7; // m that drops the question
+let asking = null;
+
+function pressUse() {
+  if (foot.pose) {
+    foot.standUp();
+    return;
+  }
+  if (asking) {
+    if (asking.choices.length === 1) answer(0);
+    else stopAsking();
+    return;
+  }
+  const choices = foot.choices();
+  if (!choices.length) return notice('There is nothing here to use.', 1500);
+  asking = { choices, x: foot.walker.x, y: foot.walker.y, level: foot.level, inside: foot.walker.inside };
+  const many = choices.length > 1, box = el('asking');
+  box.innerHTML = `${choices.map(({ label }, i) => `<button data-answer="${i}">${many ? `<kbd>${i + 1}</kbd> ` : ''}${label}</button>`).join('')}
+    <small>${many ? 'Press a number, or walk away' : 'F for yes, or walk away'}</small>`;
+  box.classList.toggle('many', many);
+  document.body.classList.add('asked');
+}
+
+function answer(index) {
+  const choice = asking?.choices[index];
+  stopAsking();
+  if (!choice) return;
+  const said = choice.run();
   if (said) notice(said, 2500);
+}
+
+function stopAsking() {
+  asking = null;
+  document.body.classList.remove('asked');
+}
+
+// Walking away, or anything else that changes where they are, drops the question.
+function checkAsking() {
+  if (!asking) return;
+  const w = foot?.walker;
+  if (!w || Math.hypot(w.x - asking.x, w.y - asking.y) > WALK_AWAY || foot.level !== asking.level || w.inside !== asking.inside || foot.pose) stopAsking();
 }
 
 // The bag and phone share one pocket object, made the first time either is wanted. Being in or next to the car is what opens its storage.
@@ -1878,6 +1917,7 @@ document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') e.target.blur();
     return;
   }
+  if (asking && e.key === 'Escape') { stopAsking(); e.preventDefault(); return; }
   if (foot?.picking && e.key === 'Escape') { foot.picking = null; syncLift(); e.preventDefault(); return; }
   if (foot?.picking && e.key === 'Enter') { foot.goToFloor(foot.picking.floor); syncLift(); e.preventDefault(); return; }
   if (foot?.picking && /^[0-9]$/.test(e.key)) { foot.typeFloor(e.key); e.preventDefault(); return; }
@@ -1890,8 +1930,9 @@ document.addEventListener('keydown', (e) => {
   }
   if (k === 'p' && !e.repeat) { e.preventDefault(); return setPaused(true); }
   if (k === 'l' && !e.repeat) { e.preventDefault(); return pressL(); }
+  if (asking && /^[1-9]$/.test(k)) { e.preventDefault(); if (!e.repeat) answer(Number(k) - 1); return; }
   if ((foot || (pocket?.bagOpen && /^[0-9]$/.test(k))) && !e.repeat && pocket?.pressKey(k)) { e.preventDefault(); return; }
-  if (foot && k === 'f' && !e.repeat) { e.preventDefault(); return pressUse(e.shiftKey); }
+  if (foot && k === 'f' && !e.repeat) { e.preventDefault(); return pressUse(); }
   if (foot && k === 'v' && !e.repeat) { e.preventDefault(); return carryLight('flash'); }
   if (!foot && k === 'y' && !e.repeat) { e.preventDefault(); return openStorage(); }
   if (foot && k === ' ') jumpPressed = true; // a quick tap can come and go between two frames
@@ -1933,6 +1974,10 @@ for (const b of document.querySelectorAll('#touch button[data-key]')) {
 }
 el('touchQ').addEventListener('click', () => { if (!foot) pressSignal(-1); });
 el('touchE').addEventListener('click', () => { if (!foot) pressSignal(1); });
+el('asking').addEventListener('click', (e) => {
+  const button = e.target.closest('[data-answer]');
+  if (button) answer(Number(button.dataset.answer));
+});
 el('touchF').addEventListener('click', () => { if (foot) pressUse(); else setFsd(!fsd); });
 el('touchL').addEventListener('click', pressL);
 

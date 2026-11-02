@@ -109,28 +109,39 @@ export function actionsOf(item) {
   return (ITEMS[item]?.use || []).filter((use) => DONE.has(use) && (use !== 'use' || USES[item]) && (use !== 'switch' || SWITCHES[item]));
 }
 
-// The thing to use from here: the nearest in reach, favouring what's in front.
-export function usableNear(record, frame, models, x, y, facing) {
-  const { u, v } = frame.toFrame(x, y), bearing = facing + frame.axis, sin = Math.sin(bearing), cos = Math.cos(bearing);
-  let best = null, bestScore = Infinity;
+// The things in reach, the nearest first, favouring what's in front.
+export function thingsNear(record, frame, models, x, y, facing) {
+  const { u, v } = frame.toFrame(x, y), bearing = facing + frame.axis, sin = Math.sin(bearing), cos = Math.cos(bearing), near = [];
   for (const entry of record.items) {
     const [item, name, iu, iv, , rot] = entry, model = models[name];
     if (!model || !actionsOf(item).length) continue;
     const quarter = Math.round(rot / 90) % 2 === 0, hu = (quarter ? model.w : model.d) / 2, hv = (quarter ? model.d : model.w) / 2;
     const gap = Math.hypot(Math.max(Math.abs(iu - u) - hu, 0), Math.max(Math.abs(iv - v) - hv, 0));
     if (gap > REACH) continue;
-    const toward = (iu - u) * sin + (iv - v) * cos, length = Math.hypot(iu - u, iv - v) || 1, score = gap - (toward / length) * 0.5;
-    if (score < bestScore) { bestScore = score; best = entry; }
+    const toward = (iu - u) * sin + (iv - v) * cos, length = Math.hypot(iu - u, iv - v) || 1;
+    near.push({ entry, score: gap - (toward / length) * 0.5 });
   }
-  return best;
+  return near.sort((p, q) => p.score - q.score).map((n) => n.entry);
 }
+
+export const usableNear = (record, frame, models, x, y, facing) => thingsNear(record, frame, models, x, y, facing)[0] || null;
 
 const VERB = { sit: 'sit', sleep: 'sleep', open: 'open', search: 'search', 'pick up': 'pick up', use: 'use', switch: 'switch on', write: 'write on' };
 
-// The hint: what F, and Shift+F if there's a second thing, would do.
-export function usePrompt(entry) {
-  const [first, second] = actionsOf(entry[0]), name = nameOf(entry[0]), text = (use) => (use === 'sit' || use === 'sleep' ? `${VERB[use]} on the ${name}` : `${VERB[use]} the ${name}`);
-  return `F to ${text(first)}${second ? ` · Shift+F to ${text(second)}` : ''}`;
+// What a thing offers, as questions to confirm: its one or two uses. second says which to ask useThing for.
+export function questionsFor(entry) {
+  const name = nameOf(entry[0]);
+  return actionsOf(entry[0]).slice(0, 2).map((use, i) => {
+    const text = use === 'sit' || use === 'sleep' ? `${VERB[use]} on the ${name}` : `${VERB[use]} the ${name}`;
+    return { label: `${text[0].toUpperCase()}${text.slice(1)}?`, second: i === 1 };
+  });
+}
+
+// The choices to put to someone: no question twice, however many chairs there are, and no more than a number key can pick.
+export const MOST_CHOICES = 9;
+export function uniqueChoices(choices) {
+  const seen = new Set();
+  return choices.filter((choice) => !seen.has(choice.label) && seen.add(choice.label)).slice(0, MOST_CHOICES);
 }
 
 // Does it. second: Shift was held. Returns what happened: { say } always, with { give: name of a thing for the bag }, { taken: true } if the thing has gone from the room, or { pose: 'sit' | 'sleep' }.

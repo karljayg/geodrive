@@ -34,6 +34,17 @@ header button:hover { background: #ffffff1f; color: #fff; }
 .brand b { color: #69d9ba; }
 /* What the person or driver is thinking: a bubble over their head, with its trail of little clouds leading down to them. */
 #notice { position: absolute; left: 50%; bottom: 42%; transform: translateX(-50%); width: max-content; max-width: min(340px, calc(100vw - 32px)); padding: 12px 18px; border-radius: 26px; background: #fffffff2; color: #1c2630; box-shadow: 0 6px 20px #0005; font-size: 13.5px; line-height: 1.35; text-align: center; display: none; }
+#asking { position: absolute; left: 50%; bottom: 42%; transform: translateX(-50%); width: max-content; max-width: min(340px, calc(100vw - 32px)); padding: 11px 16px 9px; border-radius: 26px; background: #fffffff5; color: #1c2630; box-shadow: 0 6px 20px #0005; font-size: 14px; text-align: center; display: none; pointer-events: auto; }
+body.asked #asking { display: block; }
+body.asked #notice { display: none !important; }
+#asking::before, #asking::after { content: ""; position: absolute; border-radius: 50%; background: #fffffff5; box-shadow: 0 3px 8px #0004; }
+#asking::before { left: calc(50% - 16px); bottom: -11px; width: 15px; height: 15px; }
+#asking::after { left: calc(50% - 3px); bottom: -25px; width: 8px; height: 8px; }
+#asking button { display: block; width: 100%; padding: 3px 8px; border: 0; border-radius: 8px; background: none; color: inherit; font: inherit; font-weight: 600; text-align: center; cursor: pointer; }
+#asking.many button { text-align: left; }
+#asking button:hover { background: #1c26301a; }
+#asking kbd { display: inline-block; min-width: 16px; margin-right: 4px; padding: 0 3px; border-radius: 4px; background: #1c2630; color: #fff; font: 600 11px system-ui, sans-serif; text-align: center; }
+#asking small { display: block; margin-top: 3px; color: #5c6a76; font-size: 11px; }
 #notice::before, #notice::after { content: ""; position: absolute; border-radius: 50%; background: #fffffff2; box-shadow: 0 3px 8px #0004; }
 #notice::before { left: calc(50% - 16px); bottom: -11px; width: 15px; height: 15px; }
 #notice::after { left: calc(50% - 3px); bottom: -25px; width: 8px; height: 8px; }
