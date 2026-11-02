@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { actionsOf, coreQuestions, questionsFor, thingsNear, uniqueChoices, usableNear, useThing, withoutTaken, switchNeedsKey, switchSpots, useSwitch } from '../public/js/footActions.js';
+import { actionsOf, coreQuestions, inertNear, lookLine, questionsFor, thingsNear, uniqueChoices, usableNear, useThing, withoutTaken, switchNeedsKey, switchSpots, useSwitch } from '../public/js/footActions.js';
 import { SAYINGS } from '../public/js/sayingsConfig.js';
 import { SOUNDS, bagSound, bakeOrder, footfall, lengthOf, play, stepSound, takesOf, useSound } from '../public/js/sounds.js';
 import { GAME } from '../public/js/gameConfig.js';
@@ -222,4 +222,13 @@ test('F offers the elevator and the stairs, the ways there are to go', () => {
   assert.deepEqual(coreQuestions('stairs', 2, 3, 1).map((q) => [q.label, q.down]), [['Go upstairs?', false], ['Go downstairs?', true]]);
   assert.deepEqual(coreQuestions('stairs', 3, 3, 1).map((q) => [q.label, q.down]), [['Go downstairs?', true]]);
   assert.deepEqual(coreQuestions(null, 1, 3, 1), []);
+});
+
+test('F can say what a thing with no use is, leaving out what has a use and what is out of reach', () => {
+  const frame = { toFrame: (x, y) => ({ u: x, v: y }) }, models = Object.fromEntries(['plant', 'fridge', 'lift', 'pillar'].map((item) => [ITEMS[item].models[0], { w: 0.5, d: 0.5, h: 1 }]));
+  assert.equal(inertNear({ items: [entry('plant', 1, 0), entry('fridge', 0.5, 0)] }, frame, models, 0, 0)[0], 'plant');
+  assert.equal(inertNear({ items: [entry('plant', 30, 0)] }, frame, models, 0, 0), null);
+  assert.equal(inertNear({ items: [entry('lift', 0.5, 0)] }, frame, models, 0, 0), null, 'the elevator has its own question');
+  assert.ok(SAYINGS.look_plant.includes(lookLine('plant')));
+  assert.match(lookLine('tireStack'), /tire stack/);
 });

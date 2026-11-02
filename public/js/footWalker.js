@@ -86,6 +86,13 @@ export function buildingWithin(walker, world) {
   return best;
 }
 
+const LEAVE_REACH = 3;   // m from an outside wall that F offers the way out
+// Whether someone inside is close enough to one of its outside walls to step out through it.
+export function byOutsideWall(walker, world) {
+  if (!walker.inside) return false;
+  return (walker.inside.pieces || [walker.inside]).some((piece) => world.place.walls(piece).some((w) => distToSegment(walker.x, walker.y, w.ax, w.ay, w.bx, w.by) < LEAVE_REACH));
+}
+
 // L beside a building goes in, remembering where from. True if it went.
 export function enterBuilding(walker, world) {
   const near = buildingWithin(walker, world);

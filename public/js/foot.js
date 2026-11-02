@@ -7,11 +7,11 @@ import { tintAt } from './daylight.js';
 import { FootGl, bearing, lookAt, multiply, perspective, swing, translate } from './footGl.js';
 import { Place, fromLocal, parseTile, toLocal } from './footData.js';
 import { SIT_FRAME, personFloats } from './footPerson.js';
-import { SWITCH_REACH, outletSpots, switchNeedsKey, switchSpots, useSwitch, poseSpot, coreQuestions, modelNamed, questionsFor, thingsNear, uniqueChoices, useThing, withoutTaken } from './footActions.js';
+import { SWITCH_REACH, outletSpots, switchNeedsKey, switchSpots, useSwitch, poseSpot, coreQuestions, modelNamed, inertNear, lookLine, questionsFor, thingsNear, uniqueChoices, useThing, withoutTaken } from './footActions.js';
 import { CORE_SCHEME, roomMesh } from './footScene.js';
 import { FURNISHED, colourFor, coreNear, coreOf, frameOf as buildingFrame, layoutFloor, plainFloor, solidsOf, upgradeFloor, worldBearing } from './furnish.js';
 import { parseFurniture } from './furniture.js';
-import { buildingWithin, carWalls, distanceToCar, enterBuilding, GET_IN_REACH, leaveBuilding, newWalker, frameOf, placeCamera, spawnSpot, stepClearOfThings, stepWalker, wayToCar } from './footWalker.js';
+import { buildingWithin, byOutsideWall, carWalls, distanceToCar, enterBuilding, GET_IN_REACH, leaveBuilding, newWalker, frameOf, placeCamera, spawnSpot, stepClearOfThings, stepWalker, wayToCar } from './footWalker.js';
 import { parcelParts, thingParts } from './drops.js';
 import { GAME } from './gameConfig.js';
 import { say } from './sayings.js';
@@ -55,8 +55,10 @@ function personMesh(frame) {
 
 export class Foot {
   // tiles: the RoadTiles that fetches the same map tiles for driving. view: the camera to match.
-  constructor({ canvas, origin, heading, profile, scale, tiles, view, onLocked, onLoadCar, onFound, onSlept, drops, onDropsChanged, hasKey, onUsed, onSound }) {
+  constructor({ canvas, origin, heading, profile, scale, tiles, view, onLocked, onLoadCar, onFound, onSlept, drops, onDropsChanged, hasKey, onGetIn, onOpenBag, onUsed, onSound }) {
     this.hasKey = hasKey;
+    this.onGetIn = onGetIn;
+    this.onOpenBag = onOpenBag;
     this.drops = drops;
     this.onDropsChanged = onDropsChanged;
     this.onSound = onSound; // a name from sounds.js
@@ -347,14 +349,50 @@ export class Foot {
     if (this.pose) return [];
     const building = this.walker.inside, record = this.room?.furnishing?.record;
     const list = this.dropsInReach().map((drop) => ({ label: `Pick up the ${drop.name.toLowerCase()}?`, run: () => this.pickUpDrop(drop) }));
-    if (this.canGetIn()) list.unshift({ label: 'Load into car?', html: '<u>L</u>oad into car?', key: 'l', run: () => this.onLoadCar?.() });
-    if (!building?.plan || !record || !furniture) return uniqueChoices(list);
+    if (this.canGetIn()) {
+      list.unshift({ label: 'Get in the car?', run: () => { this.onGetIn?.(); return ''; } },
+        { label: 'Load into car?', html: '<u>L</u>oad into car?', key: 'l', run: () => this.onLoadCar?.() },
+        { label: 'Open the car\'s storage?', run: () => { this.onOpenBag?.(); return ''; } });
+    }
+    if (!building) {
+      const near = buildingWithin(this.walker, this.world);
+      if (near) list.push({ label: near.building.plan && isLocked(near.building.plan) ? 'Try the door?' : 'Go inside?', run: () => this.goInside() });
+      return uniqueChoices(list);
+    }
+    const out = { label: 'Go outside?', run: () => { this.goOutside(); return ''; } };
+    if (!building.plan || !record || !furniture) return uniqueChoices([...list, out]);
     for (const { label, down } of coreQuestions(this.coreHere(), this.level, building.plan.floors, GROUND_FLOOR)) list.push({ label, run: () => { this.pressBuilding(down); return ''; } });
     if (this.switchHere()) list.push({ label: this.roomLightsOn() ? 'Turn off the lights?' : 'Turn on the lights?', run: () => this.useLightSwitch() });
     if (this.outletHere()) list.push({ label: this.charging ? 'Unplug?' : 'Plug in here?', run: () => this.useOutlet() });
     const near = thingsNear(record, buildingFrame(building.pieces, record.axis), furniture.models, this.walker.x, this.walker.y, this.walker.facing);
     for (const entry of near) for (const { label, second } of questionsFor(entry)) list.push({ label, run: () => this.useEntry(entry, second) });
+    if (this.level === GROUND_FLOOR && byOutsideWall(this.walker, this.world)) list.push(out);
     return uniqueChoices(list);
+  }
+
+  // What the nearest thing with no use is, for F to say. Null if there's nothing.
+  lookHere() {
+    const building = this.walker.inside, record = this.room?.furnishing?.record;
+    if (!building?.plan || !record || !furniture) return null;
+    const entry = inertNear(record, buildingFrame(building.pieces, record.axis), furniture.models, this.walker.x, this.walker.y);
+    return entry ? lookLine(entry[0]) : null;
+  }
+
+  // From the street, as L does.
+  goInside() {
+    const done = this.pressBuilding();
+    if (done?.locked !== undefined) this.onLocked?.(done.locked);
+    return '';
+  }
+
+  goOutside() {
+    const left = leaveBuilding(this.walker, this.world);
+    if (left) {
+      this.onSound?.('door');
+      this.world.inner = null;
+      this.entering = false;
+    }
+    return left;
   }
 
   // What F will offer, for the hint.
@@ -617,13 +655,7 @@ export class Foot {
         return true;
       }
       if (this.level > GROUND_FLOOR) return true; // the only way down is the way the hint says
-      const left = leaveBuilding(this.walker, this.world);
-      if (left) {
-        this.onSound?.('door');
-        this.world.inner = null;
-        this.entering = false;
-      }
-      return left;
+      return this.goOutside();
     }
     const near = buildingWithin(this.walker, this.world);
     if (near) {
@@ -668,10 +700,9 @@ export class Foot {
       if (offered) return `${here}${this.charging ? ' · charging' : ''}${also}`;
       return this.level > GROUND_FLOOR ? `${here} · find the stairs to go down` : `${here} · press L to go back out`;
     }
-    const outside = this.fHint();
-    if (this.canGetIn()) return `Press L to get in${outside ? ` · ${outside}` : ''}`;
-    if (outside) return outside;
-    const near = buildingWithin(this.walker, this.world);
+    if (this.canGetIn()) return `Press L to get in · ${this.fHint()}`;
+    const near = buildingWithin(this.walker, this.world), outside = this.fHint();
+    if (!near && outside) return outside;
     if (near) return near.building.plan && isLocked(near.building.plan) ? `${typeName(near.building.plan) || 'This building'} · locked` : this.waiting ? 'Checking this building…' : 'Press L to go inside';
     const { metres, direction } = wayToCar(this.walker);
     return `Car ${metres} m ${direction}`;

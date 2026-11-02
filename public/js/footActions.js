@@ -4,6 +4,7 @@ import { dice, hashText } from './buildings.js';
 import { ITEMS } from './furniture.js';
 import { GAME } from './gameConfig.js';
 import { say as line } from './sayings.js';
+import { SAYINGS } from './sayingsConfig.js';
 import { useSound } from './sounds.js';
 
 const REACH = 1.2;       // m from a thing's edge that it can be used
@@ -139,6 +140,23 @@ export function thingsNear(record, frame, models, x, y, facing) {
   }
   return near.sort((p, q) => p.score - q.score).map((n) => n.entry);
 }
+
+// The nearest thing in reach with nothing to do to it, for F to say what it is. Stairs and elevators have their own question.
+export function inertNear(record, frame, models, x, y) {
+  const { u, v } = frame.toFrame(x, y);
+  let best = null, bestGap = REACH;
+  for (const entry of record.items) {
+    const [item, name, iu, iv, , rot] = entry, model = models[name];
+    if (!model || actionsOf(item).length || NOT_USED_HERE.has(item)) continue;
+    const quarter = Math.round(rot / 90) % 2 === 0, hu = (quarter ? model.w : model.d) / 2, hv = (quarter ? model.d : model.w) / 2;
+    const gap = Math.hypot(Math.max(Math.abs(iu - u) - hu, 0), Math.max(Math.abs(iv - v) - hv, 0));
+    if (gap <= bestGap) { best = entry; bestGap = gap; }
+  }
+  return best;
+}
+
+// What F says about one: its own line if it has any, or the general one.
+export const lookLine = (item) => (SAYINGS[`look_${item}`] ? line(`look_${item}`) : line('lookAt', { name: nameOf(item) }));
 
 export const usableNear = (record, frame, models, x, y, facing) => thingsNear(record, frame, models, x, y, facing)[0] || null;
 

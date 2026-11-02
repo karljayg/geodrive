@@ -324,3 +324,11 @@ test('every frame of the person is a whole figure about 1.75 m tall, and they di
   assert.equal(seen.size, FRAME_COUNT);
   assert.equal(new TextDecoder().decode(buildPersonGlb(personParts(3)).slice(0, 4)), 'glTF');
 });
+
+test('someone inside is by an outside wall only close to one', async () => {
+  const { byOutsideWall } = await import('../public/js/footWalker.js');
+  const building = {}, world = { place: { walls: () => [{ ax: 0, ay: 0, bx: 20, by: 0 }] } };
+  assert.equal(byOutsideWall({ x: 10, y: 0.5, inside: building }, world), true);
+  assert.equal(byOutsideWall({ x: 10, y: 15, inside: building }, world), false);
+  assert.equal(byOutsideWall({ x: 10, y: 0.5, inside: null }, world), false);
+});

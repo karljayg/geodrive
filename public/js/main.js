@@ -878,7 +878,7 @@ async function getOut() {
     const { Foot, PERSON_SIZE: personSize } = await import('./foot.js'); // only those who walk load any of this
     await makePeople();
     (await pocketReady()).close();
-    foot = new Foot({ drops, onDropsChanged: () => { dropsSyncedAt = -Infinity; }, onSound: sfx, onUsed: (effect, count) => { vitals.apply(effect, count); }, hasKey: () => pocket.data.bagHas(BUILDING_KEY), onLocked: showLocked, onLoadCar: loadCar, onFound: (name) => pocket.collect(name), onSlept: sleepUntilMorning, canvas: el('foot'), origin: { lat: pos.lat, lng: pos.lng }, heading: car.heading, profile: settings.carProfile, scale: settings.carScale, tiles, view: { tilt: CAMERAS[0].tilt, range: CAMERAS[0].range * FOOT_RANGE_SHARE, fov: FOV_Y, below: CAR_BELOW_CENTRE } });
+    foot = new Foot({ onGetIn: () => stopFoot(), onOpenBag: () => { if (!pocket.bagOpen) pocket.toggleBag(); }, drops, onDropsChanged: () => { dropsSyncedAt = -Infinity; }, onSound: sfx, onUsed: (effect, count) => { vitals.apply(effect, count); }, hasKey: () => pocket.data.bagHas(BUILDING_KEY), onLocked: showLocked, onLoadCar: loadCar, onFound: (name) => pocket.collect(name), onSlept: sleepUntilMorning, canvas: el('foot'), origin: { lat: pos.lat, lng: pos.lng }, heading: car.heading, profile: settings.carProfile, scale: settings.carScale, tiles, view: { tilt: CAMERAS[0].tilt, range: CAMERAS[0].range * FOOT_RANGE_SHARE, fov: FOV_Y, below: CAR_BELOW_CENTRE } });
     showPerson(personSize);
   } catch (err) {
     console.warn('getting out:', err);
@@ -1006,7 +1006,7 @@ function pressUse() {
     return;
   }
   const choices = foot.choices();
-  if (!choices.length) return notice(say('nothingHere'), 2000);
+  if (!choices.length) return notice(foot.lookHere() || say('nothingHere'), 2500);
   asking = { choices, x: foot.walker.x, y: foot.walker.y, level: foot.level, inside: foot.walker.inside };
   const many = choices.length > 1, box = el('asking');
   box.innerHTML = `${choices.map(({ label, html }, i) => `<button data-answer="${i}">${many ? `<kbd>${i + 1}</kbd> ` : ''}${html || label}</button>`).join('')}

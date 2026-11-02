@@ -22,6 +22,27 @@ export const SAYINGS = {
     'A fine place to do nothing, and you\'re doing it well.',
   ],
 
+  // F at something with no use: what it is. A look_ line is for one kind of thing, by its name in furniture.js.
+  lookAt: ['That\'s a {name}.', 'A {name}. You leave it be.', 'Yes, that\'s a {name}.', 'It\'s a {name}, doing what it does.', 'A {name}. No use to you right now.'],
+  look_plant: ['A plant. It could use some water, same as you.', 'You poke the plant. It\'s real, probably.', 'Plastic, on closer inspection.'],
+  look_rug: ['A rug. It ties the room together.', 'You look under the rug. Floor.'],
+  look_mat: ['It says welcome. You feel welcome.', 'A mat. Nothing under it.'],
+  look_mannequin: ['It won\'t make eye contact.', 'Better dressed than you.', 'You nod. It doesn\'t nod back.'],
+  look_forklift: ['You don\'t have the licence, or the key.', 'No keys in it. Probably for the best.'],
+  look_plane: ['Not today.', 'You check for a key under the mat. No mat.', 'A plane. You don\'t have the licence for this one either.'],
+  look_frontDesk: ['Nobody at the desk. There\'s a bell, and nobody to hear it.', 'The front desk. "Back in five minutes", says nobody.'],
+  look_checkInDesk: ['Nobody at check-in. Your bag is fine.', 'Check-in is closed. It\'s always closed.'],
+  look_departureBoard: ['Everything is delayed.', 'It says "Delayed". All of it.'],
+  look_menuBoard: ['You read the whole menu. Now you\'re hungry.', 'The menu makes you hungrier.'],
+  look_cinemaScreen: ['Nothing showing. Good seats, though.', 'A big blank screen.'],
+  look_wallPicture: ['You look at the picture. It looks back.', 'A picture. Someone chose this.'],
+  look_noticeBoard: ['Lost cat. Yoga on Tuesdays. Nothing useful.', 'The notices are all out of date.'],
+  look_pillar: ['A pillar. It\'s holding up its end.', 'Solid. You knock on it anyway.'],
+  look_altar: ['You keep a respectful distance.', 'Very quiet here.'],
+  look_coffeeTable: ['A coffee table with no coffee on it.', 'Just a ring where a cup once was.'],
+  look_frontDoor: ['The way you came in.', 'A door. They\'re big on those here.'],
+  look_barrierGate: ['The barrier stays down. You\'re on foot anyway.', 'It doesn\'t lift for people.'],
+
   // Light switches
   lightsOn: ['Lights on.', 'Click. Much better.', 'And there was light.', 'Ah, so that\'s what this room looks like.', 'Lights on. Nothing jumped out.'],
   lightsOff: ['Lights off.', 'Click. Dark again.', 'Lights off. Very economical.', 'Off they go.', 'Somewhere, a power bill sighs with relief.'],

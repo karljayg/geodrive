@@ -72,6 +72,9 @@ Titles travel in the stream as ICY metadata, which `<audio>` hides and most stat
 - `settings.hour` is the one game clock, moved by `tickClock` in `main.js`: real time at the wheel, `GAME.clock.onFootHoursPerMinute` game hours a real minute on foot. Anything shown from it must key on `clockText`, not the raw hour, which changes every frame.
 - The camera on foot is the driving camera at half its range (`placeCamera`, `syncFootScene`), so it doesn't dodge walls.
 
+## F on foot
+F is the one key for anything within reach: anything a player can do by standing somewhere gets a question in `Foot.choices`, even if it has its own key too. With no question to ask, `lookHere` says what the thing is (`look_` lines in `sayingsConfig.js`). New interactions go there.
+
 ## Needs and the clock
 Tunable numbers belong in server files, the same for every player, never in `localStorage`. All of these are in `public/js/gameConfig.js`, per game hour, each with the real figure it came from; tune there and nowhere else. `vitals.js` (pure, tested) holds the stats, 100 being good, and `pass` returns events for `sayEvents` in `main.js`. `advanceTime` runs the clock, an hour a real minute on foot and real time in the car, while nothing is paused. Stats are saved in `geodrive_vitals_v1` every 20 s. To tune from play: the performance log has a column for each stat and the hour, `vital` events mark accidents, collapses, sleeps and what was used, and the phone's Health app shows rates and totals. `__geodrive.vitals` is there in the console. Outlets (`outletSpots`) and tap and machine results are decided by hash, so they don't change between visits and aren't saved.
 
