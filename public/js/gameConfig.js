@@ -7,7 +7,7 @@ export const GAME = {
   worldCars: { every: 300, runningChance: 0.4, hammerChance: 0.25, kerb: 3.4, shownWithin: 300, mostShown: 20, rescueWithin: 150, driverFreeAfter: 10 }, // m along a road between them, and a car's chance of running or holding a sledgehammer
   // Shared worlds. See docs/MODE2_DESIGN.md. clockRate: game hours per real hour, so 12 is an hour every 5 minutes.
   world: {
-    clockRate: 12, playersOnline: 8, lives: 3, inviteHours: 24, appearWithin: 300, nameTagsWithin: 100, peopleShownWithin: 1500,
+    clockRate: 12, playersOnline: 8, lives: 10, inviteHours: 24, appearWithin: 300, nameTagsWithin: 100, peopleShownWithin: 1500,
     chatKept: 50, chatLength: 400, chatBurst: 5, chatBurstSeconds: 5, newWorldsPerDay: 5, allWorldsBytes: 5e9,
   },
   clock: { onFootHoursPerMinute: 1 }, // game hours per real minute on foot: 24 minutes is a day. In the car it's always real time.

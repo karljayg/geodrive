@@ -55,11 +55,11 @@ export class Room {
   // --- Coming and going -----------------------------------------------------------------------------------------
 
   // A new world's first person.
-  static create(store, { id, mode = 'private', name, player, now }) {
+  static create(store, { id, mode = 'private', name, player, now, config = GAME.world }) {
     const look = cleanLook(player.figure, player.colours), secret = newToken(), memberId = newToken(9);
     store.transaction(() => {
       store.createWorld({ id, mode, name, creator: memberId, hour: STARTING_HOUR, now });
-      store.addMember({ id: memberId, name: player.name, nameKey: nameKey(player.name), secretHash: hashOf(secret), lives: GAME.world.lives, ...look, now });
+      store.addMember({ id: memberId, name: player.name, nameKey: nameKey(player.name), secretHash: hashOf(secret), lives: config.lives, ...look, now });
     });
     return { memberId, secret };
   }

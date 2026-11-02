@@ -88,9 +88,9 @@ test('a building\'s tile is the same one the game loads its outline from', () =>
   assert.equal(tileOfBuilding(HANGAR), `${x}_${y}`);
 });
 
-async function pair(fn) {
+async function pair(fn, options = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'geodrive-shared-'));
-  let server = await startServer({ dir });
+  let server = await startServer({ dir, ...options });
   const all = [], address = () => `ws://127.0.0.1:${server.port}`;
   const world = (id, link, welcome, storage) => { const w = new PrivateWorld({ id, link, welcome, storage }); all.push(w); return w; };
   const create = async () => {
@@ -111,7 +111,7 @@ async function pair(fn) {
     return world(old.id, link, await link.open({ t: 'hello', protocol: PROTOCOL, world: old.id, player: me.id, secret: me.secret }), old.storage);
   };
   try {
-    await fn({ create, join: join_, back, restart: async () => { for (const w of all) w.link.close(); const { port } = server; await server.close(); server = await startServer({ dir, port }); } });
+    await fn({ create, join: join_, back, restart: async () => { for (const w of all) w.link.close(); const { port } = server; await server.close(); server = await startServer({ dir, port, ...options }); } });
   } finally {
     for (const w of all) { clearInterval(w.saving); clearInterval(w.placing); w.link.close(); }
     await server.close();
@@ -463,7 +463,7 @@ test('out of lives: gone for good, name kept, next person up runs things, and on
   placeAt(b, HERE.lat, HERE.lng, 0);
   placeAt(c, HERE.lat, HERE.lng, 50);
   await new Promise((r) => setTimeout(r, 40));
-  for (let i = 0; i < GAME.world.lives; i++) {
+  for (let i = 0; i < 3; i++) {
     await a.link.ask({ t: 'crash', kind: 'person', other: b.you.id, closing: 25, ...HERE });
     await new Promise((r) => setTimeout(r, 3100)); // crashes between the same two count once in a while
     placeAt(a, HERE.lat, HERE.lng, 50, i + 2);
@@ -479,10 +479,10 @@ test('out of lives: gone for good, name kept, next person up runs things, and on
   assert.equal((await link.open({ t: 'hello', protocol: PROTOCOL, world: b.id, player: me.id, secret: me.secret })).why, 'dead');
   const { code } = await a.link.ask({ t: 'invite' }), again = new WorldLink({ address: a.link.address });
   assert.equal((await again.open({ t: 'join', protocol: PROTOCOL, world: a.id, code, name: 'dana', ...LOOK })).why, 'name-taken', 'their name stays taken');
-  assert.equal((await again.say({ t: 'join', protocol: PROTOCOL, world: a.id, code, name: 'Dana2', ...LOOK })).you.lives, GAME.world.lives, 'someone new, with full lives');
+  assert.equal((await again.say({ t: 'join', protocol: PROTOCOL, world: a.id, code, name: 'Dana2', ...LOOK })).you.lives, 3, 'someone new, with full lives');
   link.close();
   again.close();
-}));
+}, { config: { ...GAME.world, lives: 3 } }));
 
 test('nobody can claim a crash with rubbish', () => pair(async ({ create }) => {
   const a = await create();

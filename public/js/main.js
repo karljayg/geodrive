@@ -2738,6 +2738,7 @@ function peopleCalls() {
         };
       });
     },
+    lives: () => world.people.member(world.you.id)?.lives ?? 0,
     managerLine: () => `${world.managerNames.join(' and ')} can make invites.`,
     threads: threadsNow,
     messages: (id) => world.chat.messages(titled(id === 'group' ? null : id)).map((line) => ({ text: line.text, mine: line.sender === world.you.id, from: line.thread === 'group' && line.sender !== world.you.id ? world.nameOf(line.sender) : null })),

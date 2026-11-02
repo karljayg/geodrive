@@ -245,7 +245,7 @@ All in `public/js/gameConfig.js`, the same for every player.
 
 | Number | Starts at |
 |---|---|
-| Lives | 3 |
+| Lives | 10 |
 | Car deadly speed | 100 mph |
 | Person deadly speed | 50 mph |
 | Injury starts at | 5 mph |

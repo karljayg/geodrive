@@ -73,7 +73,7 @@ export function startServer({ dir, port = 0, host = '127.0.0.1', origins = [], n
         const problem = nameProblem(message.player?.name) ?? (cleanLook(message.player?.figure, message.player?.colours) ? null : 'bad-look');
         if (problem) return refuse(problem);
         const id = newToken(12), store = new WorldStore(fileOf(id));
-        const { memberId, secret } = Room.create(store, { id, name, player: message.player, now: now() });
+        const { memberId, secret } = Room.create(store, { id, name, player: message.player, now: now(), config });
         store.close();
         const today = Math.floor(now() / 86400000), made = madeToday.get(address);
         madeToday.set(address, { day: today, count: made?.day === today ? made.count + 1 : 1 });

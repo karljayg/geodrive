@@ -510,3 +510,4 @@ body:not(.onFoot) #previews { bottom: auto; top: 76px; }
 #fpsNow.slow { color: #ffb060; }
 /* A name over someone indoors. */
 .roomTag { position: absolute; left: 0; top: 0; z-index: 4; padding: 2px 8px; font-size: 14px; font-weight: 600; color: #fff; white-space: nowrap; background: #0000008c; border-radius: 5px; pointer-events: none; }
+.healthLives { margin: 8px 0 0; font-size: 15px; font-weight: 700; color: #fff; }

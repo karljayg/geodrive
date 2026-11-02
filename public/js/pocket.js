@@ -403,8 +403,9 @@ export class Pocket {
       return `<tr class="${vitals.levelOf(name)}" title="${vitals.levelOf(name) === 'good' ? '' : esc(tip)}"><th>${label}</th><td>${Math.round(stats[name])}%</td><td>${rate > 0 ? '+' : ''}${rate.toFixed(1)}/h</td><td>${span(vitals.hoursLeft(name, rates))}</td></tr>`;
     };
     this.area.innerHTML = `${this.title('Health')}<table class="healthTable"><tr><td></td><td>Now</td><td>Rate</td><td>Left</td></tr>${rows.map(row).join('')}</table>
+      ${this.calls.world?.lives() >= 2 ? `<p class="healthLives">${this.calls.world.lives()} lives</p>` : ''}
       <p class="healthTotals">Day ${Math.floor(state.hours / 24) + 1}. Eaten ${t.food}, drinks ${t.drink}, restroom ${t.restroom}, accidents ${t.accidents}, slept ${t.sleeps} times, collapsed ${t.collapses}.</p>
-      <button class="healthReset" data-health-reset>Start over <span class="keyHint">(X)</span></button>`;
+      ${this.calls.world ? '' : '<button class="healthReset" data-health-reset>Start over <span class="keyHint">(X)</span></button>'}`;
   }
 
   // What the game has said, newest first, as a message on screen goes after a few seconds.
