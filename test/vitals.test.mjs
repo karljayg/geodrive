@@ -9,6 +9,15 @@ const memory = () => { const m = new Map(); return { getItem: (k) => m.get(k) ??
 const fresh = () => new Vitals(memory());
 const entry = (item, u = 0, v = 0) => [item, ITEMS[item].models[0], u, v, 0, 0, 0, 1];
 
+test('tired people run slower, and exhausted ones only walk', () => {
+  const v = fresh(), at = (energy) => { v.stats.energy = energy; return { can: v.canRun(), speed: v.runSpeed(2, 8) }; };
+  assert.deepEqual(at(26), { can: true, speed: 8 });
+  assert.deepEqual(at(25), { can: true, speed: 5 });
+  assert.deepEqual(at(11), { can: true, speed: 5 });
+  assert.equal(at(10).can, false);
+  assert.equal(at(0).can, false);
+});
+
 test('a need is good, then caution from its first warning, then critical at its last', () => {
   const v = fresh(), at = (name, value) => { v.stats[name] = value; return v.levelOf(name); };
   assert.equal(at('hunger', 41), 'good');

@@ -61,7 +61,7 @@ export const GAME = {
   // When energy or health reaches 0 you drop where you stand, and come round later, in the same state of need but alive. There's no game over.
   collapse: { hours: 6, reviveHealth: 25, reviveEnergyAtLeast: 30, say: 'You collapsed, and came round {hours} hours later.' },
   sleep: { wakeHour: 7, mostHours: 10, leastHours: 1 }, // a bed sleeps until wakeHour, within these
-  noRunBelowEnergy: 5,
+  tiredRunShare: 0.5,         // with energy at caution, how much of the gap between walking and running speed is left; at critical there's no running
 
   // Things found: stat changes from using one from the bag, so nothing is edible unless it's listed.
   consumables: {

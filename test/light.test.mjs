@@ -103,3 +103,22 @@ test('the clock keeps real time at the wheel, runs faster on foot as set, and wr
   for (let i = 0; i < 3600; i++) hour = advanceHour(hour, 1 / 60, true, 1);
   assert.equal(clockText(hour), '10:00 AM', 'and small steps add up to the same');
 });
+
+test('dropping leaves one behind from the bag or the car, makes room, and can be undone', () => {
+  const storage = memory(), data = new PocketData(storage);
+  for (let i = 0; data.bag.length < BAG_SLOTS; i++) data.addToBag({ id: `b${i}`, name: 'x' });
+  data.addToBag({ id: 'b0', name: 'x' });
+  assert.equal(data.addToBag({ id: 'new', name: 'x' }), false, 'the bag is full');
+  assert.equal(data.drop('b0'), true);
+  assert.equal(data.bag.find((i) => i.id === 'b0').count, 1, 'one of a stack');
+  assert.equal(data.drop('b0'), true);
+  assert.equal(data.bagHas('b0'), false);
+  assert.equal(data.drop('b0'), false, 'none left');
+  assert.equal(data.addToBag({ id: 'new', name: 'x' }), true, 'and there is room again');
+  assert.equal(new PocketData(storage).bagHas('b0'), false, 'gone after a reload too');
+  data.state.car.push({ id: 'c', name: 'C', count: 1 });
+  assert.equal(data.drop('c', true), true);
+  assert.equal(data.car.length, 0);
+  data.putBack({ id: 'c', name: 'C' }, true);
+  assert.deepEqual(data.car, [{ id: 'c', name: 'C', count: 1 }]);
+});

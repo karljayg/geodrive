@@ -149,6 +149,28 @@ export class Pocket {
     else this.renderBag();
   }
 
+  // Leaves one behind, with a chance to change your mind until the bag next changes or closes.
+  dropItem(id, side) {
+    const item = (side === 'car' ? this.data.car : this.data.bag).find((i) => i.id === id);
+    if (!item || !this.data.drop(id, side === 'car')) return;
+    this.dropped = { id: item.id, name: item.name, side };
+    if (id === 'Flashlight' && !this.data.bagHas(id)) this.calls.stowed();
+    this.renderBag();
+    this.bagPanel.querySelector('.empty').innerHTML = `You dropped the ${esc(item.name.toLowerCase())}. It's gone. <button class="undoDrop" data-undo-drop>Undo</button>`;
+  }
+
+  undoDrop() {
+    if (this.dropped) this.data.putBack(this.dropped, this.dropped.side === 'car');
+    this.dropped = null;
+    this.renderBag();
+  }
+
+  // Shift and a number, with the bag open.
+  dropNumber(key) {
+    const item = this.data.bag[(Number(key) + 9) % 10];
+    if (item) this.dropItem(item.id, 'bag');
+  }
+
   // Eats, drinks or takes one of it, if it's that sort of thing.
   useItem(id) {
     if (!this.calls.useItem(id)) return false;
@@ -193,6 +215,8 @@ export class Pocket {
   onClick(e) {
     const button = e.target.closest('button, [data-open-note], [data-thread], [data-dial-contact]');
     if (!button) return;
+    if (button.dataset.drop) return this.dropItem(button.dataset.drop, button.dataset.side);
+    if ('undoDrop' in button.dataset) return this.undoDrop();
     if (button.dataset.slot) return this.pressSlot(button.dataset.slot, button.dataset.side);
     if ('healthReset' in button.dataset) {
       this.calls.vitals().vitals.reset();
@@ -391,7 +415,7 @@ export class Pocket {
   // Your bag, and the car's storage beside it when you're in or next to the car. Clicking something moves it across; the flashlight, away from the car, turns on.
   renderBag() {
     const { bag, car } = this.data, near = this.calls.nearCar(), slots = (list, size, side) => Array.from({ length: size }, (_, i) => list[i]).map((item, i) => (item
-      ? `<button class="bagSlot full" data-slot="${esc(item.id)}" data-side="${side}" title="${esc(item.name)}">${side === 'bag' && i < 10 ? `<kbd>${(i + 1) % 10}</kbd>` : ''}<span>${esc(item.name)}</span>${item.count > 1 ? `<b>${item.count}</b>` : ''}</button>`
+      ? `<div class="slotBox"><button class="bagSlot full" data-slot="${esc(item.id)}" data-side="${side}" title="${esc(item.name)}">${side === 'bag' && i < 10 ? `<kbd>${(i + 1) % 10}</kbd>` : ''}<span>${esc(item.name)}</span>${item.count > 1 ? `<b>${item.count}</b>` : ''}</button><button class="slotDrop" data-drop="${esc(item.id)}" data-side="${side}" title="Drop ${esc(item.name)}" aria-label="Drop ${esc(item.name)}">✕</button></div>`
       : '<div class="bagSlot"></div>')).join('');
     this.nearShown = near;
     this.bagPanel.classList.toggle('withCar', near);

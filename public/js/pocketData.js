@@ -128,6 +128,23 @@ export class PocketData {
     return true;
   }
 
+  // Leaves one of a thing behind, from the bag or the car, for good. False if there isn't one.
+  drop(id, fromCar = false) {
+    const list = fromCar ? this.state.car : this.state.bag, item = list.find((i) => i.id === id);
+    if (!item) return false;
+    if (--item.count <= 0) list.splice(list.indexOf(item), 1);
+    this.save();
+    return true;
+  }
+
+  // Undoes a drop, which always has room as the drop made it.
+  putBack(item, toCar = false) {
+    const list = toCar ? this.state.car : this.state.bag, there = list.find((i) => i.id === item.id);
+    if (there) there.count++;
+    else list.push({ id: item.id, name: item.name, count: 1 });
+    this.save();
+  }
+
   takeFromBag(id) {
     const known = this.state.bag.find((i) => i.id === id);
     if (!known) return false;

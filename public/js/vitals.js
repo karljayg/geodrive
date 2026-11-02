@@ -182,7 +182,12 @@ export class Vitals {
   }
 
   canRun() {
-    return this.stats.energy >= this.config.noRunBelowEnergy;
+    return this.levelOf('energy') !== 'critical';
+  }
+
+  // How fast a run is for someone this tired.
+  runSpeed(walkSpeed, runSpeed) {
+    return this.levelOf('energy') === 'caution' ? walkSpeed + (runSpeed - walkSpeed) * this.config.tiredRunShare : runSpeed;
   }
 }
 

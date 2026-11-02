@@ -741,7 +741,7 @@ function footInput(dt) {
   const input = {
     forward: (keys.has('w') || keys.has('arrowup') ? 1 : 0) - (keys.has('s') || keys.has('arrowdown') ? 1 : 0),
     strafe: (keys.has('d') || keys.has('arrowright') ? 1 : 0) - (keys.has('a') || keys.has('arrowleft') ? 1 : 0),
-    jump: keys.has(' ') || jumpPressed, run: keys.has('shift') && vitals.canRun(), walkSpeed: settings.walkSpeed, runSpeed: settings.runSpeed, lookX: lookX * LOOK_SENSITIVITY + ((keys.has('e') ? 1 : 0) - (keys.has('q') ? 1 : 0)) * FOOT_TURN * dt,
+    jump: keys.has(' ') || jumpPressed, run: keys.has('shift') && vitals.canRun(), walkSpeed: settings.walkSpeed, runSpeed: vitals.runSpeed(settings.walkSpeed, settings.runSpeed), lookX: lookX * LOOK_SENSITIVITY + ((keys.has('e') ? 1 : 0) - (keys.has('q') ? 1 : 0)) * FOOT_TURN * dt,
   };
   lookX = lookY = 0;
   jumpPressed = false;
@@ -1931,6 +1931,7 @@ document.addEventListener('keydown', (e) => {
   if (k === 'p' && !e.repeat) { e.preventDefault(); return setPaused(true); }
   if (k === 'l' && !e.repeat) { e.preventDefault(); return pressL(); }
   if (asking && /^[1-9]$/.test(k)) { e.preventDefault(); if (!e.repeat) answer(Number(k) - 1); return; }
+  if (pocket?.bagOpen && e.shiftKey && !e.repeat && /^Digit\d$/.test(e.code)) { e.preventDefault(); return pocket.dropNumber(e.code.slice(5)); }
   if ((foot || (pocket?.bagOpen && /^[0-9]$/.test(k))) && !e.repeat && pocket?.pressKey(k)) { e.preventDefault(); return; }
   if (foot && k === 'f' && !e.repeat) { e.preventDefault(); return pressUse(); }
   if (foot && k === 'v' && !e.repeat) { e.preventDefault(); return carryLight('flash'); }

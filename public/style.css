@@ -373,8 +373,12 @@ body.onFoot #pockets { display: block; }
 #pockets.storageOnly { display: block; position: fixed; left: 10px; bottom: calc(var(--dash) + 2px); }
 #pockets.storageOnly .tray { visibility: hidden; height: 0; padding: 0; border: 0; }
 #pockets.storageOnly .bagPanel { bottom: 8px; }
-.bagPanel.withCar { width: 372px; max-height: calc(100vh - var(--dash) - 110px); overflow-y: auto; }
+.bagPanel.withCar { width: 372px; max-height: calc(100vh - var(--dash) - 180px); overflow-y: auto; }
 #pockets button.bagSlot { position: relative; width: 100%; cursor: pointer; }
+.slotBox { position: relative; min-width: 0; }
+#pockets .slotDrop { position: absolute; top: 2px; right: 2px; width: 17px; height: 17px; padding: 0; border-radius: 50%; background: #00000066; color: #ffd9d4; font-size: 10px; line-height: 17px; text-align: center; cursor: pointer; opacity: .65; }
+#pockets .slotDrop:hover { background: #d9483c; color: #fff; opacity: 1; }
+.undoDrop { margin-left: 4px; padding: 1px 7px; border-radius: 6px; background: #ffffff2e; color: inherit; cursor: pointer; }
 .bagSlot kbd { position: absolute; top: 3px; left: 3px; min-width: 14px; padding: 0 3px; border-radius: 4px; background: #ffffff2e; font: 600 10px system-ui, sans-serif; text-align: center; }
 #pockets button.bagSlot:hover { background: #ffffff33; }
 .carHead { margin-top: 12px; padding-top: 10px; border-top: 1px solid #c79a6866; }
