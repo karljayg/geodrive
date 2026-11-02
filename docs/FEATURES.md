@@ -110,7 +110,7 @@ Bag, notes, needs and where you are live on the server. Your sign-in, route and 
 ## Popups
 A dialog with an address box takes the letters, so its other button is Alt and a letter: Alt+C clears a destination and Alt+D goes back to the original default.
 
-Each press of Escape closes only the thing on top, in this order: shared-drive question, destination or start, settings, key list, pause, lift panel, the F question, phone or bag (or the car's storage), the locked message, then a message. With nothing open it pauses. A click outside also closes the start, destination, pause and settings popups and the key list. On first load the start dialog takes the default, because the game needs a start. While the mouse is held for looking the browser takes Escape to free it, so that press closes nothing.
+Each press of Escape closes only the thing on top, in this order: destination or start, settings, key list, pause, lift panel, the F question, phone or bag (or the car's storage), the locked message, then a message. With nothing open it pauses. A click outside also closes the start, destination, pause and settings popups and the key list. On first load the start dialog takes the default, because the game needs a start. While the mouse is held for looking the browser takes Escape to free it, so that press closes nothing.
 
 ## All keys
 | Key | Action |

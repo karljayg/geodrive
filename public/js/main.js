@@ -2389,7 +2389,6 @@ el('confirm').addEventListener('click', (e) => { if (e.target === el('confirm'))
 
 // Closes the one thing on top, and says whether there was anything to close.
 function closeTop() {
-  if (answerShared) { answerShared(false); return true; }
   if (openId === 'dest') { finishDialog(); return true; }
   if (openId === 'start') { dismissStart(); return true; }
   if (el('settings').classList.contains('open')) { closeSettings(); return true; }
