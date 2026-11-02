@@ -80,6 +80,12 @@ export function lightMap(box, windows, walls, hour) {
 
 export const lightAt = (map, x, y) => map.data[Math.min(map.width - 1, Math.max(0, Math.floor(((x - map.minX) / map.spanX) * map.width))) + Math.min(map.height - 1, Math.max(0, Math.floor(((y - map.minY) / map.spanY) * map.height))) * map.width] / 255;
 
+// Is it dark here? win: the light map's value here. Only the room's lights or daylight end it: a flashlight or phone doesn't. wasDark keeps it as it was between the limits.
+export function darkHere({ lightsOn, win, wasDark }, { below, above }) {
+  if (lightsOn) return false;
+  return win < (wasDark ? above : below);
+}
+
 // What the person can carry a light as: a flashlight's wide beam, or a phone's that only reaches about a person's height ahead.
 export const TORCHES = {
   flash: { reach: 13, cone: 0.86, strength: 0.8 },

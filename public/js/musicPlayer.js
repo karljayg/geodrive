@@ -66,19 +66,25 @@ export class Soundtrack {
   }
 
   begin(mood, fade) {
-    const song = this.rotation.next(mood, this.broken);
+    const leaving = this.current && { mood: this.current.mood, song: this.current.song, at: this.current.audio.currentTime };
+    const { song, at } = this.rotation.pick(mood, leaving, this.broken);
     if (!song) { // nothing in this mood will play
       this.stop(this.config.stopFade);
       return;
     }
-    const player = this.freePlayer();
+    // Back to a song before it's finished fading out, as when a light goes off and on: raise that one, or the two would echo.
+    const fading = at ? this.players.find((p) => p !== this.current && p.song === song) : null;
+    const player = fading || this.freePlayer();
     clearTimeout(player.stopTimer);
-    player.gain.gain.cancelScheduledValues(this.ctx.currentTime);
-    player.gain.gain.value = 0;
-    player.song = song;
-    player.mood = mood;
-    player.audio.src = this.config.folder + song.file;
-    player.audio.play().catch((err) => { if (err.name !== 'AbortError') console.warn('music:', song.file, err.message); });
+    if (!fading) {
+      player.gain.gain.cancelScheduledValues(this.ctx.currentTime);
+      player.gain.gain.value = 0;
+      player.song = song;
+      player.mood = mood;
+      player.audio.src = this.config.folder + song.file;
+      if (at) player.audio.currentTime = at;
+      player.audio.play().catch((err) => { if (err.name !== 'AbortError') console.warn('music:', song.file, err.message); });
+    }
     this.current = player;
     this.ramp(player, song.volume * this.config.moods[mood].volume, fade);
     this.fadeOthers(fade);

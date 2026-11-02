@@ -18,7 +18,7 @@ import { say } from './sayings.js';
 import { SAYINGS } from './sayingsConfig.js';
 import { footfall, stepSound } from './sounds.js';
 import { Overture } from './overture.js';
-import { TORCHES, lightMap, sunAt, windowsOn } from './roomLight.js';
+import { TORCHES, darkHere, lightAt, lightMap, sunAt, windowsOn } from './roomLight.js';
 import { Terrain } from './terrain.js';
 import { vectorTileAt } from './vector.js';
 
@@ -651,7 +651,15 @@ export class Foot {
       return { ax: a.x, ay: a.y, bx: b.x, by: b.y };
     }) : [];
     const box = { minX: Math.min(...pieces.map((p) => p.minX)), maxX: Math.max(...pieces.map((p) => p.maxX)), minY: Math.min(...pieces.map((p) => p.minY)), maxY: Math.max(...pieces.map((p) => p.maxY)) };
-    gl.setLightMap(lightMap(box, windows, walls, hour));
+    room.lightMap = lightMap(box, windows, walls, hour);
+    gl.setLightMap(room.lightMap);
+  }
+
+  // Whether the person is standing in the dark indoors, for the soundtrack. limits: below and above, from musicConfig.js.
+  inDarkRoom(limits) {
+    const map = this.walker.inside && this.room?.lightMap;
+    this.dark = !!map && darkHere({ lightsOn: this.roomLightsOn(), win: lightAt(map, this.walker.x, this.walker.y), wasDark: this.dark }, limits);
+    return this.dark;
   }
 
   // A room with no plan has no switches to find, so it's simply lit.

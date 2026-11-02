@@ -51,6 +51,9 @@ export const MUSIC = {
     { from: 19.5, mood: 'night' },
     { from: 23, mood: 'lateNight' },
   ],
+  // Standing in a dark room, with the room's lights off and too little from the windows, plays this scene until there's light. A flashlight or phone doesn't count.
+  // below and above are the window light (0..1) it turns dark and light again at, apart so standing at the edge doesn't flip it. delay: seconds in the dark first, so crossing a dark patch doesn't.
+  darkRoom: { mood: 'foreboding', below: 0.08, above: 0.14, delay: 2 },
   sceneMinimum: 8, // seconds a scene keeps playing after it's ended, so a chase that stops and starts doesn't flip the music
   stopFade: 2.5, // seconds to fade out when the radio takes over or music stops
   radioFade: 2, // seconds to fade the radio out for a scene

@@ -61,6 +61,21 @@ export class Rotation {
   constructor(config) {
     this.config = config;
     this.turn = new Map();
+    this.interrupted = null;
+  }
+
+  // What to play on moving to a mood. leaving: { mood, song, at } being played now, or null. A scene remembers what it interrupted,
+  // and coming back to that mood carries on with that song where it stopped. Returns { song, at } (song is null if nothing will play).
+  pick(mood, leaving, skip = new Set()) {
+    const isScene = (name) => !!this.config.moods[name]?.overridesRadio;
+    if (isScene(mood)) {
+      if (leaving && !isScene(leaving.mood)) this.interrupted = leaving;
+      return { song: this.next(mood, skip), at: 0 };
+    }
+    const back = this.interrupted;
+    this.interrupted = null;
+    if (back?.mood === mood && !skip.has(back.song.file)) return { song: back.song, at: back.at };
+    return { song: this.next(mood, skip), at: 0 };
   }
 
   // skip: song files known not to play. Null if every one is.

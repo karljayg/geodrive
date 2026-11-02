@@ -132,7 +132,7 @@ let carRadio = null; // what the car's radio was doing when they got out
 let pocket = null; // the phone, compass, notepad and bag, made the first time someone gets out
 let people = null, foot = null, footLoading = false, lookX = 0, lookY = 0, touchLook = null; // the walk in progress, while out of the car
 const scenes = new Scenes(MUSIC);
-let soundtrack = null, musicTest = null; // musicTest: the mood picked in Settings, heard over everything
+let soundtrack = null, darkSince = null, musicTest = null; // musicTest: the mood picked in Settings, heard over everything
 const debug = { hold: false, car, pos, keys, roads, tiles, perfLog }; // window.__geodrive, for checks from the console
 
 function loadStart() {
@@ -692,7 +692,11 @@ function updateMusic() {
   if (!soundtrack) return;
   const now = performance.now() / 1000;
   const stopped = settings.musicOff ? 'All music off in Settings' : paused ? 'Paused' : document.hidden && !settings.musicWhenHidden ? 'Waiting for you to come back' : null;
-  const { mood, holdRadio } = chooseMusic({ hour: settings.hour, scenes: scenes.active(now), radio: radio.soundState(MUSIC.radioGrace * 1000), test: musicTest, blocked: !!stopped }, MUSIC);
+  const dark = !!foot?.inDarkRoom(MUSIC.darkRoom);
+  darkSince = dark ? darkSince ?? now : null;
+  const asked = scenes.active(now);
+  if (dark && now - darkSince >= MUSIC.darkRoom.delay) asked.push(MUSIC.darkRoom.mood);
+  const { mood, holdRadio } = chooseMusic({ hour: settings.hour, scenes: asked, radio: radio.soundState(MUSIC.radioGrace * 1000), test: musicTest, blocked: !!stopped }, MUSIC);
   radio.setHeld(holdRadio ? stopped || 'Stopped for now' : null, stopped ? 0 : MUSIC.radioFade, MUSIC.radioFadeIn);
   soundtrack.update(mood);
 }
