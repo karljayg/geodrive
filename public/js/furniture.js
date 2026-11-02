@@ -110,7 +110,7 @@ export const ITEMS = {
   speakerStand: { models: ['speakerSmall'], use: ['switch'] },
   mailboxes: { models: ['mailboxes'], built: true, use: ['open', 'search'] },
   noticeBoard: { models: ['noticeBoard'], built: true },
-  frontDoor: { models: ['frontDoor'], built: true, solid: false, use: ['open'] },
+  frontDoor: { models: ['frontDoor'], built: true, solid: false },
   filingCabinet: { models: ['filingCabinet'], built: true, use: ['open', 'search'] },
   printer: { models: ['printer'], built: true, use: ['use'] },
   frontDesk: { models: ['frontDesk'], built: true },

@@ -85,6 +85,7 @@ The header, nav screen and tab title show the current town (`refreshTown`: a bil
 - `public/js/main.js`: input, game loop, map setup, HUD. Tune cameras, zoom and the start point here.
 - `public/js/carModel.js`: the low-poly cars, built from code so there is no asset licence.
 - `public/js/pocket.js`: the phone, compass, notepad and bag on foot, and `pocketData.js` (pure, tested) and `pocketArt.js`. To add one: an entry in `TRAY` or `APPS`, a picture in `ART`, and for an app a render function.
+- `public/js/footActions.js`: what F does to things, and what they hold. Pure, tested. What has happened is in `plan.state` by floor, not the saved layout.
 - `public/js/buildings.js`: what a building is, its floors and the saved record. Pure, tested.
 - `public/js/furnish.js`: lays out a floor. `public/js/furniture.js`: the item catalogue and models. Pure, tested. `scripts/build-furniture.mjs`: makes `public/furniture.bin` from `assets/kenney-furniture`.
 - `public/js/footData.js`: buildings, land, water, roads, POIs and trees from a tile, in metres. Pure, tested. `public/js/footWalker.js`: the person, what stops them, the camera. Pure, tested. `public/js/footScene.js`: room meshes. `public/js/footPerson.js`: the person's joints, gaits and baked frames. Pure, tested. Pure, tested. `public/js/footGl.js`: the renderer, with tested matrix helpers. `public/js/foot.js`: streams chunks and ties these together.

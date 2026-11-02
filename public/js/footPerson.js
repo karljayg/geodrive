@@ -2,6 +2,7 @@
 // x to their right, y forward, z up, feet on z = 0. Each frame is baked once, as a map model can't move its own parts.
 export const CYCLE_FRAMES = 8;
 export const FRAME_COUNT = 1 + CYCLE_FRAMES * 2; // standing, then walking, then running
+export const SIT_FRAME = FRAME_COUNT; // indoors only, so not baked for the map
 
 const THIGH = 0.46, SHIN = 0.44, FOOT = 0.2, ANKLE = 0.06, TORSO = 0.52, UPPER_ARM = 0.29, FOREARM = 0.27;
 const HIP_X = 0.09, SHOULDER_X = 0.2;
@@ -10,6 +11,7 @@ const SKIN = [0.82, 0.65, 0.52], JACKET = [0.95, 0.5, 0.08], JEANS = [0.13, 0.2,
 
 // Angles in degrees. hip: forward swing around lean. knee: its range, deepest just after the foot leaves the ground. elbow: how bent. flight: m off the ground mid-stride.
 const GAITS = {
+  sit: { hipSwing: 0, hipAhead: 86, kneeMin: 86, kneeMax: 86, arm: 0, armAhead: 28, elbow: 40, lean: 2, twist: 0, flight: 0 },
   stand: { hipSwing: 0, hipAhead: 0, kneeMin: 3, kneeMax: 3, arm: 0, armAhead: 2, elbow: 10, lean: 1, twist: 0, flight: 0 },
   walk: { hipSwing: 26, hipAhead: 3, kneeMin: 6, kneeMax: 62, arm: 24, armAhead: 0, elbow: 22, lean: 3, twist: 7, flight: 0 },
   run: { hipSwing: 44, hipAhead: 12, kneeMin: 18, kneeMax: 105, arm: 42, armAhead: 2, elbow: 88, lean: 13, twist: 13, flight: 0.08 },
@@ -100,8 +102,8 @@ function ball(part, c, r, squash = 1, from = 0) {
 
 // One frame as parts of one colour each.
 export function personParts(frame) {
-  const gait = frame === 0 ? 'stand' : frame <= CYCLE_FRAMES ? 'walk' : 'run';
-  const phase = frame === 0 ? 0 : ((frame - 1) % CYCLE_FRAMES) / CYCLE_FRAMES;
+  const gait = frame === SIT_FRAME ? 'sit' : frame === 0 ? 'stand' : frame <= CYCLE_FRAMES ? 'walk' : 'run';
+  const phase = frame === 0 || frame === SIT_FRAME ? 0 : ((frame - 1) % CYCLE_FRAMES) / CYCLE_FRAMES;
   const j = poseAt(gait, phase);
   const part = (colour) => ({ pos: [], nor: [], colour });
   const skin = part(SKIN), jacket = part(JACKET), jeans = part(JEANS), shoes = part(SHOES), hair = part(HAIR);

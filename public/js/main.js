@@ -829,7 +829,7 @@ async function getOut() {
       onOpen: releaseMouse, // the mouse is needed to use them
       onTyping: () => keys.clear(), // or a key held down would keep walking
     });
-    foot = new Foot({ onLocked: showLocked, canvas: el('foot'), origin: { lat: pos.lat, lng: pos.lng }, heading: car.heading, profile: settings.carProfile, scale: settings.carScale, tiles, view: { tilt: CAMERAS[0].tilt, range: CAMERAS[0].range * FOOT_RANGE_SHARE, fov: FOV_Y, below: CAR_BELOW_CENTRE } });
+    foot = new Foot({ onLocked: showLocked, onFound: (name) => pocket.collect(name), onSlept: sleepUntilMorning, canvas: el('foot'), origin: { lat: pos.lat, lng: pos.lng }, heading: car.heading, profile: settings.carProfile, scale: settings.carScale, tiles, view: { tilt: CAMERAS[0].tilt, range: CAMERAS[0].range * FOOT_RANGE_SHARE, fov: FOV_Y, below: CAR_BELOW_CENTRE } });
     showPerson(personSize);
   } catch (err) {
     console.warn('getting out:', err);
@@ -921,6 +921,19 @@ function showLocked(type) {
   box.classList.add('show');
   clearTimeout(lockedTimer);
   lockedTimer = setTimeout(() => box.classList.remove('show'), LOCKED_TIME);
+}
+
+// F on foot: use what's in reach. Shift+F is its second use, if it has one.
+function pressUse(second = false) {
+  const said = foot.useHere(second);
+  if (said === null) return notice('There is nothing here to use.', 1500);
+  if (said) notice(said, 2500);
+}
+
+function sleepUntilMorning() {
+  settings.hour = 7;
+  applyDaylight();
+  saveSettings();
 }
 
 function pressL() {
@@ -1701,6 +1714,7 @@ document.addEventListener('keydown', (e) => {
   if (k === 'p' && !e.repeat) { e.preventDefault(); return setPaused(true); }
   if (k === 'l' && !e.repeat) { e.preventDefault(); return pressL(); }
   if (foot && !e.repeat && pocket?.pressKey(k)) { e.preventDefault(); return; }
+  if (foot && k === 'f' && !e.repeat) { e.preventDefault(); return pressUse(e.shiftKey); }
   if (foot && k === ' ') jumpPressed = true; // a quick tap can come and go between two frames
   if (foot && (k === 'q' || k === 'e')) keys.add(k);
   if (DRIVE_KEYS.has(k)) { keys.add(k); e.preventDefault(); e.stopPropagation(); }
@@ -1740,7 +1754,7 @@ for (const b of document.querySelectorAll('#touch button[data-key]')) {
 }
 el('touchQ').addEventListener('click', () => { if (!foot) pressSignal(-1); });
 el('touchE').addEventListener('click', () => { if (!foot) pressSignal(1); });
-el('touchF').addEventListener('click', () => { if (!foot) setFsd(!fsd); });
+el('touchF').addEventListener('click', () => { if (foot) pressUse(); else setFsd(!fsd); });
 el('touchL').addEventListener('click', pressL);
 
 let noticeTimer = null;

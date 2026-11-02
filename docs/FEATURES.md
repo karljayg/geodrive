@@ -119,4 +119,6 @@ Out of the car, the dashboard is replaced by a tray at the bottom left: Phone (I
 - **Notes:** as many as you like, saved in the browser. The Notepad in the tray opens this too.
 - **Phone app and Messages:** dial or pick a contact, or text one. The contacts are made up and nothing leaves the game: a call rings and nobody answers, and a text gets a stock reply.
 - **Map:** the nav screen's map with your heading up, the car as a yellow dot and zoom buttons.
-- **Bag:** 12 slots for what you collect, saved in the browser. Nothing can be picked up yet (`PocketData.addToBag` is ready).
+- **Bag:** 12 slots for what you collect, saved in the browser.
+
+Inside, the hint names what's in reach and what F does, with Shift+F for a second use. You can sit on chairs and sofas, lie on beds, which sleeps until morning, open fridges, wardrobes and drawers and search bins and shelves, which may hold something for your bag and stay searched. You can pick up small things, take cash from a cash machine or coffee from a machine, and try most other things for a line of what happens. What you've taken stays gone.

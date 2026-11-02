@@ -122,6 +122,13 @@ export class Pocket {
     return this.app === app ? this.closePhone() : this.openApp(app);
   }
 
+  // Something found, for the bag. False if the bag is full.
+  collect(name) {
+    const added = this.data.addToBag({ id: name, name });
+    if (added && this.bagOpen) this.renderBag();
+    return added;
+  }
+
   // A hotkey. True if it was one of these. 1 to 9 open the phone's apps, and 0 goes back to its home screen.
   pressKey(key) {
     if (key === 'n') {

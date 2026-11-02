@@ -4,11 +4,12 @@
 import { BuildingStore, dice, floorHeight, hashText, identify, isLocked, planLabel, typeName } from './buildings.js';
 import { BODY_SHAPES } from './carModel.js';
 import { tintAt } from './daylight.js';
-import { FootGl, bearing, lookAt, multiply, perspective, translate } from './footGl.js';
+import { FootGl, bearing, lookAt, multiply, perspective, swing, translate } from './footGl.js';
 import { Place, fromLocal, parseTile, toLocal } from './footData.js';
-import { personFloats } from './footPerson.js';
+import { SIT_FRAME, personFloats } from './footPerson.js';
+import { poseSpot, usableNear, usePrompt, useThing, withoutTaken } from './footActions.js';
 import { roomMesh } from './footScene.js';
-import { FLOOR_VERSION, FURNISHED, coreNear, coreOf, frameOf as buildingFrame, layoutFloor, plainFloor, solidsOf } from './furnish.js';
+import { FLOOR_VERSION, FURNISHED, coreNear, coreOf, frameOf as buildingFrame, layoutFloor, plainFloor, solidsOf, worldBearing } from './furnish.js';
 import { parseFurniture } from './furniture.js';
 import { buildingWithin, carWalls, distanceToCar, enterBuilding, GET_IN_REACH, leaveBuilding, newWalker, frameOf, placeCamera, spawnSpot, stepClearOfThings, stepWalker, wayToCar } from './footWalker.js';
 import { Overture } from './overture.js';
@@ -31,6 +32,7 @@ const GROUND_FLOOR = 1;
 const PICK_REPEAT = 0.16;    // s between floors while W or S is held in a lift
 const PICK_FAST = 10;        // floors a press moves with Shift held
 const PLACE_REACH = 30;      // m around a building to ask about places, which can be just outside it
+const LIE_HEIGHT = 0.72;     // m of a person lying on a bed, on the mattress rather than the height of the headboard
 const TYPE_WINDOW = 1500;    // ms in which a second digit makes a two-figure floor
 
 // The button in Settings. Buildings already identified on this walk stay as they are until the next one.
@@ -47,11 +49,14 @@ function personMesh(frame) {
 
 export class Foot {
   // tiles: the RoadTiles that fetches the same map tiles for driving. view: the camera to match.
-  constructor({ canvas, origin, heading, profile, scale, tiles, view, onLocked }) {
+  constructor({ canvas, origin, heading, profile, scale, tiles, view, onLocked, onFound, onSlept }) {
     if (!gl) gl = new FootGl(canvas);
     gl.onRestored = () => this.rebuildAll();
     this.view = view;
     this.onLocked = onLocked;
+    this.onFound = onFound;   // given a thing for the bag, returns false if there's no room
+    this.onSlept = onSlept;
+    this.pose = null;         // sitting or lying on something
     this.origin = origin;
     this.heading = heading;
     this.tiles = tiles;
@@ -228,7 +233,7 @@ export class Foot {
       record = furnished ? layoutFloor(building.pieces, plan, this.level, furniture.models, dice(hashText(`${id}:${this.level}`))) : plainFloor(plan, this.level);
       if (furnished) saved.saveFloor(id, this.level, record); // with the building's look, which it has now if it hadn't
     }
-    const furnishing = { record, furniture };
+    const furnishing = { record: withoutTaken(record, plan, this.level), furniture };
     cache.set(this.level, furnishing);
     return furnishing;
   }
@@ -246,7 +251,7 @@ export class Foot {
         this.walker.y = at.y;
       }
     }
-    if (this.room?.whole === whole && this.room?.furnishing === furnishing && this.room?.level === this.level) {
+    if (this.room?.whole === whole && this.room?.furnishing === furnishing && this.room?.level === this.level && !this.room.stale) {
       if (this.room) this.room.floor = this.world.floor(building);
       return;
     }
@@ -255,6 +260,54 @@ export class Foot {
     this.room = building ? { whole, furnishing, level: this.level, floor: this.world.floor(building), mesh: gl.mesh(roomMesh(this.place, building, 0, furnishing)) } : null;
     this.world.inner = furnishing ? solidsOf(furnishing.record, buildingFrame(building.pieces, furnishing.record.axis), furnishing.furniture.models) : null;
     stepClearOfThings(this.walker, this.world);
+  }
+
+  // The thing in reach to use, as an entry of the floor's items, or null.
+  thingHere() {
+    const building = this.walker.inside, record = this.room?.furnishing?.record;
+    if (!building?.plan || !record || !furniture) return null;
+    return usableNear(record, buildingFrame(building.pieces, record.axis), furniture.models, this.walker.x, this.walker.y, this.walker.facing);
+  }
+
+  // F, or Shift+F for a thing's second use. Returns what to say, or null if there's nothing to use.
+  useHere(second = false) {
+    if (this.pose) return this.standUp();
+    const entry = this.thingHere();
+    if (!entry) return null;
+    const building = this.walker.inside, { plan } = building, result = useThing(entry, plan, this.level, building.buildingId, second);
+    if (result.pose) return this.takePose(entry, result);
+    let say = result.say;
+    if (result.give && this.onFound && !this.onFound(result.give)) {
+      if (result.taken) plan.state[this.level].taken.pop();
+      return 'Your bag is full.';
+    }
+    if (result.taken) {
+      const { furnishing } = this.room, gone = entry;
+      furnishing.record = { ...furnishing.record, items: furnishing.record.items.filter((other) => other !== gone) };
+      this.room.stale = true;
+    }
+    saved.saveIndex();
+    return say;
+  }
+
+  takePose(entry, result) {
+    const building = this.walker.inside, record = this.room.furnishing.record, frame = buildingFrame(building.pieces, record.axis), spot = poseSpot(entry), at = frame.toWorld(spot.u, spot.v);
+    const model = furniture.models[entry[1]], facing = worldBearing(spot.rot, record.axis);
+    this.pose = { kind: result.pose, before: { x: this.walker.x, y: this.walker.y }, top: model.h, facing };
+    this.walker.x = at.x;
+    this.walker.y = at.y;
+    this.walker.facing = facing;
+    this.walker.height = 0;
+    this.walker.rise = 0;
+    if (result.pose === 'sleep') this.onSlept?.();
+    return result.pose === 'sleep' ? 'You sleep until morning. Press F or walk to get up.' : 'Press F or walk to get up.';
+  }
+
+  standUp() {
+    this.walker.x = this.pose.before.x;
+    this.walker.y = this.pose.before.y;
+    this.pose = null;
+    return '';
   }
 
   // The stairs or lift within reach, or null.
@@ -302,7 +355,11 @@ export class Foot {
       this.floors.clear();
     }
     if (this.picking && !this.walker.inside) this.picking = null;
-    stepWalker(this.walker, this.picking ? this.pickFloor(dt, input) : input, dt, this.world);
+    if (this.pose) {
+      if (input.forward || input.strafe || input.jump) this.standUp();
+      else this.walker.yaw += input.lookX || 0;
+    }
+    if (!this.pose) stepWalker(this.walker, this.picking ? this.pickFloor(dt, input) : input, dt, this.world);
     this.syncPlan();
     this.syncWaiting();
     this.syncRoom();
@@ -319,7 +376,10 @@ export class Foot {
     });
     gl.draw(this.room.mesh, translate(0, 0, this.room.floor));
     const w = this.walker, n = PERSON_SIZE;
-    gl.draw(personMesh(frameOf(w)), multiply(multiply(translate(w.x, w.y, w.z + w.height), bearing(w.facing)), [n, 0, 0, 0, 0, n, 0, 0, 0, 0, n, 0, 0, 0, 0, 1]));
+    const sized = [n, 0, 0, 0, 0, n, 0, 0, 0, 0, n, 0, 0, 0, 0, 1];
+    if (this.pose?.kind === 'sleep') gl.draw(personMesh(0), multiply(multiply(multiply(translate(w.x, w.y, this.room.floor + LIE_HEIGHT), bearing(w.facing)), multiply(swing(Math.PI / 2), translate(0, 0, -0.85))), sized));
+    else if (this.pose) gl.draw(personMesh(SIT_FRAME), multiply(multiply(translate(w.x, w.y, this.room.floor), bearing(w.facing)), sized));
+    else gl.draw(personMesh(frameOf(w)), multiply(multiply(translate(w.x, w.y, w.z + w.height), bearing(w.facing)), sized));
   }
 
   rebuildAll() {
@@ -348,6 +408,7 @@ export class Foot {
       this.goToFloor(this.picking.floor);
       return true;
     }
+    if (this.pose) this.standUp();
     if (this.walker.inside) {
       const { plan } = this.walker.inside, near = this.coreHere();
       if (near === 'lift') {
@@ -400,6 +461,9 @@ export class Foot {
       if (!plan) return 'Inside · press L to go back out';
       if (this.picking) return `Lift · floor ${this.picking.floor} of ${plan.floors} · click a floor, or type it · L goes`;
       const here = planLabel(plan, this.level), near = this.coreHere();
+      if (this.pose) return `${here} · press F or walk to get up`;
+      const thing = this.thingHere();
+      if (thing && !near) return `${here} · ${usePrompt(thing)}`;
       if (near === 'lift') return `${here} · press L for the lift`;
       if (near === 'stairs') {
         if (this.level >= plan.floors) return `${here} · press L to go downstairs`;
