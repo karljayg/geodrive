@@ -826,3 +826,43 @@ test('one room does not use up a floor: a big office floor still furnishes its o
   const empty = record.zones.filter((z, i) => (z[3] - z[1]) * (z[4] - z[2]) > 12 && !record.items.some((it) => it[6] === i));
   assert.deepEqual(empty.map((z) => z[0]), []);
 });
+
+test('every room can be walked to from the way in without jumping, whatever the furniture', () => {
+  for (const [type, w, d] of [['home', 14, 10], ['home', 20, 14], ['office', 36, 24], ['restaurant', 18, 12], ['cafe', 12, 9], ['shop', 14, 10], ['bank', 24, 18], ['hospital', 50, 30], ['library', 30, 20], ['gym', 26, 16], ['bar', 16, 11]]) {
+    for (let seed = 0; seed < 8; seed++) {
+      const p = rectangle(w, d), plan = { type, floors: 2, style: 'modern' };
+      plan.core = coreOf([p], plan, models, dice(seed));
+      const record = layoutFloor([p], plan, 1, models, dice(hashText(`walk${type}${seed}`))), frame = frameOf([p], record.axis), { walls, boxes } = solidsOf(record, frame, models);
+      const step = 0.2, off = 0.07, blocked = (x, y) => boxes.some((box) => {
+        const dx = x - box.x, dy = y - box.y;
+        return Math.abs(dx * box.c - dy * box.s) < box.hw + 0.3 && Math.abs(dx * box.s + dy * box.c) < box.hd + 0.3;
+      });
+      const crosses = (ax, ay, bx, by) => walls.some((s) => {
+        const e = (s.bx - s.ax) * (by - ay) - (s.by - s.ay) * (bx - ax);
+        if (Math.abs(e) < 1e-9) return false;
+        const t = ((ax - s.ax) * (by - ay) - (ay - s.ay) * (bx - ax)) / e, n = ((ax - s.ax) * (s.by - s.ay) - (ay - s.ay) * (s.bx - s.ax)) / e;
+        return t >= 0 && t <= 1 && n >= 0 && n <= 1;
+      });
+      const start = frame.toWorld(...record.entry), key = (i, j) => i * 10000 + j, begin = [Math.round((start.x - off) / step), Math.round((start.y - off) / step)];
+      const seen = new Set([key(...begin)]), stack = [begin];
+      while (stack.length) {
+        const [i, j] = stack.pop(), x = i * step + off, y = j * step + off;
+        for (const [di, dj] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+          const ni = i + di, nj = j + dj, nx = ni * step + off, ny = nj * step + off;
+          if (seen.has(key(ni, nj)) || nx < 0.3 || ny < 0.3 || nx > w - 0.3 || ny > d - 0.3 || blocked(nx, ny) || crosses(x, y, nx, ny)) continue;
+          seen.add(key(ni, nj));
+          stack.push([ni, nj]);
+        }
+      }
+      for (const z of record.zones) {
+        if (z[0] === 'vault') continue;
+        let reached = false;
+        for (let u = z[1] + 0.1; u < z[3] && !reached; u += 0.2) for (let v = z[2] + 0.1; v < z[4] && !reached; v += 0.2) {
+          const at = frame.toWorld(u, v);
+          if (seen.has(key(Math.round((at.x - off) / step), Math.round((at.y - off) / step)))) reached = true;
+        }
+        assert.ok(reached, `${type} ${w}x${d} seed ${seed}: can't walk to the ${z[0]}`);
+      }
+    }
+  }
+});

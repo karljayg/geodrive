@@ -7,6 +7,7 @@ export const LOW_ENOUGH = 2.2;  // m; a building part lifted higher than this is
 const EARTH = 6371000;
 const MIN_BUILDING = 6;         // m² of footprint
 const UNMAPPED_HEIGHT = 5;      // m
+const TOUCHING = 0.7;           // m between walls that makes two buildings one
 const POI_REACH = 25;           // m outside a footprint that a place still belongs to it, as places are often mapped at the door or the car park
 const SEAM_MATCH = 0.01;        // m; pieces of one building cut by a tile edge lie on the same line
 const ROAD_PAD = 6;    // m around a road that its cells also list it, for checks just beside it
@@ -443,6 +444,21 @@ export class Place {
     const lands = this.cellAt(x, y).lands.filter((land) => within(land, x, y) && inRings(land.rings, x, y)).map((land) => land.name);
     const tallest = pieces.reduce((best, p) => (p.height > best.height ? p : best));
     return { area: pieces.reduce((sum, p) => sum + Math.abs(signedArea(p.rings[0].pts)), 0), height: tallest.height, known: !!tallest.known, pois, names, lands };
+  }
+
+  // The other buildings these pieces touch, wall to wall.
+  joinedTo(pieces) {
+    const out = new Set(), own = new Set(pieces), segments = pieces.flatMap((piece) => this.walls(piece));
+    for (const piece of pieces) {
+      for (const cell of this.cellsOver({ minX: piece.minX - 1, maxX: piece.maxX + 1, minY: piece.minY - 1, maxY: piece.maxY + 1 })) {
+        for (const other of cell.buildings) {
+          if (own.has(other) || out.has(other) || !other.ground || other.minX > piece.maxX + TOUCHING || other.maxX < piece.minX - TOUCHING || other.minY > piece.maxY + TOUCHING || other.maxY < piece.minY - TOUCHING) continue;
+          const close = this.walls(other).some((w) => segments.some((s) => distToSegment(w.ax, w.ay, s.ax, s.ay, s.bx, s.by) < TOUCHING || distToSegment(s.ax, s.ay, w.ax, w.ay, w.bx, w.by) < TOUCHING));
+          if (close) out.add(other);
+        }
+      }
+    }
+    return [...out];
   }
 
   // Trees for a chunk, placed from a hash of where they stand, so they don't move when more tiles arrive; a tree only goes if something now covers its spot.

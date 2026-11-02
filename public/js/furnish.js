@@ -1060,10 +1060,10 @@ function addDoors(grid, cuts, doors, roll) {
 }
 
 // A cut can leave a piece of a bent building shut off. Each such piece gets a doorway too.
-function joinUp(grid, cuts, doors, sealed = []) {
+function joinUp(grid, cuts, doors, sealed = [], blocked = null) {
   const inSealed = (i, j) => sealed.some((r) => i >= r.i0 && i <= r.i1 && j >= r.j0 && j <= r.j1);
   for (let tries = 0; tries < 50; tries++) {
-    const { group, sizes } = flood(grid);
+    const { group, sizes } = flood(grid, blocked);
     if (sizes.length < 2) return;
     const main = sizes.indexOf(Math.max(...sizes));
     let opened = false;
@@ -1076,7 +1076,7 @@ function joinUp(grid, cuts, doors, sealed = []) {
       const at = edges.findIndex((edge) => {
         const [a, b] = across(edge);
         const i = edge.index % grid.nu, j = Math.floor(edge.index / grid.nu), [ni, nj] = alongU ? [i + 1, j] : [i, j + 1];
-        return wall[edge.index] && a !== b && (a === main || b === main) && !inSealed(i, j) && !inSealed(ni, nj);
+        return wall[edge.index] && a !== b && a >= 0 && b >= 0 && (a === main || b === main) && !inSealed(i, j) && !inSealed(ni, nj);
       });
       if (at < 0) continue;
       const next = edges[at + 1]?.k === edges[at].k + 1 ? at + 1 : edges[at - 1]?.k === edges[at].k - 1 ? at - 1 : at;
@@ -1176,6 +1176,43 @@ class Furnisher {
     this.stranded = this.strandedBy(this.blocked);
   }
 
+  // Cells that stay free: a way from the entrance to every doorway and the stairs, so nobody needs to jump to get about.
+  keepRoutes(from, targets) {
+    const { grid } = this, cellAt = ([u, v]) => {
+      const i = Math.floor((u - grid.minU) / grid.cell), j = Math.floor((v - grid.minV) / grid.cell);
+      return grid.has(i, j) && !this.blocked[grid.at(i, j)] ? grid.at(i, j) : -1;
+    };
+    const route = new Set(), goals = new Set(targets.map(cellAt).filter((at) => at >= 0)), start = cellAt(from);
+    if (start < 0) return;
+    route.add(start);
+    goals.delete(start);
+    while (goals.size) {
+      // From everything already on the route, out to the nearest doorway not yet on it.
+      const came = new Map(), queue = [...route];
+      for (const at of queue) came.set(at, -1);
+      let found = -1;
+      for (let n = 0; n < queue.length && found < 0; n++) {
+        const at = queue[n], i = at % grid.nu, j = Math.floor(at / grid.nu);
+        const go = (ni, nj, walled) => {
+          if (walled || !grid.has(ni, nj)) return;
+          const next = grid.at(ni, nj);
+          if (came.has(next) || this.blocked[next]) return;
+          came.set(next, at);
+          queue.push(next);
+          if (goals.has(next) && found < 0) found = next;
+        };
+        go(i + 1, j, grid.wallEast[at]);
+        go(i, j + 1, grid.wallNorth[at]);
+        if (i > 0) go(i - 1, j, grid.wallEast[grid.at(i - 1, j)]);
+        if (j > 0) go(i, j - 1, grid.wallNorth[grid.at(i, j - 1)]);
+      }
+      if (found < 0) break; // the rest can't be reached anyway, as with a sealed room
+      goals.delete(found);
+      for (let at = found; at !== -1 && !route.has(at); at = came.get(at)) route.add(at);
+    }
+    this.route = [...route];
+  }
+
   // Grid cells cut off from the main part of the floor. Stairs can leave a pocket behind them, which is no reason to refuse everything after.
   strandedBy(blocked) {
     const { grid } = this, { sizes } = flood(grid, blocked);
@@ -1187,6 +1224,7 @@ class Furnisher {
   blockFor(box) {
     if (this.checksLeft-- <= 0) return null; // full enough, for what a first visit should take
     const { grid } = this, blocked = blockCells(grid, this.blocked, box);
+    if (this.route?.some((at) => blocked[at])) return null; // it would stand in the way between doors
     const stranded = this.strandedBy(blocked);
     if ((stranded - this.stranded) * grid.cell * grid.cell > STRANDED) return null;
     this.stranded = stranded;
@@ -1696,11 +1734,17 @@ function putEntranceAtCore(rooms, plan, grid) {
   const areaOf = (r) => { const b = roomBox(grid, r.rect); return (b.u1 - b.u0) * (b.v1 - b.v0); }, size = areaOf(lobby);
   let best = lobby, bestDistance = Infinity;
   for (const r of rooms) {
-    if (SEALED.has(r.zone) || areaOf(r) < size * 0.4 || areaOf(r) > size * 2.5 || !hasOutsideWall(grid, r)) continue; // people come in through it
+    if (SEALED.has(r.zone) || areaOf(r) < size * 0.4 || areaOf(r) > size * 2.5 || !hasOutsideWall(grid, r) || !swapFits(grid, lobby, r)) continue; // people come in through it
     const b = roomBox(grid, r.rect), distance = Math.hypot(Math.max(b.u0 - part.u, 0, part.u - b.u1), Math.max(b.v0 - part.v, 0, part.v - b.v1));
     if (distance < bestDistance) { bestDistance = distance; best = r; }
   }
   [lobby.zone, best.zone] = [best.zone, lobby.zone];
+}
+
+// Whether two rooms can swap names, as a kitchen needs its width wherever it goes.
+function swapFits(grid, a, b) {
+  const narrow = (r) => Math.min(r.rect.i1 - r.rect.i0 + 1, r.rect.j1 - r.rect.j0 + 1) * grid.cell;
+  return narrow(b) >= (ROOM_WIDTH[a.zone] ?? MIN_ROOM) && narrow(a) >= (ROOM_WIDTH[b.zone] ?? MIN_ROOM);
 }
 
 // Nobody takes the stairs through the toilets: that room swaps names with the nearest one that isn't a back room.
@@ -1710,7 +1754,7 @@ function keepCoreOutOfBackRooms(rooms, plan, grid) {
   const distanceTo = (r) => { const b = roomBox(grid, r.rect); return Math.hypot(Math.max(b.u0 - part.u, 0, part.u - b.u1), Math.max(b.v0 - part.v, 0, part.v - b.v1)); };
   const nearest = rooms.reduce((best, r) => (distanceTo(r) < distanceTo(best) ? r : best), rooms[0]);
   if (!nearest || !BACK_ROOMS.has(nearest.zone) || SEALED.has(nearest.zone)) return;
-  const other = rooms.filter((r) => !BACK_ROOMS.has(r.zone) && !ENTRANCES.includes(r.zone)).sort((a, b) => distanceTo(a) - distanceTo(b))[0];
+  const other = rooms.filter((r) => !BACK_ROOMS.has(r.zone) && !ENTRANCES.includes(r.zone) && swapFits(grid, nearest, r)).sort((a, b) => distanceTo(a) - distanceTo(b))[0];
   if (other) [nearest.zone, other.zone] = [other.zone, nearest.zone];
 }
 
@@ -1732,7 +1776,7 @@ function sealRoom(grid, { i0, i1, j0, j1 }) {
 }
 
 // The way in: a door in an outside wall of the entrance room, or the next room that has one. Rooms are tried in the order they were wanted.
-function entranceOf(rooms, grid, roll) {
+function entranceOf(rooms, grid, roll, isFree) {
   const named = ENTRANCES.flatMap((zone) => rooms.filter((r) => r.zone === zone)), order = [...named, ...rooms.filter((r) => !named.includes(r) && !BACK_ROOMS.has(r.zone))];
   for (const room of order) {
     const b = roomBox(grid, room.rect);
@@ -1740,7 +1784,7 @@ function entranceOf(rooms, grid, roll) {
       const alongU = side.axis === 'v', [lo, hi] = alongU ? [b.u0, b.u1] : [b.v0, b.v1], edge = side.axis === 'v' ? (side.low ? b.v0 : b.v1) : (side.low ? b.u0 : b.u1), inward = side.low ? 1 : -1;
       for (const f of shuffled([0.5, 0.3, 0.7], roll)) {
         const along = lo + (hi - lo) * f, point = (depth) => (alongU ? [along, edge + inward * depth] : [edge + inward * depth, along]);
-        if (grid.isIn(...point(-1)) || !grid.isIn(...point(0.9))) continue;
+        if (grid.isIn(...point(-1)) || !grid.isIn(...point(0.9)) || !isFree(...point(1.1)) || !isFree(...point(0.2))) continue;
         const [u, v] = point(1.1), [doorU, doorV] = point(0);
         return {
           u, v, doorU, doorV, rot: (side.rot + 180) % 360,
@@ -1805,10 +1849,15 @@ export function layoutFloor(pieces, plan, floor, models, roll) {
   }
   const furnisher = new Furnisher(grid, doors, models, roll), zones = [];
   furnisher.addCore(coreOnFloor(plan, floor));
+  // The stairs can stand across a doorway, so anything they cut off gets another.
+  if (plan.core && !garage) {
+    joinUp(grid, cuts, doors, sealed, furnisher.blocked);
+    furnisher.stranded = furnisher.strandedBy(furnisher.blocked);
+  }
   if (garage && parkingFloor(furnisher, grid, plan, floor, zones, roll)) rooms = [];
   let entry = furnisher.entry || null;
   if (floor === 1 && rooms.length) {
-    const found = entranceOf(rooms, grid, roll);
+    const found = entranceOf(rooms, grid, roll, (u, v) => !furnisher.solids.some((box) => overlaps({ u0: u - 0.6, u1: u + 0.6, v0: v - 0.6, v1: v + 0.6 }, box)));
     if (found) {
       entry = [round(found.u), round(found.v)];
       doors.push(found.clear);
@@ -1816,6 +1865,13 @@ export function layoutFloor(pieces, plan, floor, models, roll) {
     }
   }
   for (const { u, v, rot } of frontDoors) furnisher.items.push(['frontDoor', 'frontDoor', round(u), round(v), 0, rot, -1, 1]);
+  if (rooms.length) {
+    const start = entry || (plan.core ? [plan.core.clear[0] + 0.3, plan.core.clear[1] + 0.3] : null), ends = doors.flatMap(({ u0, u1, v0, v1 }) => {
+      const u = (u0 + u1) / 2, v = (v0 + v1) / 2, reach = grid.cell * 0.8;
+      return [[u - reach, v], [u + reach, v], [u, v - reach], [u, v + reach]];
+    });
+    if (start) furnisher.keepRoutes(start, ends);
+  }
   rooms.forEach(({ zone, rect }, index) => {
     const room = {
       u0: grid.minU + rect.i0 * grid.cell, u1: grid.minU + (rect.i1 + 1) * grid.cell,

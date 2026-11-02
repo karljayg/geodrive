@@ -38,6 +38,7 @@ test('a terminal or a mall is not named after one restaurant inside it', () => {
   assert.equal(buildingType(clues({ area: 1000, pois: ['shop', 'shop', 'restaurant', 'cafe'] })), 'shop', 'too small for a mall');
   assert.equal(buildingType(clues({ area: 300, lands: ['aerodrome'], pois: ['restaurant'] })), 'restaurant');
   assert.equal(buildingType(clues({ area: 300, lands: ['aerodrome'] })), 'hangar');
+  assert.equal(buildingType(clues({ area: 100, lands: ['aerodrome'] })), 'unknown', 'a small hut could be anything');
 });
 
 test('with nothing inside, the land and the size decide', () => {
@@ -292,4 +293,14 @@ test('every type a place can give is a building type', () => {
   for (const [category, type] of Object.entries(CATEGORY_TYPE)) if (type !== 'weakOffice') assert.ok(TYPES[type], `${category}: ${type}`);
   assert.equal(poiType({ overture: true, category: 'bank_or_credit_union' }), 'bank');
   assert.equal(poiType({ overture: true, category: 'park' }), null);
+});
+
+test('a part with nothing of its own takes after the bigger building it is joined to, but not one across a gap', () => {
+  const tower = rect(0, 0, 40, 40), part = rect(40, 0, 50, 10), apart = rect(60, 0, 70, 10);
+  const lands = [{ name: 'commercial', rings: [[{ x: -500, y: -500 }, { x: 500, y: -500 }, { x: 500, y: 500 }, { x: -500, y: 500 }]], minX: -500, maxX: 500, minY: -500, maxY: 500 }];
+  const place = placeWith({ buildings: [tower, part, apart], lands, pois: [{ x: 20, y: 20, cls: 'bank', sub: 'bank', name: 'Big Bank' }] });
+  const store = new BuildingStore(memory());
+  assert.deepEqual(place.joinedTo([part]), [tower]);
+  assert.equal(identify(place, part, store).type, 'bank');
+  assert.equal(identify(place, apart, store).type, 'unknown');
 });

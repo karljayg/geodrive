@@ -9,6 +9,7 @@ const OLD_STORES = ['geodrive_rooms_v1', 'geodrive_rooms_v2'];
 const TERMINAL_AREA = 5000, MALL_AREA = 3000, MALL_POIS = 3; // m², m², points of interest
 const WAREHOUSE_AREA = 2000, LOW = 15, BIG_SHOP_AREA = 3000; // m², m, m²
 const SHED_AREA = 40, HOME_AREA = 400, HOME_HEIGHT = 12;     // m², m², m
+const HANGAR_AREA = 300;     // m²; smaller things at an airport could be anything
 const APARTMENT_AREA = 2500; // m²; bigger and low is more likely offices, even on residential land
 const TOWER_FLOORS = 5;      // from here up, a shop or restaurant has the ground floor only
 const AREA_FOR_ALL = 3000;   // m²; below it, a type sized by footprint uses only the lower of its floor counts
@@ -146,7 +147,7 @@ export function buildingType(clues) {
   if (area > MALL_AREA && pois.filter((type) => RETAIL.has(type) || type === 'bank').length >= MALL_POIS) return 'mall'; // several tenants under one roof
   const named = commonest(pois.filter((type) => type !== 'parking' && type !== 'mall'));
   if (named) return named;
-  return airport ? 'hangar' : typeFromLand(clues);
+  return airport ? (area >= HANGAR_AREA ? 'hangar' : 'unknown') : typeFromLand(clues);
 }
 
 function floorCount(type, { area, height, known }, roll) {
@@ -273,7 +274,13 @@ export function identify(place, piece, store, now = Date.now(), sure = true) {
   };
   const id = buildingId(place.origin, bounds);
   const known = store.get(id);
-  const worked = known || planBuilding(place.cluesFor(pieces, bounds, poiType), dice(hashText(id)));
+  const clues = known ? null : place.cluesFor(pieces, bounds, poiType);
+  let worked = known || planBuilding(clues, dice(hashText(id)));
+  // Tall and old buildings are often mapped as many parts, and a part with nothing of its own is part of what it's joined to.
+  if (!known && (worked.type === 'unknown' || worked.type === 'shed')) {
+    const beside = place.joinedTo(pieces).filter((other) => clues.area <= place.cluesFor(other.pieces || [other], other, poiType).area).map((other) => place.cluesFor(other.pieces || [other], other, poiType)).find((other) => other.pois.length);
+    if (beside) worked = planBuilding({ ...clues, pois: beside.pois, names: beside.names }, dice(hashText(id)));
+  }
   if (!sure && !known && isLocked(worked)) return worked;
   const plan = store.remember(id, worked, now);
   for (const p of pieces) {

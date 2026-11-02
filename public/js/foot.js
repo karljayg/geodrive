@@ -249,6 +249,7 @@ export class Foot {
       if (at && this.place.footprintAt(at.x, at.y)) {
         this.walker.x = at.x;
         this.walker.y = at.y;
+        stepClearOfThings(this.walker, this.world);
       }
     }
     if (this.room?.whole === whole && this.room?.furnishing === furnishing && this.room?.level === this.level && !this.room.stale) {
