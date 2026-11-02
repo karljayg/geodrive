@@ -2,6 +2,16 @@
 
 The record of what the game does and why. Update it when behaviour changes.
 
+## Walking (L)
+With the car stopped (under 1 mph), L gets out. A person stands on a clear side of the car. You stay on the driving map, so buildings, streets and everything else look the same and nothing loads again. FSD and signals turn off, so the car can't drive away on return. L is refused on a bridge, where the ground is the valley floor. The radio keeps playing; the engine goes quiet. Trip miles and the trip clock stop.
+
+- **Moving:** the same angle as the closest driving camera (CHASE) at half its distance, with the person where the car would be on screen. Q and E turn the view left and right while held, which is how to see round a building; walls don't move the camera. The mouse also turns it after a click (Esc frees the mouse and leaves you on foot). WASD moves relative to the view, Shift runs. Walking and running speeds are in Settings, 3 and 8.4 m/s to start. On a touch screen, drag to turn and use the arrow buttons. The figure has knees, elbows and a torso that leans and twists, with an 8-frame walk and an 8-frame run, and stands when still.
+- **The place:** the driving map itself. Real building footprints and water from the road map's tiles are invisible walls, so they can differ a little from the buildings you see. Trees and anything else the map only shows in its picture don't stop you. A tile that hasn't arrived never stops you.
+- **What stops you:** building walls, water and the car, and any rise steeper than about 30°. A low step is fine, as is walking under a part of a building raised overhead.
+- **Buildings:** there are no doors to find. Next to a wall, the hint says "Press L to go inside", and L puts you just inside, in a ground-floor room of that footprint, 3 m high and empty, seen from above. L inside returns you to where you went in. Next to the car as well, L gets in the car.
+- **Back to the car:** the label at the bottom of the view gives the distance and direction to the car, and the nav screen marks it with a yellow dot. Within about 3 m of the car, press L.
+- **While on foot:** Destination asks you to get back in first. Start and Reset put you back in the car. Time of day, radio, pause and settings all still work. A refresh puts you back in the driver's seat.
+
 ## Driving
 - Top speed 500 mph, reached in about 30 seconds. A stopped car can't turn, and reverse steers the other way.
 - The camera orbits a point ahead of the car at ground height, so the map rotates on the car rather than sliding under it.
@@ -83,7 +93,7 @@ Escape or a click outside closes every popup: start, destination, pause, setting
 | A D / ← → | Steer |
 | Shift | Handbrake |
 | Space / Z | Zoom out / in |
-| Q / E | Signal left / right |
+| Q / E | Signal left / right. On foot: turn the view left / right |
 | G | Destination |
 | F | FSD on / off |
 | - / = | FSD speed down / up |
@@ -97,5 +107,6 @@ Escape or a click outside closes every popup: start, destination, pause, setting
 | O | Settings |
 | P | Pause |
 | K | Show or hide the key list |
+| L | Get out of a stopped car, or back in when beside it |
 
 Start (change start point) and Reset (back to the start) are header buttons only, not keys.

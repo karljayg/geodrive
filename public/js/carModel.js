@@ -20,7 +20,7 @@ export function colorFactor(hex) {
 }
 
 function geometry(shape) {
-  const groups = { body: { pos: [], nor: [] }, glass: { pos: [], nor: [] }, tyre: { pos: [], nor: [] }, head: { pos: [], nor: [] }, tail: { pos: [], nor: [] } };
+  const groups = { body: { pos: [], nor: [] }, glass: { pos: [], nor: [] }, tyre: { pos: [], nor: [] }, rim: { pos: [], nor: [] }, trim: { pos: [], nor: [] }, head: { pos: [], nor: [] }, tail: { pos: [], nor: [] } };
   const out = ([x, y, z]) => [-x, z, y];
   const tri = (g, a, b, c) => {
     const u = a.map((v, i) => b[i] - v), w = a.map((v, i) => c[i] - v);
@@ -54,32 +54,101 @@ function geometry(shape) {
     }
   };
 
+  // A closed skin through rings of equal size. Faces turn away from each ring's middle, whichever way the rings are listed.
+  const loft = (name, rings) => {
+    const g = groups[name], middle = (ring) => ring[0].map((_, k) => ring.reduce((sum, p) => sum + p[k], 0) / ring.length);
+    const away = (a, b, c, from) => {
+      const u = a.map((v, i) => b[i] - v), v2 = a.map((v, i) => c[i] - v);
+      const n = [u[1] * v2[2] - u[2] * v2[1], u[2] * v2[0] - u[0] * v2[2], u[0] * v2[1] - u[1] * v2[0]];
+      if (n.reduce((sum, x, i) => sum + x * (a[i] - from[i]), 0) < 0) tri(g, a, c, b); else tri(g, a, b, c);
+    };
+    for (let s = 0; s < rings.length - 1; s++) {
+      const A = rings[s], B = rings[s + 1], from = middle(A).map((x, k) => (x + middle(B)[k]) / 2);
+      for (let i = 0; i < A.length; i++) {
+        const j = (i + 1) % A.length;
+        away(A[i], B[i], B[j], from);
+        away(A[i], B[j], A[j], from);
+      }
+    }
+    const whole = middle(rings.flat());
+    for (const ring of [rings[0], rings[rings.length - 1]]) {
+      const c = middle(ring);
+      for (let i = 0; i < ring.length; i++) away(c, ring[i], ring[(i + 1) % ring.length], whole);
+    }
+  };
+
   const { w, l, body, cabin, cabinL, cabinZ, topL, wheel: r, bed } = shape;
-  const floor = r * 0.8;
-  box('body', 0, 0, floor, body, w, l, w * 0.96, l * 0.98);
-  const roof = body + cabin;
-  box('glass', 0, cabinZ, body, roof - 0.04, w * 0.88, cabinL, w * 0.72, topL);
-  box('body', 0, cabinZ, roof - 0.04, roof, w * 0.72, topL);
-  if (bed) {
-    // Raised sides around an open bed behind the cabin.
-    const start = cabinZ - cabinL, end = -l, mid = (start + end) / 2, half = (start - end) / 2;
-    box('body', w - 0.06, mid, body, body + 0.3, 0.06, half);
-    box('body', -w + 0.06, mid, body, body + 0.3, 0.06, half);
-    box('body', 0, end + 0.06, body, body + 0.3, w, 0.06);
-  }
-  const lightY = body - 0.28;
+  const floor = r * 0.7, roof = body + cabin;
+  // The body, front to back: rounded across its top and pinched in at each end, with a lower bonnet and boot.
+  const section = (z, width, top) => {
+    const W = w * width, shoulder = floor + (top - floor) * 0.68;
+    const right = [[W * 0.62, top], [W * 0.93, top - (top - shoulder) * 0.3], [W, shoulder], [W, floor + (shoulder - floor) * 0.3], [W * 0.9, floor]];
+    return [...right.map(([x, y]) => [x, y, z]), ...right.slice().reverse().map(([x, y]) => [-x, y, z])];
+  };
+  loft('body', [
+    section(l, 0.8, body * 0.76), section(l * 0.94, 0.92, body * 0.84), section(l * 0.6, 0.99, body * 0.95), section(cabinZ + cabinL, 1, body),
+    section(cabinZ - cabinL, 1, body), section(-l * 0.72, 0.99, body * 0.98), section(-l * 0.95, 0.93, body * 0.94), section(-l, 0.84, body * 0.86),
+  ]);
+  // The cabin: glass all round, with a roof and pillars in the body's colour.
+  const rect = (y, W, front, back) => [[W, y, front], [W, y, back], [-W, y, back], [-W, y, front]];
+  const glassTop = roof - 0.05, base = rect(body - 0.02, w * 0.86, cabinZ + cabinL, cabinZ - cabinL), top = rect(glassTop, w * 0.7, cabinZ + topL, cabinZ - topL);
+  loft('glass', [base, top]);
+  loft('body', [rect(glassTop, w * 0.72, cabinZ + topL + 0.02, cabinZ - topL - 0.02), rect(roof, w * 0.66, cabinZ + topL - 0.05, cabinZ - topL + 0.05)]);
+  const pillar = (a, b, size = 0.045) => {
+    const ring = ([x, y, z]) => [[x + size, y, z + size], [x + size, y, z - size], [x - size, y, z - size], [x - size, y, z + size]];
+    loft('body', [ring(a), ring(b)]);
+  };
+  for (let i = 0; i < 4; i++) pillar(base[i], top[i]);
   for (const side of [-1, 1]) {
-    box('head', side * w * 0.65, l - 0.01, lightY, lightY + 0.16, w * 0.22, 0.03);
-    box('tail', side * w * 0.65, -l + 0.01, lightY, lightY + 0.16, w * 0.24, 0.03);
-    for (const z of [-l * 0.64, l * 0.64]) wheel(side * (w - 0.08), z, r);
+    pillar([side * w * 0.87, body - 0.02, cabinZ], [side * w * 0.71, glassTop, cabinZ], 0.03);
+    box('body', side * (w * 0.92), cabinZ + cabinL - 0.08, body - 0.02, body + 0.08, 0.09, 0.05); // door mirror
+  }
+  if (bed) {
+    // Raised sides around an open bed behind the cabin, with its floor dark.
+    const start = cabinZ - cabinL, end = -l * 0.98, mid = (start + end) / 2, half = (start - end) / 2;
+    box('body', w * 0.92, mid, body - 0.1, body + 0.3, 0.06, half);
+    box('body', -w * 0.92, mid, body - 0.1, body + 0.3, 0.06, half);
+    box('body', 0, end + 0.06, body - 0.1, body + 0.3, w * 0.92, 0.06);
+    box('trim', 0, mid, body - 0.02, body + 0.02, w * 0.86, half);
+  }
+  // Dark bumpers and grille, and lights set into each end.
+  const lightY = body * 0.68;
+  box('trim', 0, l - 0.02, floor, floor + 0.14, w * 0.78, 0.05);
+  box('trim', 0, -l + 0.02, floor, floor + 0.14, w * 0.8, 0.05);
+  box('trim', 0, l - 0.01, lightY - 0.06, lightY + 0.05, w * 0.34, 0.03);
+  for (const side of [-1, 1]) {
+    box('head', side * w * 0.56, l - 0.03, lightY - 0.03, lightY + 0.09, w * 0.17, 0.05);
+    box('tail', side * w * 0.58, -l + 0.01, lightY, lightY + 0.13, w * 0.2, 0.04);
+    for (const z of [-l * 0.64, l * 0.64]) {
+      box('trim', side * (w + 0.002), z, 0.04, r * 2.12, 0.006, r * 1.12); // the wheel arch's shadow
+      wheel(side * (w - 0.08), z, r);
+      const x = side * (w + 0.055);
+      for (let i = 0; i < 10; i++) { // the rim, a disc on the tyre's outer face
+        const a = (i / 10) * Math.PI * 2, b = ((i + 1) / 10) * Math.PI * 2, rr = r * 0.62;
+        const p = (t) => [x, r + Math.cos(t) * rr, z + Math.sin(t) * rr], c = [x, r, z];
+        if (side > 0) tri(groups.rim, c, p(a), p(b)); else tri(groups.rim, c, p(b), p(a));
+      }
+    }
   }
   return groups;
 }
 
+const partColors = (color) => ({ body: colorFactor(color), glass: [0.04, 0.09, 0.13, 1], tyre: [0.03, 0.03, 0.03, 1], head: [1, 0.95, 0.6, 1], tail: [0.9, 0.05, 0.05, 1], rim: [0.55, 0.58, 0.62, 1], trim: [0.02, 0.02, 0.025, 1] });
+
 // A glTF binary (.glb) as a Uint8Array.
-export function buildCarGlb(type, color) {
-  const groups = geometry(BODY_SHAPES[type] || BODY_SHAPES.sport);
-  const COLORS = { body: colorFactor(color), glass: [0.04, 0.09, 0.13, 1], tyre: [0.03, 0.03, 0.03, 1], head: [1, 0.95, 0.6, 1], tail: [0.9, 0.05, 0.05, 1] };
+export const buildCarGlb = (type, color) => glbOf(geometry(BODY_SHAPES[type] || BODY_SHAPES.sport), partColors(color));
+
+// The person's parts in one pose. Their colours are by eye, so they are made linear for the model.
+export function buildPersonGlb(parts) {
+  const groups = {}, colors = {};
+  parts.forEach(({ pos, nor, colour }, i) => {
+    groups[`p${i}`] = { pos, nor };
+    colors[`p${i}`] = [...colour.map(linear), 1];
+  });
+  return glbOf(groups, colors);
+}
+
+function glbOf(groups, COLORS) {
   const names = Object.keys(groups);
   const chunks = [], views = [], accessors = [], primitives = [];
   let offset = 0;

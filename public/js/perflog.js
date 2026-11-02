@@ -18,6 +18,7 @@ export const COLUMNS = [
   'mapRequests', 'mapReqMs', 'roadRequests',  // the 3D map's streaming, and road tiles
   'routePoints', 'lineVertices', 'range', 'cam', 'fsd', 'lights', 'dark',
   'geocodes', 'routes', 'elevations',         // billed Google calls in this sample
+  'footChunks', 'footTriangles',              // the walking world in view, 0 while driving
 ];
 
 // The three calls Google bills apart from the map load. Order is the hover panel, billed section last.

@@ -54,17 +54,23 @@ export class RoadTiles {
     return job;
   }
 
-  async fetchTile(key) {
+  // One map tile as it comes, or null if nothing is mapped there. Walking reads other layers from the same tiles.
+  async tileBytes(x, y) {
     if (!this.template) {
       const res = await fetch(TILEJSON);
       if (!res.ok) throw new Error(`tile index answered ${res.status}`);
       [this.template] = (await res.json()).tiles;
     }
-    const [x, y] = key.split('_').map(Number);
     const res = await fetch(this.template.replace('{z}', 14).replace('{x}', x).replace('{y}', y));
-    if (res.status === 204 || res.status === 404) return []; // nothing mapped there
+    if (res.status === 204 || res.status === 404) return null;
     if (!res.ok) throw new Error(`vector tile answered ${res.status}`);
-    const bytes = new Uint8Array(await res.arrayBuffer());
+    return new Uint8Array(await res.arrayBuffer());
+  }
+
+  async fetchTile(key) {
+    const [x, y] = key.split('_').map(Number);
+    const bytes = await this.tileBytes(x, y);
+    if (!bytes) return [];
     const began = performance.now();
     const ways = roadsFromTile(bytes, x, y);
     this.onWork?.(performance.now() - began);

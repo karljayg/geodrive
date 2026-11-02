@@ -128,8 +128,8 @@ function roadLayer(roads, pos, { radius, scale, half, margin, dpr }) {
 export const navBehind = (roads) => !!layer && layer.changes !== roads.changes;
 
 // The navigation screen: a map from very high up, drawn from the road data already loaded, so it adds no map charges.
-// options: { roads, pos, heading, route, routeIndex, radius (m from the car to the top of the screen) }
-export function drawNav(canvas, { roads, pos, heading, route, routeIndex, radius, hour, clock }) {
+// options: { roads, pos, heading, route, routeIndex, radius (m from the car to the top of the screen), parked (where the car is while on foot) }
+export function drawNav(canvas, { roads, pos, heading, parked, route, routeIndex, radius, hour, clock }) {
   const { ctx, w, h } = fit(canvas);
   ctx.fillStyle = '#0a1420';
   ctx.fillRect(0, 0, w, h);
@@ -187,6 +187,14 @@ export function drawNav(canvas, { roads, pos, heading, route, routeIndex, radius
   ctx.textAlign = 'left';
   ctx.textBaseline = 'middle';
   ctx.fillText(clock, fx + faceR + 8, fy);
+
+  if (parked) {
+    const [px, py] = toScreen(parked.lat, parked.lng);
+    ctx.fillStyle = '#ffd27a';
+    ctx.strokeStyle = '#0a1420';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.arc(Math.max(5, Math.min(w - 5, px)), Math.max(5, Math.min(h - 5, py)), 4, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+  }
 
   // The car always points up, and the map turns under it. N shows which way north is.
   ctx.fillStyle = '#5cf0c0';

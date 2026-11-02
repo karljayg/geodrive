@@ -3,6 +3,8 @@ const STORE = 'geodrive_settings_v1';
 export const DEFAULTS = {
   carScale: 0.9, // 1 is a real car's size
   carProfile: 'sport',
+  walkSpeed: 3, // m/s on foot
+  runSpeed: 8.4,
   masterVolume: 0.8,
   muted: false,
   engineVolume: 0.6,

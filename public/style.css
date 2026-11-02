@@ -3,10 +3,16 @@
 html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: #090f18; color: #fff; }
 /* The map ends where the dashboard starts, so the car and the road ahead are never under it. */
 :root { --dash: 172px; }
-#map, #shield, #hud { position: absolute; inset: 0 0 var(--dash) 0; }
+#map, #shield, #hud, #foot { position: absolute; inset: 0 0 var(--dash) 0; }
 #map { background: radial-gradient(circle at center, #344e65, #0d1825); overflow: hidden; }
 /* The camera belongs to the car, so mouse drags and wheel never reach the map. */
 #shield { z-index: 1; }
+/* On foot the map stays. This canvas is clear over it, except for a room while indoors, and takes the mouse. */
+#foot { display: none; width: 100%; height: calc(100% - var(--dash)); z-index: 1; touch-action: none; cursor: grab; }
+body.onFoot #foot { display: block; }
+body.onFoot #shield, body.onFoot #beam, body.onFoot #tails { display: none !important; }
+#footHint { display: none; position: absolute; left: 50%; bottom: 20px; transform: translateX(-50%); padding: 5px 12px; border-radius: 999px; background: #0d1621cc; border: 1px solid #ffffff26; font-size: 12px; color: #e7eef3; white-space: nowrap; }
+body.onFoot #footHint { display: block; }
 #hud { z-index: 2; pointer-events: none; }
 /* Evening and headlights: a tint over the map with the beams cut out of it. */
 #night, #beam, #tails { position: absolute; left: 0; top: 0; width: 100%; height: calc(100% - var(--dash)); pointer-events: none; display: none; }
@@ -204,4 +210,5 @@ kbd { display: inline-flex; min-width: 24px; justify-content: center; border: 1p
   #attribution { right: auto; left: 8px; bottom: 22px; max-width: 60%; }
   .where, .brand { display: none; }
   #touch { display: grid; }
+  #footHint { bottom: 62px; }
 }

@@ -93,8 +93,8 @@ export function readLayer(bytes, wanted) {
   return null;
 }
 
-// Geometry commands to lines of [x, y] in tile pixels.
-function decodeLines(commands) {
+// Geometry commands to lines of [x, y] in tile pixels. A polygon is one line per ring, without the repeated last point.
+export function decodeLines(commands) {
   const lines = [];
   let x = 0, y = 0, line = null;
   for (let i = 0; i < commands.length;) {

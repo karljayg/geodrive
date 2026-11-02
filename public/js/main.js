@@ -3,7 +3,7 @@ import { distance, easeAngle, leadDistance, move } from './camera.js';
 import { FLAG_ONEWAY, RoadNet } from './road.js';
 import { Path, brakeFor, pursuitYaw, rerouteWait } from './route.js';
 import { CAR_PROFILES, hornFor, profileFor } from './cars.js';
-import { BODY_SHAPES, buildCarGlb, carPicture } from './carModel.js';
+import { BODY_SHAPES, buildCarGlb, buildPersonGlb, carPicture } from './carModel.js';
 import { beamPools, brakeLit, drawDots, drawPools, tailDots } from './headlights.js';
 import { clockText, darknessAt, tintAt } from './daylight.js';
 import { drawGauge, drawNav, navBehind, revRange, speedRange, speedStep } from './dash.js';
@@ -52,6 +52,12 @@ const ROUTE_DRAWN = 8000;     // m of route drawn on the map ahead of the car
 const ROUTE_REDRAW = 2000;    // m driven before that stretch moves on
 const TOWN_EVERY = 8000;      // m driven between looking up the town, as each lookup is billed
 const TOWN_WAIT = 60000;      // ms at the least between lookups
+const STOPPED_MPH = 1;        // slower than this counts as stopped, for getting out
+const LOOK_SENSITIVITY = 0.0025; // radians per pixel of mouse
+const FOOT_RANGE_SHARE = 0.5; // how close the view is on foot, as a share of the closest driving camera's range
+const HIDDEN_PERSON = 0.001;
+const FOOT_TURN = 1.5;        // radians a second that Q and E turn the view on foot
+const TOUCH_LOOK = 1.6;       // a drag on a touch screen goes further than the same mouse move
 const CAMERAS = [
   { name: 'CHASE', tilt: 62, range: 130 },
   { name: 'HIGH CHASE', tilt: 45, range: 320 },
@@ -96,6 +102,7 @@ const perfLog = new PerfLog(logStore());
 tiles.onWork = (ms) => perfLog.spend('tile', ms);
 let lineVertices = 0, lineAlong = 0, navVertices = 0;
 let hudTextAt = 0, startLabel = '', town = null, townAt = null, townAsked = -Infinity, townBusy = false;
+let people = null, foot = null, footLoading = false, lookX = 0, lookY = 0, touchLook = null; // the walk in progress, while out of the car
 const debug = { hold: false, car, pos, keys, roads, tiles, perfLog }; // window.__geodrive, for checks from the console
 
 function loadStart() {
@@ -478,11 +485,15 @@ async function refreshTown() {
 function updateHud(t) {
   if (!t || t - hudTextAt >= HUD_TEXT_EVERY) {
     hudTextAt = t;
-    show('heading', String(Math.round(car.heading) % 360).padStart(3, '0') + '°');
+    show('heading', String(Math.round(foot ? foot.compass() : car.heading) % 360).padStart(3, '0') + '°');
     show('from', (distance(start.lat, start.lng, pos.lat, pos.lng) / 1609.344).toFixed(2) + ' mi');
     const figures = tripFigures(trip);
     for (const id of ['elapsed', 'miles', 'top', 'average']) show('hud-' + id, figures[id]);
-    show('road', onBridge ? 'ON BRIDGE' : match ? 'ON ROAD' : tiles.hasRoads(pos.lat, pos.lng) ? 'OFF ROAD' : 'LOADING ROADS');
+    if (foot) {
+      show('road', '–');
+      show('cam', foot.label());
+      show('footHint', foot.hint());
+    } else show('road', onBridge ? 'ON BRIDGE' : match ? 'ON ROAD' : tiles.hasRoads(pos.lat, pos.lng) ? 'OFF ROAD' : 'LOADING ROADS');
   }
 
   const blinkOn = Math.floor(t / 400) % 2 === 0;
@@ -537,11 +548,12 @@ function drawDash(t) {
   if (t - navDrawnAt > 333) {
     navDrawnAt = t;
     const navRoute = fsd || destination ? route : null;
-    const navKey = `${pos.lat.toFixed(6)}|${pos.lng.toFixed(6)}|${car.heading.toFixed(1)}|${navRadius}|${navRoute?.length}|${routeIndex}|${settings.hour}|${roads.changes}`;
+    const navPos = foot ? foot.where() : pos, navHeading = foot ? foot.compass() : car.heading;
+    const navKey = `${navPos.lat.toFixed(6)}|${navPos.lng.toFixed(6)}|${navHeading.toFixed(1)}|${navRadius}|${navRoute?.length}|${routeIndex}|${settings.hour}|${roads.changes}`;
     if (navKey !== navShown || navBehind(roads)) { // parked, nothing on it has changed
       navShown = navKey;
       const navBegan = performance.now();
-      navVertices = drawNav(el('navScreen'), { roads, pos, heading: car.heading, route: navRoute, routeIndex, radius: navRadius, hour: settings.hour, clock: clockText(settings.hour) });
+      navVertices = drawNav(el('navScreen'), { roads, pos: navPos, heading: navHeading, parked: foot ? pos : null, route: navRoute, routeIndex, radius: navRadius, hour: settings.hour, clock: clockText(settings.hour) });
       perfLog.spend('nav', performance.now() - navBegan);
     }
     const now = new Date();
@@ -645,7 +657,8 @@ function frame(t) {
   measureFrame(t);
   const dt = Math.min((t - last) / 1000 || 0, 0.06);
   last = t;
-  if (map && !debug.hold && !dialogOpen && !paused) {
+  if (foot) runFoot(t, dt);
+  if (map && !foot && !debug.hold && !dialogOpen && !paused) {
     const driveBegan = performance.now();
     const controls = input();
     // The driver can take over at any moment. Steering or braking drops FSD, and steering cancels a signal.
@@ -702,6 +715,161 @@ function frame(t) {
   if (perfLog.due(t)) sampleLog(t);
 }
 
+// --- On foot --------------------------------------------------------------------------------------------------
+
+function footInput(dt) {
+  const input = {
+    forward: (keys.has('w') || keys.has('arrowup') ? 1 : 0) - (keys.has('s') || keys.has('arrowdown') ? 1 : 0),
+    strafe: (keys.has('d') || keys.has('arrowright') ? 1 : 0) - (keys.has('a') || keys.has('arrowleft') ? 1 : 0),
+    run: keys.has('shift'), walkSpeed: settings.walkSpeed, runSpeed: settings.runSpeed, lookX: lookX * LOOK_SENSITIVITY + ((keys.has('e') ? 1 : 0) - (keys.has('q') ? 1 : 0)) * FOOT_TURN * dt,
+  };
+  lookX = lookY = 0;
+  return input;
+}
+
+// The person on the map, one model per frame of the walk and run, as a model can't move its own parts.
+// All stay on the map and only one has any size, because swapping a model's source reloads it.
+async function makePeople() {
+  if (people) return;
+  const { FRAME_COUNT, personParts } = await import('./footPerson.js');
+  people = Array.from({ length: FRAME_COUNT }, (_, frame) => {
+    const person = new maps3d.Model3DElement({ position: { ...pos, altitude: 0 }, altitudeMode: 'RELATIVE_TO_GROUND', scale: HIDDEN_PERSON });
+    person.src = glbUrl(buildPersonGlb(personParts(frame)));
+    return person;
+  });
+}
+
+let personSizeNow = 1, shownFrame = -1;
+function showPerson(size) {
+  personSizeNow = size;
+  for (const p of people) map.append(p);
+}
+
+// The driving map's camera, on the person instead of the car.
+function syncFootScene(dt) {
+  const ease = dt ? 1 - Math.exp(-dt * 5) : 1, at = foot.where(), posture = foot.posture();
+  camHeading = foot.compass();
+  tilt += (CAMERAS[0].tilt - tilt) * ease;
+  range += (foot.view.range - range) * ease;
+  const center = move(at.lat, at.lng, camHeading, leadDistance(range, tilt, FOV_Y, CAR_BELOW_CENTRE));
+  if (moved('heading', camHeading, 0.01)) map.heading = camHeading;
+  if (moved('tilt', tilt, 0.01)) map.tilt = tilt;
+  if (moved('range', range, 0.05)) map.range = range;
+  const altitude = ground + posture.z;
+  if (moved('centerLat', center.lat, 1e-7) | moved('centerLng', center.lng, 1e-7) | moved('ground', altitude, 0.01)) map.center = { lat: center.lat, lng: center.lng, altitude };
+  // Only the frame showing is kept up to date; hundreds of map updates a second would cost more than the walk.
+  const showing = posture.inside ? -1 : posture.frame;
+  if (shownFrame !== showing && people[shownFrame]) people[shownFrame].scale = HIDDEN_PERSON;
+  const person = people[showing];
+  if (person) {
+    person.position = { lat: at.lat, lng: at.lng, altitude: 0 };
+    person.orientation = { heading: posture.facing, tilt: 0, roll: 0 };
+    if (shownFrame !== showing) person.scale = personSizeNow;
+  }
+  shownFrame = showing;
+  applyDaylight();
+}
+
+// While paused or in a dialog the walk still draws, so a change to the time of day in Settings shows, but nothing moves.
+function runFoot(t, dt) {
+  const began = performance.now(), live = !debug.hold && !dialogOpen && !paused;
+  foot.update(live ? dt : 0, live ? footInput(dt) : {}, settings.hour);
+  syncFootScene(dt);
+  perfLog.spend('drive', performance.now() - began);
+  if (!live) return;
+  if (radio.on) refreshStations();
+  if (t - tilesCheckedAt > 1000) {
+    tilesCheckedAt = t;
+    const at = foot.where();
+    tiles.ensure(at.lat, at.lng, 0, 0); // for the nav screen
+  }
+  const dashBegan = performance.now();
+  updateHud(t);
+  perfLog.spend('dash', performance.now() - dashBegan);
+}
+
+function releaseMouse() {
+  if (document.pointerLockElement) document.exitPointerLock();
+}
+
+// L gets out of a stopped car. The map stays in the page, hidden and untouched, so getting back in costs no new map load.
+async function getOut() {
+  if (!map || foot || footLoading) return;
+  if (Math.abs(car.speed) * MPS_TO_MPH >= STOPPED_MPH) return notice('Stop the car first, then press L to get out.', 2500);
+  if (onBridge) return notice('There is nothing to stand on here. Get off the bridge first.', 3000);
+  footLoading = true;
+  try {
+    const { Foot, PERSON_SIZE: personSize } = await import('./foot.js'); // only those who walk load any of this
+    await makePeople();
+    foot = new Foot({ canvas: el('foot'), origin: { lat: pos.lat, lng: pos.lng }, heading: car.heading, profile: settings.carProfile, scale: settings.carScale, tiles, view: { tilt: CAMERAS[0].tilt, range: CAMERAS[0].range * FOOT_RANGE_SHARE, fov: FOV_Y, below: CAR_BELOW_CENTRE } });
+    showPerson(personSize);
+  } catch (err) {
+    console.warn('getting out:', err);
+    return notice('Could not get out of the car here: ' + err.message, 5000);
+  } finally {
+    footLoading = false;
+  }
+  // Nothing is left running that would drive off on return.
+  car.speed = 0;
+  setFsd(false);
+  arriving = false;
+  cancelSignal();
+  braking = false;
+  keys.clear();
+  lightKey = '';
+  document.body.classList.add('onFoot');
+  navDrawnAt = 0;
+  perfLog.event('foot', { on: true });
+  notice('WASD walks, Shift runs. Q and E turn the view, to see round a building.', 5000);
+}
+
+function stopFoot() {
+  if (!foot) return;
+  foot.stop();
+  foot = null;
+  for (const p of people || []) { p.scale = HIDDEN_PERSON; p.remove(); }
+  shownFrame = -1;
+  releaseMouse();
+  keys.clear();
+  lookX = lookY = 0;
+  document.body.classList.remove('onFoot');
+  show('cam', CAMERAS[camIndex].name);
+  navDrawnAt = 0;
+  mapBox = null;
+  lightKey = '';
+  applyDaylight();
+  perfLog.event('foot', { on: false });
+}
+
+function pressL() {
+  if (!foot) return getOut();
+  if (foot.canGetIn()) return stopFoot();
+  if (foot.pressBuilding()) return;
+  notice('Walk up to a building, or back to the car, then press L.', 2500);
+}
+
+el('foot').addEventListener('pointerdown', (e) => {
+  if (!foot) return;
+  if (e.pointerType === 'mouse') {
+    Promise.resolve(el('foot').requestPointerLock()).catch(() => {}); // refused just after Esc; the next click works
+  } else {
+    el('foot').setPointerCapture(e.pointerId);
+    touchLook = { x: e.clientX, y: e.clientY };
+  }
+});
+el('foot').addEventListener('pointermove', (e) => {
+  if (e.pointerType !== 'mouse') {
+    if (!touchLook) return;
+    lookX += (e.clientX - touchLook.x) * TOUCH_LOOK;
+    lookY += (e.clientY - touchLook.y) * TOUCH_LOOK;
+    touchLook = { x: e.clientX, y: e.clientY };
+  } else if (document.pointerLockElement === el('foot') || e.buttons) { // holding a button still looks if the browser refused the lock
+    lookX += e.movementX;
+    lookY += e.movementY;
+  }
+});
+for (const kind of ['pointerup', 'pointercancel']) el('foot').addEventListener(kind, () => { touchLook = null; });
+
 // --- Start point and destination ------------------------------------------------------------------------------
 
 // An address placed before its roads arrived: move the car on to the road, as long as it is still sitting there.
@@ -718,6 +886,7 @@ function lateSnap() {
 
 // Puts the car at `where`, on the road if one is right there, and settles the camera at once.
 async function placeCar(where) {
+  stopFoot();
   // Road data gets a moment to arrive, but a busy server shouldn't hold up the start.
   await Promise.race([tiles.loadNear(where.lat, where.lng), new Promise((r) => setTimeout(r, SNAP_WAIT))]);
   const road = roads.nearest(where.lat, where.lng, where.heading, SNAP_DISTANCE);
@@ -762,7 +931,7 @@ async function restoreTrip(saved) {
   camIndex = saved.camIndex;
   tilt = CAMERAS[camIndex].tilt;
   range = CAMERAS[camIndex].range * zoom;
-  el('cam').textContent = CAMERAS[camIndex].name;
+  show('cam', CAMERAS[camIndex].name);
   destination = saved.destination;
   fsd = saved.fsd;
   fsdBoost = saved.fsdBoost;
@@ -856,7 +1025,7 @@ function reset() {
 
 function switchCamera() {
   camIndex = (camIndex + 1) % CAMERAS.length;
-  el('cam').textContent = CAMERAS[camIndex].name;
+  show('cam', CAMERAS[camIndex].name);
 }
 
 // Resolves an address to the nearest road. Without road data (the servers can be busy) the address itself is used.
@@ -882,6 +1051,7 @@ const lookupError = (err) => (err.code === 'ZERO_RESULTS' ? 'No match for that a
 
 let closeDialog = null, openId = null;
 function openDialog(id) {
+  releaseMouse();
   dialogOpen = true;
   openId = id;
   keys.clear();
@@ -973,7 +1143,10 @@ el('destForm').addEventListener('submit', async (e) => {
 });
 el('destCancel').addEventListener('click', finishDialog);
 el('destClear').addEventListener('click', () => { clearDestination(); finishDialog(); });
-el('changeDest').addEventListener('click', () => { if (!dialogOpen) openDialog('dest'); });
+el('changeDest').addEventListener('click', () => {
+  if (foot) notice('Get back in the car first.', 2500);
+  else if (!dialogOpen) openDialog('dest');
+});
 el('changeStartHeader').addEventListener('click', () => { if (!dialogOpen) openDialog('start'); });
 el('resetButton').addEventListener('click', () => { if (!dialogOpen) reset(); });
 
@@ -988,6 +1161,7 @@ function setPaused(on) {
   if (!map || dialogOpen) return;
   paused = on;
   keys.clear();
+  if (on) releaseMouse();
   el('pause').classList.toggle('open', on);
   el('pauseButton').textContent = on ? 'Resume' : 'Pause';
   if (on) {
@@ -1012,6 +1186,13 @@ el('tripReset').addEventListener('click', () => {
 
 // --- Car look, time of day, lights, horn -----------------------------------------------------------------------
 
+// A data: URL, because the map doesn't load models from blob: URLs.
+function glbUrl(glb) {
+  let text = '';
+  for (let i = 0; i < glb.length; i += 8192) text += String.fromCharCode.apply(null, glb.subarray(i, i + 8192));
+  return `data:model/gltf-binary;base64,${btoa(text)}`;
+}
+
 // The model is rebuilt only when the type or colour changes, and a colour drag settles before it swaps.
 let carLookKey = '', carLookTimer = null;
 function applyCarLook() {
@@ -1021,11 +1202,7 @@ function applyCarLook() {
   if (key === carLookKey) return;
   carLookTimer = setTimeout(() => {
     carLookKey = key;
-    // A data: URL, because the map doesn't load models from blob: URLs.
-    const glb = buildCarGlb(settings.carProfile, settings.carColor);
-    let text = '';
-    for (let i = 0; i < glb.length; i += 8192) text += String.fromCharCode.apply(null, glb.subarray(i, i + 8192));
-    model.src = `data:model/gltf-binary;base64,${btoa(text)}`;
+    model.src = glbUrl(buildCarGlb(settings.carProfile, settings.carColor));
   }, carLookKey ? 150 : 0);
 }
 
@@ -1034,7 +1211,7 @@ function applyCarLook() {
 let lightKey = '', braking = false, mapBox = null;
 window.addEventListener('resize', () => { mapBox = null; gaugesShown = {}; navShown = ''; });
 function applyDaylight() {
-  const dark = darknessAt(settings.hour), lit = settings.headlights;
+  const dark = darknessAt(settings.hour), lit = settings.headlights && !foot; // nobody at the wheel on foot, and the beams sit where the car does on screen
   mapBox ||= { width: el('map').clientWidth, height: el('map').clientHeight }; // asking every frame would force a layout
   const { width, height } = mapBox;
   const angle = ((car.heading - camHeading + 540) % 360) - 180;
@@ -1043,7 +1220,7 @@ function applyDaylight() {
   const key = `${settings.hour}|${lit}|${braking}|${settings.carScale}|${settings.carProfile}|${width}x${height}|${moving}`;
   if (key === lightKey) return;
   lightKey = key;
-  el('lightsButton').setAttribute('aria-pressed', String(lit));
+  el('lightsButton').setAttribute('aria-pressed', String(settings.headlights));
   const night = el('night'), beam = el('beam');
   for (const canvas of [night, beam]) {
     if (canvas.width !== width || canvas.height !== height) { canvas.width = width; canvas.height = height; }
@@ -1154,12 +1331,15 @@ function measureFrame(t) {
   perfSlowest = 0;
 }
 
-// One row of the log. state: 0 driving, 1 paused or in a dialog, 2 tab hidden, when browsers throttle it and the numbers mean little.
+// One row of the log. state: 0 driving, 1 paused or in a dialog, 2 tab hidden, when browsers throttle it and the numbers mean little, 3 on foot.
 function sampleLog(t) {
+  const walk = foot?.stats(), at = foot ? foot.where() : pos;
   perfLog.sample(t, {
-    state: document.hidden ? 2 : dialogOpen || paused ? 1 : 0,
-    lat: pos.lat,
-    lng: pos.lng,
+    state: document.hidden ? 2 : dialogOpen || paused ? 1 : foot ? 3 : 0,
+    lat: at.lat,
+    lng: at.lng,
+    footChunks: walk?.chunks ?? 0,
+    footTriangles: walk?.triangles ?? 0,
     mph: Math.abs(car.speed) * MPS_TO_MPH,
     heapMB: performance.memory ? performance.memory.usedJSHeapSize / 1048576 : 0,
     ways: roads.ways.size,
@@ -1219,6 +1399,8 @@ function hornUp(button = el('hornButton')) {
 // Every control marked data-setting edits the setting of that name.
 const settingText = {
   carScale: (v) => `${v.toFixed(1)}× real size`,
+  walkSpeed: (v) => `${v.toFixed(1)} m/s`,
+  runSpeed: (v) => `${v.toFixed(1)} m/s`,
   hour: clockText,
   mapMemory: (v) => `${v} MB`,
   enginePitch: (v) => `${Math.round(v * 100)}%`,
@@ -1239,6 +1421,7 @@ function showSettings() {
   applyGraphics();
   el('settingsStart').textContent = startLabel || start.label;
   if (model) model.scale = settings.carScale; // fixed in world units, so the car shrinks with the map when zooming out
+  foot?.setCar(settings.carProfile, settings.carScale);
   applySound();
 }
 
@@ -1277,6 +1460,7 @@ function previewEngine() {
 el('newTrip').addEventListener('click', () => { trip = newTrip(); updateHud(0); });
 
 function openSettings() {
+  releaseMouse();
   dialogOpen = true;
   keys.clear();
   showSettings();
@@ -1406,6 +1590,7 @@ el('settingsCopy').addEventListener('click', async () => {
 // --- Input ----------------------------------------------------------------------------------------------------
 
 const DRIVE_KEYS = new Set(['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', ' ', 'z', 'shift']);
+const DRIVING_ONLY = new Set(['c', 'g', 'q', 'e', 'f', '=', '+', '-']);
 document.addEventListener('keydown', (e) => {
   if (el('settings').classList.contains('open') && (e.key === 'Escape' || e.key.toLowerCase() === 'o')) { e.preventDefault(); return closeSettings(); }
   if (e.key === 'Escape' && dismissPopup()) { e.preventDefault(); return; }
@@ -1417,8 +1602,10 @@ document.addEventListener('keydown', (e) => {
     return;
   }
   if (k === 'p' && !e.repeat) { e.preventDefault(); return setPaused(true); }
+  if (k === 'l' && !e.repeat) { e.preventDefault(); return pressL(); }
+  if (foot && (k === 'q' || k === 'e')) keys.add(k);
   if (DRIVE_KEYS.has(k)) { keys.add(k); e.preventDefault(); e.stopPropagation(); }
-  if (e.repeat) return;
+  if (e.repeat || (foot && DRIVING_ONLY.has(k))) return;
   if (k === 'c') switchCamera();
   if (k === 'g') { e.preventDefault(); openDialog('dest'); }
   if (k === 'o') { e.preventDefault(); openSettings(); }
@@ -1445,16 +1632,17 @@ document.addEventListener('keyup', (e) => {
   keys.delete(e.key.toLowerCase());
   if (e.key.toLowerCase() === 'b') hornUp();
 }, { capture: true });
-window.addEventListener('blur', () => { keys.clear(); hornUp(); });
+window.addEventListener('blur', () => { keys.clear(); hornUp(); lookX = lookY = 0; });
 for (const b of document.querySelectorAll('#touch button[data-key]')) {
   const k = b.dataset.key;
   b.addEventListener('pointerdown', (e) => { e.preventDefault(); keys.add(k); b.setPointerCapture(e.pointerId); });
   b.addEventListener('pointerup', () => keys.delete(k));
   b.addEventListener('pointercancel', () => keys.delete(k));
 }
-el('touchQ').addEventListener('click', () => pressSignal(-1));
-el('touchE').addEventListener('click', () => pressSignal(1));
-el('touchF').addEventListener('click', () => setFsd(!fsd));
+el('touchQ').addEventListener('click', () => { if (!foot) pressSignal(-1); });
+el('touchE').addEventListener('click', () => { if (!foot) pressSignal(1); });
+el('touchF').addEventListener('click', () => { if (!foot) setFsd(!fsd); });
+el('touchL').addEventListener('click', pressL);
 
 let noticeTimer = null;
 function notice(message, hideAfter = 0) {
@@ -1510,7 +1698,7 @@ async function boot() {
       notice(`${fromLink ? 'Shared drive loaded' : 'Trip restored'}${destination ? `, heading to ${destination.label}` : ''}. Use Start in the header for a new start.`, 6000);
     }
     window.__geodrive = Object.assign(debug, {
-      settings, gearbox, saveTrip, engine, radio, map, model, ground: () => ground, match: () => match, onBridge: () => onBridge, placeCar, pressSignal,
+      foot: () => foot, settings, gearbox, saveTrip, engine, radio, map, model, ground: () => ground, match: () => match, onBridge: () => onBridge, placeCar, pressSignal,
       trip: () => trip, paused: () => paused, nav: () => ({ fsd, destination, route, routeIndex, signal, lane, laneNow }),
     });
   } catch (err) {

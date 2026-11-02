@@ -17,8 +17,8 @@ export function heightsFromPixels(rgba) {
 }
 
 // Which tile holds a point, and where in it, in pixels.
-export function tilePoint(lat, lng) {
-  const n = 2 ** ZOOM, r = (lat * Math.PI) / 180;
+export function tilePoint(lat, lng, zoom = ZOOM) {
+  const n = 2 ** zoom, r = (lat * Math.PI) / 180;
   const x = ((lng + 180) / 360) * n, y = ((1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2) * n;
   return { x: Math.floor(x), y: Math.floor(y), px: (x - Math.floor(x)) * SIZE, py: (y - Math.floor(y)) * SIZE };
 }
@@ -31,8 +31,8 @@ export function sampleHeights(heights, px, py) {
   return (at(x0, y0) * (1 - dx) + at(x1, y0) * dx) * (1 - dy) + (at(x0, y1) * (1 - dx) + at(x1, y1) * dx) * dy;
 }
 
-async function loadHeights(x, y) {
-  const res = await fetch(`https://s3.amazonaws.com/elevation-tiles-prod/terrarium/${ZOOM}/${x}/${y}.png`, { signal: AbortSignal.timeout(WAIT) });
+async function loadHeights(x, y, zoom) {
+  const res = await fetch(`https://s3.amazonaws.com/elevation-tiles-prod/terrarium/${zoom}/${x}/${y}.png`, { signal: AbortSignal.timeout(WAIT) });
   if (!res.ok) throw new Error(`terrain tile answered ${res.status}`);
   // Colours are data here, so nothing may adjust them on the way to the pixels.
   const image = await createImageBitmap(await res.blob(), { colorSpaceConversion: 'none', premultiplyAlpha: 'none' });
@@ -43,8 +43,10 @@ async function loadHeights(x, y) {
 }
 
 export class Terrain {
-  constructor(load = loadHeights) {
+  constructor(load = loadHeights, zoom = ZOOM) {
     this.load = load;
+    this.zoom = zoom;
+    this.changes = 0; // counts tiles arriving
     this.tiles = new Map(); // oldest used first
     this.loading = new Map();
     this.failedAt = new Map();
@@ -52,13 +54,13 @@ export class Terrain {
 
   // Metres above sea level, or null if the tile can't be had just now.
   async heightAt(lat, lng) {
-    const { x, y, px, py } = tilePoint(lat, lng), key = `${x}_${y}`;
+    const { x, y, px, py } = tilePoint(lat, lng, this.zoom), key = `${x}_${y}`;
     let heights = this.tiles.get(key);
     if (heights) {
       this.tiles.delete(key);
     } else {
       if (Date.now() - (this.failedAt.get(key) ?? -Infinity) < RETRY_AFTER) return null;
-      if (!this.loading.has(key)) this.loading.set(key, this.load(x, y).finally(() => this.loading.delete(key)));
+      if (!this.loading.has(key)) this.loading.set(key, this.load(x, y, this.zoom).then((loaded) => { this.changes++; return loaded; }).finally(() => this.loading.delete(key)));
       try {
         heights = await this.loading.get(key);
       } catch (err) {
@@ -70,5 +72,13 @@ export class Terrain {
     this.tiles.set(key, heights);
     if (this.tiles.size > MAX_TILES) this.tiles.delete(this.tiles.keys().next().value);
     return sampleHeights(heights, px, py);
+  }
+
+  // The height right now, or null while its tile is on the way, which this sends for. For asking many times a frame.
+  heightNow(lat, lng) {
+    const { x, y, px, py } = tilePoint(lat, lng, this.zoom), heights = this.tiles.get(`${x}_${y}`);
+    if (heights) return sampleHeights(heights, px, py);
+    this.heightAt(lat, lng);
+    return null;
   }
 }

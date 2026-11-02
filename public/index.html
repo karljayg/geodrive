@@ -8,6 +8,7 @@
 </head>
 <body>
 <div id="map"></div>
+<canvas id="foot"></canvas>
 <canvas id="night"></canvas>
 <canvas id="beam"></canvas>
 <canvas id="tails"></canvas>
@@ -26,11 +27,12 @@
     <div class="where" id="where"></div>
   </header>
   <div id="notice"></div>
+  <div id="footHint"></div>
   <div id="signalLeft">◀</div>
   <div id="signalRight">▶</div>
   <div id="attribution">Roads: OpenFreeMap © OpenMapTiles, © OpenStreetMap contributors · Terrain: Mapzen, USGS and others</div>
   <div id="touch">
-    <button data-key="a">◀</button><button data-key="w">▲</button><button data-key="s">▼</button><button data-key="d">▶</button><button data-key=" ">−</button><button data-key="z">+</button><button id="touchQ">Q</button><button id="touchE">E</button><button id="touchF">F</button><button id="touchPause">❚❚</button>
+    <button data-key="a">◀</button><button data-key="w">▲</button><button data-key="s">▼</button><button data-key="d">▶</button><button data-key=" ">−</button><button data-key="z">+</button><button id="touchQ">Q</button><button id="touchE">E</button><button id="touchF">F</button><button id="touchPause">❚❚</button><button id="touchL">L</button>
   </div>
   <div class="panel" id="help">
     <div><kbd>W</kbd><kbd>↑</kbd> Accelerate</div>
@@ -38,11 +40,12 @@
     <div><kbd>A</kbd><kbd>D</kbd><kbd>←</kbd><kbd>→</kbd> Steer</div>
     <div><kbd>SHIFT</kbd> Handbrake</div>
     <div><kbd>SPACE</kbd> Zoom out · <kbd>Z</kbd> Zoom in</div>
-    <div><kbd>Q</kbd><kbd>E</kbd> Signal: next turn or lane change</div>
+    <div><kbd>Q</kbd><kbd>E</kbd> Signal: next turn or lane change. On foot: turn the view</div>
     <div><kbd>G</kbd> Destination · <kbd>F</kbd> FSD on/off</div>
     <div><kbd>-</kbd><kbd>=</kbd> FSD speed</div>
     <div><kbd>N</kbd> Radio · <kbd>[</kbd><kbd>]</kbd> Station · <kbd>M</kbd> Mute</div>
     <div><kbd>H</kbd> Headlights · <kbd>B</kbd> Horn · <kbd>T</kbd> Time +1 hour</div>
+    <div><kbd>L</kbd> Get out, or back in beside the car · on foot: <kbd>SHIFT</kbd> Run, mouse looks</div>
     <div><kbd>C</kbd> Camera · <kbd>P</kbd> Pause · <kbd>O</kbd> Settings · <kbd>K</kbd> Keys</div>
     <div>Header: Start (change start) · Reset (back to start)</div>
   </div>
@@ -169,6 +172,13 @@
     <input id="carColor" data-setting="carColor" type="color">
     <label for="carScale">Size <span data-value="carScale"></span></label>
     <input id="carScale" data-setting="carScale" type="range" min="0.3" max="5" step="0.1">
+  </section>
+  <section>
+    <h3>On foot</h3>
+    <label for="walkSpeed">Walking speed <span data-value="walkSpeed"></span></label>
+    <input id="walkSpeed" data-setting="walkSpeed" type="range" min="1" max="15" step="0.5">
+    <label for="runSpeed">Running speed (Shift) <span data-value="runSpeed"></span></label>
+    <input id="runSpeed" data-setting="runSpeed" type="range" min="2" max="30" step="0.2">
   </section>
   <section>
     <h3>Time of day</h3>
