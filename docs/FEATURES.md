@@ -89,7 +89,11 @@ Settings' Diagnostics tab shows FPS, the slowest frame in the last second, and J
 
 Cars in a world belong to the world. They're planted along the roads, the same for everyone: about 1 in 4 runs, and the rest say why not when you try. Walk up to one and press L. One driver at a time, first come first served, and anyone can take a car that's been left. Each car has its own fuel and storage, and about 1 in 4 has a sledgehammer in it. Others see your car move as you drive. If there's no running car near where someone first appears, one is added.
 
-Nothing passes through anything. A car stops dead at another car, parked or moving, or at a person, bouncing back slightly, and the other driver's car stops too. People can't walk through cars, moving or parked. For now nobody is hurt.
+Nothing passes through anything. A car stops dead at another car, parked or moving, or at a person, bouncing back slightly, and the other driver's car stops too. People can't walk through cars, moving or parked.
+
+A crash can hurt or kill, going by how fast the two were closing, so two at 50 mph head on is 100. A car hitting a car, parked or moving, at 100 mph or more explodes: the cars stay as burnt-out wrecks for good, and whoever was driving dies. A car hitting a person at 50 mph or more kills them, and the driver carries on. Anything from 5 mph up to those speeds drops health to 1, and below that nothing happens. What injury leads to is still to be decided. The server checks a deadly crash against where each game said it was, and if that doesn't hold up it's only a stop.
+
+Each person has 3 lives (`GAME.world.lives`). What they carried is left at the spot, for anyone. With lives left they're back a few seconds later, on foot near someone, with needs reset and only a flashlight. With none left they see how they died and who to ask for another invite, and they come back as someone new under a new name. If a manager runs out of lives the backup becomes owner, and the next living person by invite order becomes backup.
 
 `J` in a world copies an invite link, if you're a manager: the creator or the backup. The first person to join becomes the backup, and either can choose another in the People app, which also makes a rejoin link for someone who has lost their browser. An invite works once and lasts a day. Whoever opens one chooses a name, unique in that world for good, and a look, then appears on a road within about 300 m of someone. A browser that knows a world asks where to play when it opens.
 

@@ -89,6 +89,10 @@ export class WorldStore {
     this.db.prepare('UPDATE members SET secret_hash = ? WHERE id = ?').run(secretHash, id);
   }
 
+  setLives(id, lives) {
+    this.db.prepare('UPDATE members SET lives = ? WHERE id = ?').run(lives, id);
+  }
+
   touchMember(id, now) {
     this.db.prepare('UPDATE members SET last_seen = ? WHERE id = ?').run(now, id);
   }

@@ -265,6 +265,10 @@ export class PrivateWorld extends World {
       this.buildings.heardSwitchesOn(message);
     } else if (message.t === 'dropAdded') {
       this.drops.heardAdded(message.drop);
+    } else if (message.t === 'died') {
+      this.on.died?.(message);
+    } else if (message.t === 'injured') {
+      this.on.injured?.(message);
     } else if (message.t === 'bumped') {
       this.on.bumped?.(message);
     } else if (message.t === 'car') {
@@ -292,6 +296,15 @@ export class PrivateWorld extends World {
     if (Number.isFinite(lat) && Number.isFinite(lng) && lat !== null) return { restore: { lat, lng, trip } };
     if (this.near) return { near: this.near };
     return { choose: true };
+  }
+
+  // This browser has nothing more to do here: only someone new can come back in.
+  forgetHere(storage) {
+    storage.setItem(WORLDS_STORE, JSON.stringify(knownWorlds(storage).filter((world) => world.id !== this.id)));
+    this.local.removeItem('me_v1');
+    this.local.removeItem(SESSION_KEY);
+    clearInterval(this.saving);
+    clearInterval(this.placing);
   }
 
   markChatSeen() {

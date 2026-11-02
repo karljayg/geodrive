@@ -167,6 +167,12 @@ export class PocketData {
     this.save();
   }
 
+  // A new life: only what everyone starts with, in a shared world.
+  startAgain() {
+    this.state.bag = blank().bag;
+    this.save();
+  }
+
   takeFromBag(id) {
     const known = this.state.bag.find((i) => i.id === id);
     if (!known) return false;

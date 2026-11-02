@@ -2,6 +2,8 @@
 // Each stat's comment says what real figure its rate came from, so it can be judged against something.
 // What the game says is in sayingsConfig.js; a say here is a key there, or plain text.
 export const GAME = {
+  // What a crash does in a shared world: closing speeds in mph. Below injuredFromMph, nothing. Lives are in world. What an injury leads to is still to be decided.
+  crash: { carDeadlyMph: 100, personDeadlyMph: 50, injuredFromMph: 5, injuredHealth: 1, respawnSeconds: 3, withinMetres: 20, sameCrashSeconds: 3 },
   worldCars: { every: 300, runningChance: 0.25, hammerChance: 0.25, kerb: 3.4, shownWithin: 300, mostShown: 20, rescueWithin: 150, driverFreeAfter: 10 }, // m along a road between them, and a car's chance of running or holding a sledgehammer
   // Shared worlds. See docs/MODE2_DESIGN.md. clockRate: game hours per real hour, so 12 is an hour every 5 minutes.
   world: {

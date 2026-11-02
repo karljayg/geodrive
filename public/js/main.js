@@ -1076,9 +1076,10 @@ async function startWalking() {
   el('touchL').textContent = 'Enter';
 }
 
+let quietStop = false; // no car door when dying
 function stopFoot() {
   if (!foot) return;
-  sfx('carDoor');
+  if (!quietStop) sfx('carDoor');
   foot.stop();
   foot = null;
   pocket?.close();
@@ -2577,7 +2578,7 @@ function carShape(type) {
   return { halfWidth: shape.w * DEFAULTS.carScale, halfLength: shape.l * DEFAULTS.carScale };
 }
 function obstacles(now) {
-  const list = world.cars.around(pos, 40, 12).filter((known) => known.id !== myCar?.id).map((known) => ({ id: known.id, kind: 'parked', lat: known.lat, lng: known.lng, heading: known.heading, speed: 0, ...carShape(known.type) }));
+  const list = world.cars.around(pos, 40, 12).filter((known) => known.id !== myCar?.id).map((known) => ({ id: known.id, kind: 'parked', lat: known.lat, lng: known.lng, heading: known.heading, speed: 0, record: known, ...carShape(known.type) }));
   for (const member of world.people.othersOnline) {
     const there = world.people.nowAt(member.id, now);
     if (!there || there.flags & FLAGS.indoors) continue;
@@ -2617,6 +2618,79 @@ function stoppedByHit(other, closing) {
   if (closing > 2) sfx('thud');
   perfLog.event('bump', { kind: other.kind, mph: Math.round(closing * MPS_TO_MPH) });
   if (other.member) world.link.send({ t: 'bump', to: other.member, closing });
+  world.link.send({ t: 'crash', kind: other.kind, other: other.member ?? other.id, closing, lat: pos.lat, lng: pos.lng, planted: other.record });
+}
+
+// An explosion is heard only by those near it.
+function sfxNear(at) {
+  const here = foot ? foot.where() : pos;
+  if (distance(here.lat, here.lng, at.lat, at.lng) < 600) sfx('explosion');
+}
+
+// This person has died. What they carried stays where they fell, as parcels for anyone. With lives left they're back soon, near someone, on foot.
+let dying = false;
+async function iDied({ lives, how, by, at }) {
+  if (dying) return;
+  dying = true;
+  dialogOpen = true;
+  keys.clear();
+  const place = at ?? (foot ? foot.where() : pos), figures = { days: Math.floor(vitals.state.hours / 24) + 1, walked: walkFigures(vitals.state.walked).distance };
+  if (how !== 'hit' && peopleView) peopleView.explode(place);
+  sfx('explosion');
+  await leaveBelongings(place);
+  vitals.reset();
+  world.you.lives = lives;
+  model?.remove();
+  myCar = null;
+  fsd = false;
+  car.speed = 0;
+  if (lives > 0) {
+    notice(`You died. ${lives} ${lives === 1 ? 'life' : 'lives'} left.`, GAME.crash.respawnSeconds * 1000);
+    setTimeout(async () => {
+      const others = world.people.othersOnline.map((member) => world.people.lastKnown(member.id)).filter(Boolean);
+      await beginAfterDeath(others[0] ?? place);
+      dying = false;
+      dialogOpen = false;
+    }, GAME.crash.respawnSeconds * 1000);
+    return;
+  }
+  showFinalDeath({ how, by, ...figures });
+}
+
+// Back on foot, on a road near somewhere.
+async function beginAfterDeath(near) {
+  const turn = Math.random() * 360, within = GAME.world.appearWithin * Math.sqrt(Math.random()), { lat, lng } = move(near.lat, near.lng, turn, within);
+  quietStop = true;
+  await placeCar({ lat, lng, heading: turn, label: world.name });
+  quietStop = false;
+  await startWalking();
+}
+
+async function leaveBelongings(place) {
+  const ready = await pocketReady(), data = ready.data;
+  ready.close();
+  const things = data.state.bag.flatMap((item) => Array.from({ length: Math.min(item.count, 5) }, () => item.name));
+  things.slice(0, 20).forEach((name, i) => {
+    const { lat, lng } = move(place.lat, place.lng, (i * 137.5) % 360, 1 + (i % 5) * 0.6);
+    world.drops.add({ name, lat, lng, facing: i });
+  });
+  data.startAgain();
+}
+
+// Out of lives: how it ended, and who to ask for another go.
+function showFinalDeath({ how, by, days, walked }) {
+  world.link.close();
+  world.forgetHere(browserStorage());
+  const cause = how === 'hit' ? `You were hit by ${world.nameOf(by) ?? 'a car'}.` : 'You died in a crash.';
+  const managers = world.managerNames.filter((name) => name !== world.you.name).join(' or ');
+  const box = el('worldEntry');
+  box.innerHTML = '<div class="startBox"><h1>You\'re dead</h1><p data-cause></p><dl id="tripStats"><div><dt>Days lived</dt><dd data-days></dd></div><div><dt>Walked</dt><dd data-walked></dd></div></dl><p data-ask></p><div class="row"><button class="primary" type="button" data-sandbox>Play in my sandbox</button></div></div>';
+  box.querySelector('[data-cause]').textContent = cause;
+  box.querySelector('[data-days]').textContent = String(days);
+  box.querySelector('[data-walked]').textContent = walked;
+  box.querySelector('[data-ask]').textContent = managers ? `That's the end of ${world.you.name}. Ask ${managers} to reinvite you as a new person.` : `That's the end of ${world.you.name}, and nobody is left to invite you back.`;
+  box.querySelector('[data-sandbox]').addEventListener('click', () => location.assign(`${location.pathname}?sandbox=1`));
+  box.classList.add('open');
 }
 
 // What's sent about this person. A timer asks, as the game loop stops in a hidden tab.
@@ -2650,7 +2724,7 @@ function peopleCalls() {
         const mine = member.id === world.you.id, place = mine ? null : world.people.lastKnown(member.id);
         return {
           id: member.id, name: member.name, initials: initialsOf(member.name), colour: badgeColour(member), role: roleOf(member.id), at: !!place && member.online,
-          line: mine ? 'You' : statusLine(member, place, me, now()), bearing: place ? bearingBetween(me, place) : 0,
+          line: mine ? `You · ${member.lives} ${member.lives === 1 ? 'life' : 'lives'}` : statusLine(member, place, me, now()), bearing: place ? bearingBetween(me, place) : 0,
           canRejoin: world.isManager && !mine && member.lives > 0, canBackup: world.isManager && !mine && member.lives > 0 && member.id !== world.backup && member.id !== world.owner,
         };
       });
@@ -2678,6 +2752,20 @@ async function startPeople() {
     canShow: (thread) => !(pocket?.app === 'messages' && world.chat.threadWith(pocket.contact === 'group' ? null : pocket.contact) === thread),
   });
   world.whereAmI = whereIAm;
+  world.on.died = ({ member, lives, how, by, at }) => {
+    if (world.you.id !== member) {
+      if (at) { sfxNear(at); if (how === 'crash') peopleView.explode(at); }
+      notice(`${world.nameOf(member)} ${how === 'hit' ? 'was hit by a car' : 'died in a crash'}${lives > 0 ? '.' : ', for good.'}`, 5000);
+      return;
+    }
+    iDied({ lives, how, by, at });
+  };
+  world.on.injured = ({ how }) => {
+    vitals.stats.health = GAME.crash.injuredHealth;
+    vitals.save();
+    notice(say(how === 'hit' ? 'injuredHit' : 'injuredCrash'), 5000);
+    perfLog.event('vital', { injured: how });
+  };
   world.on.bumped = ({ by, closing }) => {
     if (foot) return; // someone on foot just stands there, for now
     car.speed = -Math.sign(car.speed || 1) * Math.min(BOUNCE, Math.abs(car.speed));

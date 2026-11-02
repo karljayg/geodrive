@@ -6,9 +6,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { startServer } from '../server/app.mjs';
 import { WorldLink } from '../public/js/net.js';
-import { PROTOCOL, FLAGS } from '../public/js/protocol.js';
+import { PROTOCOL, FLAGS, metresApart, packPresence } from '../public/js/protocol.js';
+import { GAME } from '../public/js/gameConfig.js';
 import { PrivateWorld, rememberWorld, savedMe } from '../public/js/world.js';
-import { applyFloorOp, cleanDrop, emptyFloorState, floorOpsBetween, mergePlan, planToShare, tileOfBuilding, undoFloorOp } from '../public/js/worldOps.js';
+import { applyFloorOp, cleanDrop, crashHoldsUp, crashOutcome, emptyFloorState, nextManagers, floorOpsBetween, mergePlan, planToShare, tileOfBuilding, undoFloorOp } from '../public/js/worldOps.js';
 import { vectorTileAt } from '../public/js/vector.js';
 import { plantCars } from '../public/js/worldCars.js';
 
@@ -346,4 +347,145 @@ test('nobody is stranded: with no running car near, one is added, once', () => p
   assert.equal(await b.cars.makeSureOfOne(place, { lat: 10, lng: 10, heading: 0 }), null, 'one\'s here now');
   assert.equal(await a.cars.makeSureOfOne({ lat: 20, lng: 20 }, { lat: 20, lng: 20, heading: 0 }), null, 'and each person only gets one');
   assert.equal(ANOTHER.runs, true);
+}));
+
+const CRASH = GAME.crash, mph = (n) => n / 2.23694;
+
+test('what a crash does goes by what hit what, and how fast', () => {
+  assert.deepEqual(crashOutcome('car', mph(4), CRASH), { kill: [], hurt: [], wreck: [] }, 'a touch does nothing');
+  assert.deepEqual(crashOutcome('car', mph(60), CRASH), { kill: [], hurt: ['me', 'other'], wreck: [] }, 'both hurt');
+  assert.deepEqual(crashOutcome('car', mph(101), CRASH), { kill: ['me', 'other'], hurt: [], wreck: ['me', 'other'] }, 'two at 50 mph head on is 100: both gone');
+  assert.deepEqual(crashOutcome('parked', mph(99), CRASH), { kill: [], hurt: ['me'], wreck: [] });
+  assert.deepEqual(crashOutcome('parked', mph(100), CRASH), { kill: ['me'], hurt: [], wreck: ['me', 'other'] });
+  assert.deepEqual(crashOutcome('person', mph(49), CRASH), { kill: [], hurt: ['other'], wreck: [] }, 'the driver isn\'t hurt');
+  assert.deepEqual(crashOutcome('person', mph(50), CRASH), { kill: ['other'], hurt: [], wreck: [] }, 'and carries on');
+});
+
+test('a claimed crash has to be backed up by where each said they were', () => {
+  const at = { lat: 38.9, lng: -77.4 }, here = [{ ...at, speed: 50 }], check = (over) => crashHoldsUp({ mine: here, theirs: null, at, closing: 45, withinMetres: 20, ...over }, metresApart);
+  assert.equal(check({}), true);
+  assert.equal(check({ mine: [] }), false, 'no record of them moving');
+  assert.equal(check({ mine: [{ lat: 39, lng: -77.4, speed: 50 }] }), false, 'they were somewhere else');
+  assert.equal(check({ closing: 120 }), false, 'nor that fast');
+  assert.equal(check({ theirs: here, closing: 120 }), true, 'but two together can be');
+  assert.equal(check({ theirs: [{ lat: 39, lng: -77.4, speed: 50 }], closing: 50 }), false, 'if they were both there');
+  assert.equal(check({ theirs: [] }), false, 'and nobody can be killed who hasn\'t been seen');
+});
+
+test('next man up: backup takes over, then invite order', () => {
+  const people = (lives) => ['a', 'b', 'c', 'd'].map((id, i) => ({ id, lives: lives[i] }));
+  assert.deepEqual(nextManagers({ owner: 'a', backup: 'b' }, people([1, 1, 1, 1])), { owner: 'a', backup: 'b' }, 'nobody gone');
+  assert.deepEqual(nextManagers({ owner: 'a', backup: 'c' }, people([0, 1, 1, 1])), { owner: 'c', backup: 'b' }, 'the owner goes: their chosen backup, and the earliest left');
+  assert.deepEqual(nextManagers({ owner: 'a', backup: 'b' }, people([1, 0, 1, 1])), { owner: 'a', backup: 'c' }, 'the backup goes');
+  assert.deepEqual(nextManagers({ owner: 'a', backup: 'b' }, people([0, 0, 0, 1])), { owner: 'd', backup: null }, 'one left runs it alone');
+  assert.deepEqual(nextManagers({ owner: 'a', backup: null }, people([0, 0, 0, 0])), { owner: 'a', backup: null }, 'nobody left: nothing changes');
+});
+
+const placeAt = (world, lat, lng, speed, seq = 1) => world.link.sendBytes(packPresence({ seq, lat, lng, heading: 0, speed, flags: 0 }));
+const HERE = { lat: 38.9, lng: -77.4 };
+
+test('a crash too fast to survive kills both and wrecks both cars, and each loses one life', () => pair(async ({ create, join }) => {
+  const a = await create(), b = await join(a, 'Dana'), died = [];
+  a.on.died = (m) => died.push(['a', m]);
+  b.on.died = (m) => died.push(['b', m]);
+  await a.cars.getIn(A_CAR);
+  await b.cars.getIn(ANOTHER);
+  placeAt(a, HERE.lat, HERE.lng, 30);
+  placeAt(b, HERE.lat, HERE.lng, 30);
+  await new Promise((r) => setTimeout(r, 40));
+  const answer = await a.link.ask({ t: 'crash', kind: 'car', other: b.you.id, closing: 60, ...HERE });
+  assert.equal(answer.outcome, 'dead');
+  await until(() => died.length >= 4, 'everyone to hear');
+  const heard = died.filter(([who]) => who === 'a').map(([, m]) => m.member).sort();
+  assert.deepEqual(heard, [a.you.id, b.you.id].sort());
+  assert.equal(died[0][1].lives, GAME.world.lives - 1);
+  assert.equal(a.people.member(b.you.id).lives, GAME.world.lives - 1);
+  await until(() => a.cars.records.get(A_CAR.id)?.wrecked && a.cars.records.get(ANOTHER.id)?.wrecked, 'the wrecks');
+  const wreck = b.cars.records.get(A_CAR.id);
+  assert.equal(wreck.driver, null);
+  assert.equal((await b.cars.getIn(wreck)).why, 'carWrecked', 'and it never runs again');
+  assert.equal((await a.link.ask({ t: 'crash', kind: 'car', other: b.you.id, closing: 60, ...HERE })).outcome, 'same', 'both games reporting it is one crash');
+}));
+
+test('a crash that nobody\'s path backs up is only a stop', () => pair(async ({ create, join }) => {
+  const a = await create(), b = await join(a, 'Dana'), died = [];
+  a.on.died = (m) => died.push(m);
+  placeAt(a, HERE.lat, HERE.lng, 30);
+  placeAt(b, 39.9, -70, 30);
+  await new Promise((r) => setTimeout(r, 40));
+  assert.equal((await a.link.ask({ t: 'crash', kind: 'car', other: b.you.id, closing: 60, ...HERE })).outcome, 'stop');
+  assert.equal(died.length, 0);
+}));
+
+test('hitting a person at speed kills them and leaves the driver alone', () => pair(async ({ create, join }) => {
+  const a = await create(), b = await join(a, 'Dana'), died = [];
+  b.on.died = (m) => died.push(m);
+  placeAt(a, HERE.lat, HERE.lng, 30);
+  placeAt(b, HERE.lat, HERE.lng, 0);
+  await new Promise((r) => setTimeout(r, 40));
+  assert.equal((await a.link.ask({ t: 'crash', kind: 'person', other: b.you.id, closing: 25, ...HERE })).outcome, 'dead');
+  await until(() => died.length, 'them to hear');
+  assert.equal(died[0].member, b.you.id);
+  assert.equal(died[0].how, 'hit');
+  assert.equal(died[0].by, a.you.id);
+  assert.equal(a.people.member(a.you.id).lives, GAME.world.lives);
+}));
+
+test('slower, people are hurt rather than killed', () => pair(async ({ create, join }) => {
+  const a = await create(), b = await join(a, 'Dana'), hurt = [];
+  a.on.injured = () => hurt.push('a');
+  b.on.injured = () => hurt.push('b');
+  placeAt(a, HERE.lat, HERE.lng, 10);
+  placeAt(b, HERE.lat, HERE.lng, 10);
+  await new Promise((r) => setTimeout(r, 40));
+  assert.equal((await a.link.ask({ t: 'crash', kind: 'car', other: b.you.id, closing: 15, ...HERE })).outcome, 'hurt');
+  await until(() => hurt.length === 2, 'both');
+  assert.equal(a.people.member(a.you.id).lives, GAME.world.lives);
+  assert.equal((await b.link.ask({ t: 'crash', kind: 'parked', other: A_CAR.id, closing: 1, ...HERE, planted: A_CAR })).outcome, 'stop', 'a touch does nothing');
+}));
+
+test('hitting a parked car at speed wrecks it and kills only the driver', () => pair(async ({ create, join }) => {
+  const a = await create(), b = await join(a, 'Dana'), died = [];
+  a.on.died = (m) => died.push(m.member);
+  await a.cars.getIn(A_CAR);
+  placeAt(a, HERE.lat, HERE.lng, 50);
+  await new Promise((r) => setTimeout(r, 40));
+  assert.equal((await a.link.ask({ t: 'crash', kind: 'parked', other: ANOTHER.id, closing: 50, ...HERE, planted: ANOTHER })).outcome, 'dead');
+  await until(() => died.length, 'it');
+  assert.deepEqual(died, [a.you.id]);
+  await until(() => b.cars.records.get(ANOTHER.id)?.wrecked, 'the parked one');
+  assert.ok(b.cars.records.get(A_CAR.id).wrecked);
+}));
+
+test('out of lives: gone for good, name kept, next person up runs things, and only someone new comes back', () => pair(async ({ create, join, back }) => {
+  const a = await create(), b = await join(a, 'Dana'), c = await join(a, 'Mo');
+  placeAt(a, HERE.lat, HERE.lng, 50);
+  placeAt(b, HERE.lat, HERE.lng, 0);
+  placeAt(c, HERE.lat, HERE.lng, 50);
+  await new Promise((r) => setTimeout(r, 40));
+  for (let i = 0; i < GAME.world.lives; i++) {
+    await a.link.ask({ t: 'crash', kind: 'person', other: b.you.id, closing: 25, ...HERE });
+    await new Promise((r) => setTimeout(r, 3100)); // crashes between the same two count once in a while
+    placeAt(a, HERE.lat, HERE.lng, 50, i + 2);
+    placeAt(b, HERE.lat, HERE.lng, 0, i + 2);
+    await new Promise((r) => setTimeout(r, 30));
+  }
+  assert.equal(a.people.member(b.you.id).lives, 0);
+  assert.equal(c.backup, c.you.id, 'Dana was the backup; Mo is next');
+  assert.equal(a.owner, a.you.id);
+  b.link.close();
+  await new Promise((r) => setTimeout(r, 40));
+  const link = new WorldLink({ address: a.link.address }), me = savedMe(b.storage, b.id);
+  assert.equal((await link.open({ t: 'hello', protocol: PROTOCOL, world: b.id, player: me.id, secret: me.secret })).why, 'dead');
+  const { code } = await a.link.ask({ t: 'invite' }), again = new WorldLink({ address: a.link.address });
+  assert.equal((await again.open({ t: 'join', protocol: PROTOCOL, world: a.id, code, name: 'dana', ...LOOK })).why, 'name-taken', 'their name stays taken');
+  assert.equal((await again.say({ t: 'join', protocol: PROTOCOL, world: a.id, code, name: 'Dana2', ...LOOK })).you.lives, GAME.world.lives, 'someone new, with full lives');
+  link.close();
+  again.close();
+}));
+
+test('nobody can claim a crash with rubbish', () => pair(async ({ create }) => {
+  const a = await create();
+  for (const message of [{ kind: 'fall' }, { kind: 'car', closing: 'fast', lat: 1, lng: 2 }, { kind: 'car', closing: 5000, lat: 1, lng: 2 }, { kind: 'car', closing: 5 }]) assert.equal((await a.link.ask({ t: 'crash', ...message })).why, 'bad');
+  assert.equal((await a.link.ask({ t: 'crash', kind: 'car', other: 'nobody', closing: 60, lat: 1, lng: 2 })).outcome, 'stop');
 }));

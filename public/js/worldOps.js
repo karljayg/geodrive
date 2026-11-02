@@ -94,3 +94,40 @@ export function tileOfBuilding(id) {
   const [lat, lng] = String(id).split('_').map((n) => Number(n) * ID_GRID), n = 2 ** 14, r = (lat * Math.PI) / 180;
   return `${Math.floor(((lng + 180) / 360) * n)}_${Math.floor(((1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2) * n)}`;
 }
+
+// Who runs a world after someone runs out of lives. members: oldest invite first, with lives. If the owner is gone the backup takes over, and the next living person by
+// invite order becomes the backup, so two manage while two are alive. Nobody left: nothing changes, and nobody can invite.
+export function nextManagers({ owner, backup }, members) {
+  const alive = (id) => members.some((member) => member.id === id && member.lives > 0);
+  const next = (taken) => members.find((member) => member.lives > 0 && !taken.includes(member.id))?.id ?? null;
+  let newOwner = alive(owner) ? owner : null, newBackup = alive(backup) ? backup : null;
+  if (!newOwner) {
+    newOwner = newBackup ?? next([]);
+    newBackup = null;
+    if (!newOwner) return { owner, backup: null };
+  }
+  if (!newBackup || newBackup === newOwner) newBackup = next([newOwner]);
+  return { owner: newOwner, backup: newBackup };
+}
+
+const MPH = 2.23694;
+
+// What a crash does to whom, from its kind and closing speed in m/s: { kill: [...], hurt: [...], wreck: [...] } of 'me', 'other'. Between cars and a parked one, both go; a person hit
+// is all that's hurt, and the driver carries on. config: GAME.crash.
+export function crashOutcome(kind, closing, config) {
+  const mph = closing * MPH;
+  if (mph < config.injuredFromMph) return { kill: [], hurt: [], wreck: [] };
+  if (kind === 'person') return mph >= config.personDeadlyMph ? { kill: ['other'], hurt: [], wreck: [] } : { kill: [], hurt: ['other'], wreck: [] };
+  const people = kind === 'car' ? ['me', 'other'] : ['me'];
+  return mph >= config.carDeadlyMph ? { kill: people, hurt: [], wreck: ['me', 'other'] } : { kill: [], hurt: people, wreck: [] };
+}
+
+// Whether a report of a deadly crash holds up, from what each has said about where they were and how fast. A wrong death can't be undone, so someone's game saying so isn't enough.
+// mine, theirs: recent places, { lat, lng, speed }, theirs null for a parked car. Metres and speeds with room for lag, but no more.
+export function crashHoldsUp({ mine, theirs, at, closing, withinMetres }, metresApart) {
+  const near = (list) => list.some((place) => metresApart(place, at) <= withinMetres);
+  const fastest = (list) => list.reduce((most, place) => Math.max(most, Math.abs(place.speed ?? 0)), 0);
+  if (!mine.length || !near(mine)) return false;
+  if (theirs && (!theirs.length || !near(theirs))) return false;
+  return closing <= (fastest(mine) + (theirs ? fastest(theirs) : 0)) * 1.25 + 3; // m/s
+}

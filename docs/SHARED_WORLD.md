@@ -1,6 +1,6 @@
 # Shared worlds: plan
 
-Status: stage 0 built and measured on the owner's machine. Stages 1 and 3 are built and live (2026-11-02), apart from what's listed under them and saving worlds. Stage 3 came before stage 2 at the owner's request, after two people in one room couldn't see each other. Stage 2's cars and collisions are live: planted, getting in and out, one driver, fuel, storage and hammers, and nothing passing through anything. Injury and death are next. Written 2026-11-02. Numbers marked "measured" were tested on the code and server as they stood that day.
+Status: stage 0 built and measured on the owner's machine. Stages 1 and 3 are built and live (2026-11-02), apart from what's listed under them and saving worlds. Stage 3 came before stage 2 at the owner's request, after two people in one room couldn't see each other. Stage 2 is live: planted cars, one driver, fuel, storage and hammers, collisions, injury, explosions, wrecks, lives and next man up. Still to do: saving and loading worlds, then stage 4. Written 2026-11-02. Numbers marked "measured" were tested on the code and server as they stood that day.
 
 ## The idea
 Today every browser is its own world. This adds worlds that several people play in together, reached by invite. The invite replaces the Share button (`J`) and its link.

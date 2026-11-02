@@ -9,9 +9,26 @@ const MODELS_WITHIN = 300, LET_GO_BEYOND = 600; // m
 const NEXT_PERSON_AFTER = 6000;                 // ms after one person's models are all on
 const TAG_HEIGHT = 2.2, TAG_FONT = 15;          // m, px
 const HIDDEN = 0.001, SHOWN = 1.1;              // the same size as this player's own person, whom the camera has to find
+const WRECK_COLOUR = '#17120f', FIRE_ORANGE = [1, 0.42, 0.05], FIRE_YELLOW = [1, 0.85, 0.25], FIRE_TIME = 1100; // ms
 const PARKED_LOOK_EVERY = 1000;                 // ms
 const CAR_SIZE = 0.9;
 const TAG_MOVES = 1e-6;                         // degrees, about 10 cm
+
+// A ball one metre across, as a model part.
+function ballPart(colour) {
+  const pos = [], nor = [], rings = 8, sides = 12, point = (a, b) => [Math.sin(a) * Math.cos(b), Math.sin(a) * Math.sin(b), Math.cos(a)];
+  for (let i = 0; i < rings; i++) {
+    for (let j = 0; j < sides; j++) {
+      const a0 = (i / rings) * Math.PI, a1 = ((i + 1) / rings) * Math.PI, b0 = (j / sides) * Math.PI * 2, b1 = ((j + 1) / sides) * Math.PI * 2;
+      for (const [a, b] of [[a0, b0], [a1, b0], [a1, b1], [a0, b0], [a1, b1], [a0, b1]]) {
+        const p = point(a, b);
+        pos.push(...p);
+        nor.push(...p);
+      }
+    }
+  }
+  return { pos, nor, colour };
+}
 
 // A name tag: dark, rounded, white text, the same size on screen wherever it is. The name goes in as text, so it can't be anything else.
 export function nameTag(maps3d, position, name) {
@@ -76,9 +93,27 @@ export class PeopleView {
   }
 
   carSource(car) {
-    const key = `${car.type}${car.colour}`;
-    if (!this.carSources.has(key)) this.carSources.set(key, this.glbUrl(buildCarGlb(car.type, car.colour)));
+    const colour = car.wrecked ? WRECK_COLOUR : car.colour, key = `${car.type}${colour}`;
+    if (!this.carSources.has(key)) this.carSources.set(key, this.glbUrl(buildCarGlb(car.type, colour)));
     return this.carSources.get(key);
+  }
+
+  // A fireball where something blew up: two balls that swell and go, so it needs nothing but the map.
+  explode(at) {
+    this.fireSources ||= [FIRE_ORANGE, FIRE_YELLOW].map((colour) => this.glbUrl(buildPersonGlb([ballPart(colour)])));
+    const balls = this.fireSources.map((source) => this.model({ lat: at.lat, lng: at.lng, altitude: 1 }, source, 0.1));
+    const began = performance.now();
+    const grow = () => {
+      const t = (performance.now() - began) / FIRE_TIME;
+      if (t >= 1) {
+        for (const ball of balls) ball.remove();
+        return;
+      }
+      balls[0].scale = 1 + t * 9;
+      balls[1].scale = Math.max(0.1, 0.8 + t * 6 * (1 - t));
+      requestAnimationFrame(grow);
+    };
+    grow();
   }
 
   // Parked cars near this person, and those others are driving, at their drivers. One new parked car a frame, as with people.
@@ -114,6 +149,10 @@ export class PeopleView {
     // A parked car someone has just left stays where it stopped.
     for (const car of this.parkedList) {
       const shown = this.carModels.get(car.id);
+      if (shown && !!car.wrecked !== shown.wrecked) {
+        shown.element.src = this.carSource(car);
+        shown.wrecked = !!car.wrecked;
+      }
       if (shown && (shown.lat !== car.lat || shown.lng !== car.lng)) this.moveCar(shown, car, viewer);
       if (shown?.tag) {
         shown.tag.remove();
@@ -125,7 +164,7 @@ export class PeopleView {
   placeCarModel(car, at) {
     const element = this.model({ lat: at.lat, lng: at.lng, altitude: 0 }, this.carSource(car), CAR_SIZE);
     element.orientation = { heading: at.heading, tilt: 0, roll: 0 };
-    const shown = { element, tag: null, lat: at.lat, lng: at.lng, heading: at.heading };
+    const shown = { element, tag: null, lat: at.lat, lng: at.lng, heading: at.heading, wrecked: !!car.wrecked };
     this.carModels.set(car.id, shown);
     return shown;
   }

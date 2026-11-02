@@ -4,7 +4,7 @@ import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { GAME } from '../public/js/gameConfig.js';
 import { FLAGS, GROUP_THREAD, cleanLook, clockHour, dmThread, metresApart, nameKey, nameProblem, stampPresence, unpackPresence } from '../public/js/protocol.js';
 import { cleanCar, cleanStorage } from '../public/js/worldCars.js';
-import { applyFloorOp, cleanDrop, emptyFloorState, mergePlan, tileOfBuilding } from '../public/js/worldOps.js';
+import { applyFloorOp, cleanDrop, crashHoldsUp, crashOutcome, emptyFloorState, mergePlan, nextManagers, tileOfBuilding } from '../public/js/worldOps.js';
 
 const FAR = 3000;          // m; past this someone is only a dot on a phone
 const FAR_EVERY = 5000;    // ms between passing on the place of someone that far off
@@ -13,6 +13,7 @@ const BUILDING_ID = /^-?\d{1,9}_-?\d{1,9}$/;
 const FLOOR_MOST = 300;    // floors up or down
 const TILES_MOST = 200;    // that one person can be watching
 const DROPS_MOST = 5000;   // left around one world
+const TRACK_KEPT = 5000;     // ms of where someone says they've been, to check a crash against
 const STARTING_HOUR = 8;   // a morning, so a new world doesn't begin in the dark
 const KEPT_FROM_TRIP = ['elapsed', 'moving', 'meters', 'fsdMeters', 'offRoadMeters', 'fsdSeconds', 'topSpeed', 'bridges', 'takeovers', 'signals']; // never an address or a town
 
@@ -30,6 +31,7 @@ export class Room {
     this.clients = new Map();      // member id: { id, send, sendBytes, close, order, at, said, sentAt, count, countFrom, asleep }
     this.clockAt = now();          // when the saved hour was true
     this.world = store.world();
+    this.crashes = new Map();      // a pair of ids: when they last crashed, as both games report the same one
   }
 
   // --- The clock: runs while anyone's here ----------------------------------------------------------------------
@@ -122,7 +124,7 @@ export class Room {
       old.send({ t: 'replaced' });
       old.close();
     } else if (this.clients.size === 0) this.settleClock(false);
-    const client = { ...connection, id: member.id, order: member.order, at: member.lat === null ? null : { lat: member.lat, lng: member.lng }, said: [], sentAt: new Map(), count: 0, countFrom: this.now(), asleep: false, tiles: new Set(), building: null, car: this.store.cars().find((car) => car.driver === member.id)?.id ?? null };
+    const client = { ...connection, id: member.id, order: member.order, at: member.lat === null ? null : { lat: member.lat, lng: member.lng }, said: [], sentAt: new Map(), count: 0, countFrom: this.now(), asleep: false, tiles: new Set(), building: null, track: [], car: this.store.cars().find((car) => car.driver === member.id)?.id ?? null };
     connection.client = client;
     this.clients.set(member.id, client);
     this.store.touchMember(member.id, this.now());
@@ -203,6 +205,8 @@ export class Room {
     if (!place) return;
     client.at = { lat: place.lat, lng: place.lng };
     client.flags = place.flags;
+    client.track.push({ at: now, lat: place.lat, lng: place.lng, speed: place.speed });
+    while (client.track.length && now - client.track[0].at > TRACK_KEPT) client.track.shift();
     stampPresence(bytes, client.order);
     for (const other of this.clients.values()) {
       if (other === client) continue;
@@ -219,7 +223,7 @@ export class Room {
     const client = connection.client;
     if (!client || !message || typeof message !== 'object') return;
     const answer = (result) => { if (message.id !== undefined) client.send({ t: result.why ? 'no' : 'ok', id: message.id, ...result }); };
-    const handler = { invite: 'makeInvite', setBackup: 'chooseBackup', say: 'say', sleep: 'sleep', save: 'savePlayer', where: 'where', area: 'area', claimPlan: 'claimPlan', claimFloor: 'claimFloor', floorOp: 'floorOp', switchesOn: 'switchesOn', dropAdd: 'dropAdd', dropTake: 'dropTake', getIn: 'getIn', getOut: 'getOut', carStore: 'carStore', plantCar: 'plantCar', bump: 'bump' }[message.t];
+    const handler = { invite: 'makeInvite', setBackup: 'chooseBackup', say: 'say', sleep: 'sleep', save: 'savePlayer', where: 'where', area: 'area', claimPlan: 'claimPlan', claimFloor: 'claimFloor', floorOp: 'floorOp', switchesOn: 'switchesOn', dropAdd: 'dropAdd', dropTake: 'dropTake', getIn: 'getIn', getOut: 'getOut', carStore: 'carStore', plantCar: 'plantCar', bump: 'bump', crash: 'crash' }[message.t];
     if (!handler) return answer({ why: 'unknown' });
     answer(this[handler](client, message) ?? {});
   }
@@ -304,6 +308,55 @@ export class Room {
     if (!Number.isFinite(closing) || closing < 0 || closing > 1000) return { why: 'bad' };
     other?.send({ t: 'bumped', by: client.id, closing });
     return {};
+  }
+
+  // Where someone was in the last while, however they said so.
+  recent(client) {
+    const now = this.now();
+    return client.track.filter((place) => now - place.at <= TRACK_KEPT);
+  }
+
+  // A game says it crashed. A wrong death can't be undone, so its word isn't enough: both reported paths have to back it up, or it's only a stop. One crash once, though both games report it.
+  crash(client, { kind, other, closing, lat, lng, planted }) {
+    if (!['car', 'parked', 'person'].includes(kind) || !Number.isFinite(closing) || closing < 0 || closing > 1000 || !Number.isFinite(lat) || !Number.isFinite(lng)) return { why: 'bad' };
+    const config = GAME.crash, now = this.now(), target = kind === 'parked' ? null : this.clients.get(other);
+    if (kind !== 'parked' && !target) return { outcome: 'stop' };
+    const pairKey = kind === 'parked' ? `${client.id}|${other}` : [client.id, other].sort().join('|');
+    if (now - (this.crashes.get(pairKey) ?? -Infinity) < config.sameCrashSeconds * 1000) return { outcome: 'same' };
+    const at = { lat, lng }, outcome = crashOutcome(kind, closing, config);
+    if (!outcome.kill.length && !outcome.hurt.length) return { outcome: 'stop' };
+    if (!crashHoldsUp({ mine: this.recent(client), theirs: target ? this.recent(target) : null, at, closing, withinMetres: config.withinMetres }, metresApart)) return { outcome: 'stop' };
+    this.crashes.set(pairKey, now);
+    const whose = (who) => (who === 'me' ? client : target);
+    for (const who of outcome.wreck) this.wreck(who === 'me' ? client.car : kind === 'parked' ? other : target?.car, planted, at);
+    const how = kind === 'person' ? 'hit' : 'crash';
+    for (const who of outcome.hurt) whose(who)?.send({ t: 'injured', how });
+    for (const who of outcome.kill) this.killMember(whose(who), { how, by: kind === 'person' ? client.id : null, at });
+    return { outcome: outcome.kill.length ? 'dead' : 'hurt' };
+  }
+
+  // Burnt out, for good, where it stands.
+  wreck(id, planted, at) {
+    const car = this.known(id, planted);
+    if (!car) return;
+    Object.assign(car, { wrecked: true, driver: null, lat: car.driver ? at.lat : car.lat, lng: car.driver ? at.lng : car.lng, runs: false, why: 'carWrecked', storage: [] });
+    this.store.saveCar(car);
+    this.tellAll({ t: 'car', car });
+  }
+
+  killMember(client, { how, by, at }) {
+    const member = this.store.member(client.id), lives = Math.max(0, member.lives - 1);
+    this.store.setLives(client.id, lives);
+    client.car = null;
+    const dead = this.store.member(client.id);
+    this.tellAll({ t: 'died', member: client.id, lives, how, by, at });
+    this.tellAll({ t: 'member', member: publicMember(dead, this.clients.has(client.id), null) });
+    if (lives > 0) return;
+    const before = this.store.world(), { owner, backup } = nextManagers(before, this.store.members());
+    if (owner !== before.owner || backup !== before.backup) {
+      this.store.setManagers(owner, backup);
+      this.tellManagers();
+    }
   }
 
   // --- Cars ----------------------------------------------------------------------------------------------------
