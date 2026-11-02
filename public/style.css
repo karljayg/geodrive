@@ -105,8 +105,13 @@ kbd { display: inline-flex; min-width: 24px; justify-content: center; border: 1p
 #touch { display: none; position: absolute; right: 8px; bottom: 8px; grid-template-columns: 1fr 1fr; gap: 5px; }
 #touch button { pointer-events: auto; width: 46px; height: 40px; background: #152637dc; border: 1px solid #ffffff55; border-radius: 11px; color: #fff; font-size: 18px; touch-action: none; }
 
-#help { position: absolute; left: 24px; bottom: 12px; display: none; padding: 12px 14px; font-size: 12px; color: #aec2cf; line-height: 2; }
+#help { position: absolute; z-index: 8; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(760px, calc(100% - 24px)); max-height: calc(100% - 60px); overflow-y: auto; display: none; padding: 14px 18px; font-size: 12px; color: #c5d4de; background: #101923f7; backdrop-filter: none; pointer-events: auto; }
 #help.open { display: block; }
+#help h2 { margin: 0 0 10px; font-size: 16px; color: #fff; }
+#help h3 { margin: 0 0 5px; font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; color: #69d9ba; }
+.keyGroups { columns: 2 300px; column-gap: 24px; }
+.keyGroups section { break-inside: avoid; margin-bottom: 12px; }
+.keyRow { display: grid; grid-template-columns: 112px 1fr; gap: 8px; align-items: center; padding: 2px 0; line-height: 1.3; }
 
 #dash { position: absolute; left: 0; right: 0; bottom: 0; height: var(--dash); z-index: 2; display: grid; grid-template-columns: auto minmax(200px, 1fr) 236px; gap: 10px; padding: 6px 10px; background: linear-gradient(#17222e, #0b121b); border-top: 1px solid #ffffff2b; }
 .gauges { display: flex; gap: 4px; align-items: center; }

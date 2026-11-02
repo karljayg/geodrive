@@ -83,7 +83,7 @@ The dashboard shows FPS, the slowest frame in the last second, and JavaScript me
 The Share button copies a link holding the drive and settings: position, destination and FSD, trip stats, camera, start location, and any settings that differ from the defaults. It's compressed into the URL's # part, so no server stores it. Opening a link first shows what it holds, including the radio station and that music will start. Accepting replaces that browser's settings and trip, with the car stopped, and starts the radio if it was on. Declining, Escape or clicking outside leaves everything as it was. Links are checked on opening (`share.js`), because anyone can make one.
 
 ## Popups
-Escape or a click outside closes every popup: start, destination, pause, settings, key list and notices. On first load the start dialog takes the default, because the game needs a start.
+Each press of Escape closes only the thing on top, in this order: shared-drive question, destination or start, settings, key list, pause, lift panel, the F question, phone or bag (or the car's storage), the locked message, then a message. With nothing open it pauses. A click outside also closes the start, destination, pause and settings popups and the key list. On first load the start dialog takes the default, because the game needs a start. While the mouse is held for looking the browser takes Escape to free it, so that press closes nothing.
 
 ## All keys
 | Key | Action |
@@ -106,7 +106,7 @@ Escape or a click outside closes every popup: start, destination, pause, setting
 | C | Camera |
 | O | Settings |
 | P | Pause |
-| K | Show or hide the key list |
+| K or ? | Show or hide the key list, which lists only the keys for where you are: in the car or on foot (`keyList.js`) |
 | L | Get out of a stopped car, or back in when beside it |
 
 Start (change start point) and Reset (back to the start) are header buttons only, not keys.

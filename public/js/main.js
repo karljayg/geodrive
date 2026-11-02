@@ -1,6 +1,7 @@
 import { BUILDING_KEY } from './footActions.js';
 import { Drops, parcelParts } from './drops.js';
 import { GAME } from './gameConfig.js';
+import { keyListHtml } from './keyList.js';
 import { say } from './sayings.js';
 import { Vitals } from './vitals.js';
 import { newCar, stepCar } from './physics.js';
@@ -875,6 +876,7 @@ async function getOut() {
   keys.clear();
   lightKey = '';
   document.body.classList.add('onFoot');
+  el('help').classList.remove('open');
   sfx('carDoor');
   applySound();
   mapBox = null;
@@ -900,6 +902,7 @@ function stopFoot() {
   keys.clear();
   lookX = lookY = 0;
   document.body.classList.remove('onFoot');
+  el('help').classList.remove('open');
   syncLift();
   el('touch').querySelector('[data-key=" "]').textContent = '−';
   applySound();
@@ -1931,7 +1934,7 @@ el('shareButton').addEventListener('click', shareDrive);
 el('sendLog').addEventListener('click', sendLog);
 // A link opened in a tab already on the game changes only the # part, which wouldn't otherwise reload the page.
 window.addEventListener('hashchange', () => { if (location.hash.startsWith('#d=')) location.reload(); });
-el('helpButton').addEventListener('click', () => el('help').classList.toggle('open'));
+el('helpButton').addEventListener('click', toggleKeys);
 // Browsers only allow sound after the first click or key press.
 for (const kind of ['pointerdown', 'keydown']) {
   document.addEventListener(kind, (event) => {
@@ -1958,13 +1961,27 @@ function dismissStart() {
   else el('useDefault').click();
 }
 
-function dismissPopup() {
+// Closes the one thing on top, and says whether there was anything to close.
+function closeTop() {
   if (answerShared) { answerShared(false); return true; }
   if (openId === 'dest') { finishDialog(); return true; }
   if (openId === 'start') { dismissStart(); return true; }
+  if (el('settings').classList.contains('open')) { closeSettings(); return true; }
   if (el('help').classList.contains('open')) { el('help').classList.remove('open'); return true; }
-  if (el('notice').style.display === 'block') { el('notice').style.display = 'none'; return true; }
+  if (paused) { setPaused(false); return true; }
+  if (foot?.picking) { foot.picking = null; syncLift(); return true; }
+  if (asking) { stopAsking(); return true; }
+  if (pocket?.close()) return true;
+  if (el('locked').classList.contains('show')) { clearTimeout(lockedTimer); el('locked').classList.remove('show'); return true; }
+  if (el('notice').style.display === 'block') { clearTimeout(noticeTimer); el('notice').style.display = 'none'; return true; }
   return false;
+}
+
+// The list for wherever you are right now.
+function toggleKeys() {
+  const box = el('help');
+  if (!box.classList.contains('open')) box.innerHTML = keyListHtml(!!foot);
+  box.classList.toggle('open');
 }
 
 el('start').addEventListener('click', (e) => { if (e.target === el('start')) dismissStart(); });
@@ -1989,22 +2006,24 @@ el('settingsCopy').addEventListener('click', async () => {
 const DRIVE_KEYS = new Set(['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', ' ', 'z', 'shift']);
 const DRIVING_ONLY = new Set(['b', 'c', 'g', 'q', 'e', 'f', '=', '+', '-']);
 document.addEventListener('keydown', (e) => {
-  if (el('settings').classList.contains('open') && (e.key === 'Escape' || e.key.toLowerCase() === 'o')) { e.preventDefault(); return closeSettings(); }
-  if (e.key === 'Escape' && dismissPopup()) { e.preventDefault(); return; }
-  if (dialogOpen) return; // the keys belong to the open dialog
   if (e.target.matches?.('#pockets textarea, #pockets input[type=text]')) { // typing a note or a message
     if (e.key === 'Escape') e.target.blur();
     return;
   }
-  if (asking && e.key === 'Escape') { stopAsking(); e.preventDefault(); return; }
-  if (foot?.picking && e.key === 'Escape') { foot.picking = null; syncLift(); e.preventDefault(); return; }
+  // Each press closes one thing. With nothing open it pauses, unless the mouse is held for looking, which is the browser's to free.
+  if (e.key === 'Escape') {
+    e.preventDefault();
+    if (!e.repeat && !closeTop() && !dialogOpen && !document.pointerLockElement) setPaused(true);
+    return;
+  }
+  if (el('settings').classList.contains('open') && e.key.toLowerCase() === 'o') { e.preventDefault(); return closeSettings(); }
+  if (dialogOpen) return; // the keys belong to the open dialog
   if (foot?.picking && e.key === 'Enter') { foot.goToFloor(foot.picking.floor); syncLift(); e.preventDefault(); return; }
   if (foot?.picking && /^[0-9]$/.test(e.key)) { foot.typeFloor(e.key); e.preventDefault(); return; }
-  if (foot && e.key === 'Escape' && pocket?.close()) { e.preventDefault(); return; }
   const k = e.key.toLowerCase();
   if (e.metaKey || e.ctrlKey || e.altKey) return;
   if (paused) {
-    if ((k === 'p' || k === 'escape') && !e.repeat) { e.preventDefault(); setPaused(false); }
+    if (k === 'p' && !e.repeat) { e.preventDefault(); setPaused(false); }
     return;
   }
   if (k === 'p' && !e.repeat) { e.preventDefault(); return setPaused(true); }
@@ -2033,7 +2052,7 @@ document.addEventListener('keydown', (e) => {
   }
   if (k === '[') radio.seek(-1);
   if (k === ']') radio.seek(1);
-  if (k === 'k') el('help').classList.toggle('open');
+  if (k === 'k' || k === '?') toggleKeys();
   if (k === 'm') { settings.muted = !settings.muted; applySound(); saveSettings(); notice(settings.muted ? 'Sound muted. Press M to turn it back on.' : 'Sound on.', 2000); }
   if (k === 'q') pressSignal(-1);
   if (k === 'e') pressSignal(1);
