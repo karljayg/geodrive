@@ -26,6 +26,7 @@ import { FLAGS } from './protocol.js';
 import { bearingBetween, initialsOf, statusLine } from './people.js';
 import { BOUNCE, BumpLimit, firstHit } from './collide.js';
 import { seatsPicture } from './carSeats.js';
+import { coastPlace, cutsOut, drivable, offRoadSlowing, offRoadWear, powerOf, reliabilityText } from './carDamage.js';
 import { DEFAULTS, saveSettings, settings } from './settings.js';
 import { RoadTiles } from './tiles.js';
 import { Terrain } from './terrain.js';
@@ -112,6 +113,7 @@ function sfx(name) {
 let soundThrottle = 0, savedAt = 0, radioResume = false;
 const SOUND_THROTTLE_RISE = 1.1; // s for a held W to reach full throttle in the sound; the car's acceleration doesn't change
 const SAVE_EVERY = 2000; // ms between saving the trip
+const RUMBLE_EVERY = 900; // ms between the sounds of driving off road
 const gearbox = newGearbox();
 const radio = new Radio(renderRadio, showSong);
 let gaugesDrawnAt = 0, speedMax = 200, navDrawnAt = 0, navRadius = 1500, signalWasLit = false, radioArea = null;
@@ -585,6 +587,7 @@ function drawDash(t) {
   speedMax = speedRange(mph, speedMax);
   gauge('speedGauge', `${Math.round(mph * 2)}|${speedMax}`, { value: mph, max: speedMax, step: speedStep(speedMax), big: String(Math.round(mph)), small: 'MPH' });
   const electric = !profile.cylinders;
+  showCondition();
   const charge = Math.round(trip.fuel);
   if (electric) {
     // Electric cars have no meaningful revs, so this dial is the battery.
@@ -759,8 +762,10 @@ function frame(t) {
     // Pull up at the destination, unless the driver has already taken over.
     if (arriving && (controls.throttle || controls.reverse || controls.steer || car.speed <= 0)) arriving = false;
     if (arriving) controls.brake = PLAN_DECEL;
+    if (!riding && world.rules.people && myCar) limitByCondition(controls, t);
     const meters = riding ? followDriver() : stepCar(car, controls, dt);
     if (!riding) {
+      if (world.rules.people) wearCar(controls, t);
       followRoad(!!controls.steer, guide, dt);
       if (meters) Object.assign(pos, move(pos.lat, pos.lng, car.heading, meters));
       if (world.rules.people) hitAnything(meters);
@@ -1012,13 +1017,56 @@ function showOwnCar() {
   applyCarLook();
 }
 
+// A damaged car has less power and cuts out, and at the end won't run at all. It just coasts.
+function conditionNow() {
+  return myCar ? world.cars.get(myCar.id)?.condition ?? myCar.condition ?? 100 : 100;
+}
+
+let toldDead = false;
+function limitByCondition(controls, t) {
+  const condition = conditionNow();
+  if (!drivable(condition)) {
+    controls.throttle = 0;
+    if (!toldDead) {
+      toldDead = true;
+      setFsd(false);
+      notice(say('carDead'), 4000);
+    }
+    return;
+  }
+  toldDead = false;
+  if (controls.throttle) controls.throttle *= cutsOut(condition, t / 1000) ? 0 : powerOf(condition);
+}
+
+// Off road, it wears, slows a little, and sounds bad. No road data yet doesn't count: it isn't known to be off road.
+let wearWaiting = 0, wearSentAt = 0, rumbleAt = 0;
+function wearCar(controls, t) {
+  if (!myCar || match || !tiles.hasRoads(pos.lat, pos.lng) || Math.abs(car.speed) < 1) return;
+  const dt = Math.min(0.1, (t - (wearCar.last ?? t)) / 1000);
+  wearCar.last = t;
+  wearWaiting += offRoadWear(car.speed * dt);
+  car.speed = offRoadSlowing(car.speed, dt);
+  if (t - rumbleAt > RUMBLE_EVERY) {
+    rumbleAt = t;
+    sfx('rumble');
+  }
+  if (t - wearSentAt > GAME.damage.reportEvery * 1000 && wearWaiting > 0) {
+    wearSentAt = t;
+    const condition = Math.max(0, conditionNow() - wearWaiting), known = world.cars.get(myCar.id);
+    wearWaiting = 0;
+    if (known) known.condition = condition;
+    world.link.send({ t: 'carWear', car: myCar.id, condition });
+  }
+}
+
 // Riding along: the car is wherever its driver says, or where it stopped with nobody at the wheel. Returns how far it came.
 function followDriver() {
   const known = world.cars.get(riding.id) ?? riding, now = performance.now(), there = known.driver ? world.people.drawnAt(known.driver, now) : null;
-  const to = there ?? known, moved = distance(pos.lat, pos.lng, to.lat, to.lng);
+  const rolling = !there && known.coast ? coastPlace(known.coast, Date.now() + (world.clock.offset ?? 0)) : null;
+  const to = there ?? rolling ?? known, moved = distance(pos.lat, pos.lng, to.lat, to.lng);
   Object.assign(pos, { lat: to.lat, lng: to.lng });
   car.heading = to.heading;
-  car.speed = there?.speed ?? 0;
+  car.speed = there?.speed ?? rolling?.speed ?? 0;
   onBridge = !!(there && there.flags & FLAGS.bridge);
   return moved;
 }
@@ -2756,6 +2804,20 @@ function showFinalDeath({ how, by, days, walked }) {
   box.classList.add('open');
 }
 
+// The car's condition, next to its fuel, in a shared world.
+let conditionShown = '';
+function showCondition() {
+  if (!world.rules.people) return;
+  const here = riding ?? myCar, condition = here ? Math.round(world.cars.get(here.id)?.condition ?? here.condition ?? 100) : 100, words = reliabilityText(condition), key = `${condition}|${words}`;
+  if (key === conditionShown) return;
+  conditionShown = key;
+  el('condition').style.visibility = 'visible';
+  el('conditionBar').style.width = `${condition}%`;
+  el('condition').classList.toggle('low', condition < GAME.damage.unreliableBelow);
+  el('condition').title = `Condition ${condition}%: ${words}`;
+  show('conditionValue', `${condition}%`);
+}
+
 // Who's sitting where, in the car this person is in: a little car from above, with a badge in each seat, and everyone's name.
 let seatsKey = '';
 function syncSeats() {
@@ -2830,7 +2892,7 @@ function peopleCalls() {
 // Others on the map, chat, and hearing about each other. Once the map's up.
 async function startPeople() {
   const [{ PeopleView }, { ChatView }] = await Promise.all([import('./peopleView.js'), import('./chatView.js')]);
-  peopleView = new PeopleView({ maps3d, map, people: world.people, glbUrl, cars: world.cars, mine: () => (foot || riding ? null : myCar?.id) });
+  peopleView = new PeopleView({ maps3d, map, people: world.people, glbUrl, cars: world.cars, mine: () => (foot || riding ? null : myCar?.id), offset: () => world.clock.offset ?? 0 });
   chatView = new ChatView({
     world, line: el('chatLine'), previews: el('previews'), speechBox: el('speech'), spoke: flashSeat, sound: () => sfx('message'), phoneDead: () => vitals.stats.phone <= 0,
     opened: (on) => { if (on) { keys.clear(); jumpPressed = false; releaseMouse(); } },
@@ -2845,8 +2907,8 @@ async function startPeople() {
     }
     iDied({ lives, how, by, at });
   };
-  world.on.injured = ({ how }) => {
-    vitals.stats.health = GAME.crash.injuredHealth;
+  world.on.injured = ({ how, lost }) => {
+    vitals.stats.health = Math.max(1, vitals.stats.health - lost);
     vitals.save();
     notice(say(how === 'hit' ? 'injuredHit' : 'injuredCrash'), 5000);
     perfLog.event('vital', { injured: how });

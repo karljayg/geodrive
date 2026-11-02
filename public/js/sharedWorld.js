@@ -2,7 +2,7 @@
 // from what's arrived so far. What this player does is shown here straight away and sent, and the server decides anything two people could want. Pure, tested in node.
 import { Drops } from './drops.js';
 import { GAME } from './gameConfig.js';
-import { merged, plantCars, rescueCar } from './worldCars.js';
+import { plantCars, rescueCar } from './worldCars.js';
 import { metresApart } from './protocol.js';
 import { applyFloorOp, emptyFloorState, floorOpsBetween, planToShare, tileOfBuilding, undoFloorOp } from './worldOps.js';
 

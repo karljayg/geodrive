@@ -355,13 +355,14 @@ test('nobody is stranded: with no running car near, one is added, once', () => p
 const CRASH = GAME.crash, mph = (n) => n / 2.23694;
 
 test('what a crash does goes by what hit what, and how fast', () => {
-  assert.deepEqual(crashOutcome('car', mph(4), CRASH), { kill: [], hurt: [], wreck: [] }, 'a touch does nothing');
-  assert.deepEqual(crashOutcome('car', mph(60), CRASH), { kill: [], hurt: ['me', 'other'], wreck: [] }, 'both hurt');
-  assert.deepEqual(crashOutcome('car', mph(101), CRASH), { kill: ['me', 'other'], hurt: [], wreck: ['me', 'other'] }, 'two at 50 mph head on is 100: both gone');
-  assert.deepEqual(crashOutcome('parked', mph(99), CRASH), { kill: [], hurt: ['me'], wreck: [] });
-  assert.deepEqual(crashOutcome('parked', mph(100), CRASH), { kill: ['me'], hurt: [], wreck: ['me', 'other'] });
-  assert.deepEqual(crashOutcome('person', mph(49), CRASH), { kill: [], hurt: ['other'], wreck: [] }, 'the driver isn\'t hurt');
-  assert.deepEqual(crashOutcome('person', mph(50), CRASH), { kill: ['other'], hurt: [], wreck: [] }, 'and carries on');
+  const plain = (kind, speed) => { const { mph: _, ...rest } = crashOutcome(kind, mph(speed), CRASH); return rest; };
+  assert.deepEqual(plain('car', 4), { kill: [], hurt: [], wreck: [] }, 'a touch does nothing');
+  assert.deepEqual(plain('car', 60), { kill: [], hurt: ['me', 'other'], wreck: [] }, 'both hurt');
+  assert.deepEqual(plain('car', 101), { kill: ['me', 'other'], hurt: [], wreck: ['me', 'other'] }, 'two at 50 mph head on is 100: both gone');
+  assert.deepEqual(plain('parked', 99), { kill: [], hurt: ['me'], wreck: [] });
+  assert.deepEqual(plain('parked', 100), { kill: ['me'], hurt: [], wreck: ['me', 'other'] });
+  assert.deepEqual(plain('person', 49), { kill: [], hurt: ['other'], wreck: [] }, 'the driver isn\'t hurt');
+  assert.deepEqual(plain('person', 50), { kill: ['other'], hurt: [], wreck: [] }, 'and carries on');
 });
 
 test('a claimed crash has to be backed up by where each said they were', () => {
@@ -580,4 +581,45 @@ test('speech reaches those in the car or close by, and nothing keeps it', () => 
   a.link.close();
   const again = await back(a);
   assert.equal(again.chat.messages('group').length, 0, 'and nothing was kept');
+}));
+
+test('a crash wears the cars and hurts those in them, going by speed', () => pair(async ({ create, join }) => {
+  const a = await create(), b = await join(a, 'Dana'), losses = [];
+  a.on.injured = ({ lost }) => losses.push(lost);
+  await a.cars.getIn(A_CAR);
+  await b.cars.getIn(ANOTHER);
+  placeAt(a, HERE.lat, HERE.lng, 20);
+  placeAt(b, HERE.lat, HERE.lng, 0);
+  await new Promise((r) => setTimeout(r, 40));
+  assert.equal((await a.link.ask({ t: 'crash', kind: 'car', other: b.you.id, closing: 13.4, ...HERE })).outcome, 'hurt');
+  const worn = await until(() => { const known = a.cars.records.get(A_CAR.id); return known?.condition < 100 && known; }, 'the wear');
+  assert.ok(worn.condition > 88 && worn.condition < 94, `about 30 mph takes about a tenth: ${worn.condition}`);
+  await until(() => losses.length, 'it to hurt');
+  assert.ok(losses[0] > 5 && losses[0] < 15, `${losses[0]}`);
+  assert.ok(a.cars.records.get(A_CAR.id).condition > 0);
+}));
+
+test('a car worn out can\'t be driven, but is still there', () => pair(async ({ create, join }) => {
+  const a = await create(), b = await join(a, 'Dana');
+  const { car } = await a.cars.getIn(A_CAR);
+  assert.equal((await a.link.ask({ t: 'carWear', car: car.id, condition: 200 })).why, undefined);
+  assert.equal((await a.link.ask({ t: 'carWear', car: car.id, condition: 8 })).why, undefined);
+  await until(() => b.cars.records.get(A_CAR.id)?.condition === 8, 'it to wear');
+  assert.equal((await b.link.ask({ t: 'carWear', car: car.id, condition: 1 })).why, 'bad', 'only the driver says');
+  await a.cars.getOut(a.cars.records.get(A_CAR.id), { lat: 1, lng: 1, heading: 0 });
+  await until(() => !b.cars.records.get(A_CAR.id)?.driver, 'them to leave');
+  assert.equal((await b.cars.getIn(b.cars.records.get(A_CAR.id))).why, 'carDead');
+}));
+
+test('a driver who vanishes leaves the car rolling on to a stop, not frozen', () => pair(async ({ create, join }) => {
+  const a = await create(), b = await join(a, 'Dana');
+  await a.cars.getIn(A_CAR);
+  await until(() => b.cars.records.has(A_CAR.id), 'Dana to hear');
+  a.link.sendBytes(packPresence({ seq: 1, lat: 38.9, lng: -77.4, heading: 0, speed: 20, flags: 0 }));
+  await new Promise((r) => setTimeout(r, 40));
+  a.link.close();
+  const car = await until(() => { const known = b.cars.records.get(A_CAR.id); return known?.coast && known; }, 'it to roll');
+  assert.equal(car.coast.speed, 20);
+  assert.ok(car.lat > 38.9 + 20 / 111320, 'it ends well along the way');
+  assert.ok(car.lat < 38.9 + 400 / 111320, 'but not for ever');
 }));

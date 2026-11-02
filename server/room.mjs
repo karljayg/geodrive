@@ -4,6 +4,7 @@ import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { GAME } from '../public/js/gameConfig.js';
 import { FLAGS, GROUP_THREAD, cleanLook, clockHour, dmThread, metresApart, nameKey, nameProblem, stampPresence, unpackPresence } from '../public/js/protocol.js';
 import { cleanCar, cleanStorage } from '../public/js/worldCars.js';
+import { carDamageAt, coastDistance, coastPlace, drivable, healthLossHit, healthLossInCar } from '../public/js/carDamage.js';
 import { applyFloorOp, cleanDrop, crashHoldsUp, crashOutcome, emptyFloorState, mergePlan, nextManagers, tileOfBuilding } from '../public/js/worldOps.js';
 
 const FAR = 3000;          // m; past this someone is only a dot on a phone
@@ -205,6 +206,7 @@ export class Room {
     if (!place) return;
     client.at = { lat: place.lat, lng: place.lng };
     client.flags = place.flags;
+    client.heading = place.heading;
     client.floor = place.floor;
     client.track.push({ at: now, lat: place.lat, lng: place.lng, speed: place.speed });
     while (client.track.length && now - client.track[0].at > TRACK_KEPT) client.track.shift();
@@ -224,7 +226,7 @@ export class Room {
     const client = connection.client;
     if (!client || !message || typeof message !== 'object') return;
     const answer = (result) => { if (message.id !== undefined) client.send({ t: result.why ? 'no' : 'ok', id: message.id, ...result }); };
-    const handler = { invite: 'makeInvite', setBackup: 'chooseBackup', say: 'say', sleep: 'sleep', save: 'savePlayer', where: 'where', area: 'area', claimPlan: 'claimPlan', claimFloor: 'claimFloor', floorOp: 'floorOp', switchesOn: 'switchesOn', dropAdd: 'dropAdd', dropTake: 'dropTake', getIn: 'getIn', getOut: 'getOut', carStore: 'carStore', plantCar: 'plantCar', bump: 'bump', crash: 'crash', slide: 'slide', speak: 'speak' }[message.t];
+    const handler = { invite: 'makeInvite', setBackup: 'chooseBackup', say: 'say', sleep: 'sleep', save: 'savePlayer', where: 'where', area: 'area', claimPlan: 'claimPlan', claimFloor: 'claimFloor', floorOp: 'floorOp', switchesOn: 'switchesOn', dropAdd: 'dropAdd', dropTake: 'dropTake', getIn: 'getIn', getOut: 'getOut', carStore: 'carStore', plantCar: 'plantCar', bump: 'bump', crash: 'crash', slide: 'slide', speak: 'speak', carWear: 'carWear' }[message.t];
     if (!handler) return answer({ why: 'unknown' });
     answer(this[handler](client, message) ?? {});
   }
@@ -357,7 +359,14 @@ export class Room {
     const hurt = outcome.hurt.flatMap(whose), killed = outcome.kill.flatMap(whose);
     for (const who of outcome.wreck) this.wreck(who === 'me' ? client.car : kind === 'parked' ? other : target?.car, planted, at);
     const how = kind === 'person' ? 'hit' : 'crash';
-    for (const person of hurt) person.send({ t: 'injured', how });
+    // What's left of the cars, if they survive it.
+    if (!outcome.wreck.length && kind !== 'person') {
+      const amount = carDamageAt(outcome.mph);
+      this.damageCar(client.car, amount);
+      this.damageCar(kind === 'parked' ? other : target?.car, amount, planted);
+    }
+    const lost = kind === 'person' ? healthLossHit(outcome.mph) : healthLossInCar(outcome.mph);
+    for (const person of hurt) person.send({ t: 'injured', how, lost });
     for (const person of killed) this.killMember(person, { how, by: kind === 'person' ? client.id : null, at });
     return { outcome: outcome.kill.length ? 'dead' : 'hurt' };
   }
@@ -369,6 +378,26 @@ export class Room {
     Object.assign(car, { wrecked: true, driver: null, seats: [], lat: car.driver ? at.lat : car.lat, lng: car.driver ? at.lng : car.lng, runs: false, why: 'carWrecked', storage: [] });
     this.store.saveCar(car);
     this.tellAll({ t: 'car', car });
+  }
+
+  damageCar(id, amount, planted) {
+    const car = this.known(id, planted);
+    if (!car || car.wrecked) return;
+    car.condition = Math.max(0, (car.condition ?? 100) - amount);
+    this.store.saveCar(car);
+    this.tellAll({ t: 'car', car });
+  }
+
+  // Wear the driver's game has noticed, such as from driving off road. It can only go down.
+  carWear(client, { car: id, condition }) {
+    const car = typeof id === 'string' ? this.store.car(id) : null;
+    if (!car || car.driver !== client.id || !Number.isFinite(condition)) return { why: 'bad' };
+    if (condition < (car.condition ?? 100)) {
+      car.condition = Math.max(0, condition);
+      this.store.saveCar(car);
+      this.tellOthers(client.id, { t: 'car', car });
+    }
+    return {};
   }
 
   killMember(client, { how, by, at }) {
@@ -400,7 +429,13 @@ export class Room {
       return;
     }
     if (car.driver !== client.id) return;
-    if (client.at) Object.assign(car, client.at);
+    // The engine's off and it rolls on until it stops, in a straight line, as nobody is there to steer.
+    const last = client.track.at(-1), heading = client.heading ?? car.heading;
+    if (client.at) {
+      car.coast = { ...client.at, heading, speed: last?.speed ?? 0, at: this.now() };
+      const end = coastPlace(car.coast, this.now() + coastDistance(last?.speed ?? 0).seconds * 1000 + 1000);
+      Object.assign(car, { lat: end.lat, lng: end.lng, heading });
+    }
     car.driverLeftAt = this.now();
     this.store.saveCar(car);
     this.tellAll({ t: 'car', car });
@@ -437,7 +472,8 @@ export class Room {
       car.seats.push(client.id);
     } else {
       if (!car.runs) return { why: car.why ?? 'carBroken' };
-      Object.assign(car, { driver: client.id, driverLeftAt: null });
+      if (!drivable(car.condition)) return { why: 'carDead' };
+      Object.assign(car, { driver: client.id, driverLeftAt: null, coast: null });
     }
     this.store.saveCar(car);
     client.car = car.id;
@@ -469,6 +505,7 @@ export class Room {
     if (this.hasDriver(car)) return { why: 'carTaken' };
     if (car.wrecked) return { why: 'carWrecked' };
     if (!car.runs) return { why: car.why ?? 'carBroken' };
+    if (!drivable(car.condition)) return { why: 'carDead' };
     car.seats = car.seats.filter((seat) => seat !== client.id);
     Object.assign(car, { driver: client.id, driverLeftAt: null });
     this.store.saveCar(car);

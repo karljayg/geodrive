@@ -26,7 +26,7 @@ RSYNC=(rsync -rlt -e "ssh -i '$KEY' -o BatchMode=yes")
 '
 
 "${RSYNC[@]}" --exclude node_modules "$HERE/server/" "$HOST:/opt/geodrive/server/"
-"${RSYNC[@]}" "$HERE/public/js/protocol.js" "$HERE/public/js/gameConfig.js" "$HERE/public/js/worldOps.js" "$HERE/public/js/worldCars.js" "$HERE/public/js/road.js" "$HOST:/opt/geodrive/public/js/"
+"${RSYNC[@]}" "$HERE/public/js/protocol.js" "$HERE/public/js/gameConfig.js" "$HERE/public/js/worldOps.js" "$HERE/public/js/worldCars.js" "$HERE/public/js/road.js" "$HERE/public/js/carDamage.js" "$HERE/public/js/physics.js" "$HOST:/opt/geodrive/public/js/"
 "${RSYNC[@]}" "$HERE/scripts/geodrive.service" "$HERE/scripts/geodrive-proxy.conf" "$HOST:/tmp/"
 
 "${SSH[@]}" "$HOST" 'set -euo pipefail

@@ -6,6 +6,7 @@ import { GAME } from '../public/js/gameConfig.js';
 import { SAYINGS } from '../public/js/sayingsConfig.js';
 import { SharedCars } from '../public/js/sharedWorld.js';
 import { seatsPicture } from '../public/js/carSeats.js';
+import { carDamageAt, coastDistance, coastPlace, cutsOut, drivable, healthLossHit, healthLossInCar, offRoadSlowing, offRoadWear, powerOf, reliabilityText } from '../public/js/carDamage.js';
 import { BumpLimit, carTouchesPerson, carsTouch, closingSpeed, firstHit } from '../public/js/collide.js';
 import { metresApart } from '../public/js/protocol.js';
 
@@ -168,4 +169,53 @@ test('the seats panel shows who\'s where, and nothing can be written into it', (
   assert.ok(html.includes('data-seat="b"'));
   assert.ok(seatsPicture('#123456', [null, { id: 'b', name: 'Mo', initials: 'MO', colour: '#00ff00' }]).includes('Mo'), 'someone can be riding with nobody at the wheel');
   assert.ok(seatsPicture('#123456', [null]).includes('Nobody at the wheel'));
+});
+
+test('damage rises with speed: a little when small, a whole car at the deadly speed', () => {
+  assert.ok(carDamageAt(10) < 2);
+  assert.ok(carDamageAt(30) > 8 && carDamageAt(30) < 10);
+  assert.equal(carDamageAt(100), 100);
+  assert.equal(carDamageAt(300), 100);
+  assert.ok(healthLossInCar(30) < 10 && healthLossInCar(90) > 70 && healthLossInCar(100) < 100, 'people come off a little better than cars');
+  assert.ok(healthLossHit(25) > 20 && healthLossHit(49) > 80, 'and worse when hit on foot');
+});
+
+test('a car gets less reliable as it wears, and stops running at the end', () => {
+  assert.equal(drivable(100), true);
+  assert.equal(drivable(undefined), true, 'a car nobody has touched is fine');
+  assert.equal(drivable(11), true);
+  assert.equal(drivable(10), false);
+  assert.equal(powerOf(100), 1);
+  assert.equal(powerOf(30), 1);
+  assert.ok(powerOf(15) < 1 && powerOf(15) >= 0.4);
+  assert.equal(reliabilityText(100), 'Good');
+  assert.equal(reliabilityText(60), 'Worn');
+  assert.equal(reliabilityText(20), 'Unreliable');
+  assert.equal(reliabilityText(10), 'Won\'t run');
+  let cuts = 0;
+  for (let t = 0; t < 1000; t++) if (cutsOut(12, t / 10)) cuts++;
+  assert.ok(cuts > 0 && cuts < 500, `${cuts}`);
+  for (let t = 0; t < 1000; t++) assert.equal(cutsOut(60, t / 10), false);
+});
+
+test('off road wears a little per km and slows it', () => {
+  assert.equal(offRoadWear(1000), 2);
+  assert.equal(offRoadWear(-500), 1);
+  const after = offRoadSlowing(20, 0.1);
+  assert.ok(after < 20 && after > 19.5);
+});
+
+test('with no driver a car rolls on, slowing, and stops', () => {
+  const { seconds, metres } = coastDistance(30);
+  assert.ok(seconds > 5 && seconds < 60, `${seconds}`);
+  assert.ok(metres > 50 && metres < 500, `${metres}`);
+  const coast = { lat: 38.9, lng: -77.4, heading: 0, speed: 30, at: 1000 };
+  const start = coastPlace(coast, 1000), middle = coastPlace(coast, 1000 + (seconds * 1000) / 2), end = coastPlace(coast, 1000 + seconds * 2000);
+  assert.equal(start.lat, 38.9);
+  assert.ok(middle.lat > start.lat && end.lat > middle.lat);
+  assert.ok(middle.speed < 30 && middle.speed > 0);
+  assert.equal(end.speed, 0);
+  assert.equal(end.done, true);
+  assert.ok(Math.abs((end.lat - 38.9) * 111320 - metres) < 1);
+  assert.equal(coastPlace({ ...coast, speed: 0 }, 5000).done, true, 'not moving, it stays');
 });

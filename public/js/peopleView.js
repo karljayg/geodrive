@@ -1,6 +1,7 @@
 // Other people on the map: a model for each frame of their walk, in their colours, and a name tag. Measured on 2026-11-02 (docs/SHARED_WORLD.md): moving them costs
 // little, but the map froze for 8.8 s when 153 models went on within 5 s, and didn't when people went on about 6 s apart. So only one person's models go on at a time.
 import { buildCarGlb, buildPersonGlb } from './carModel.js';
+import { coastPlace } from './carDamage.js';
 import { FLAGS, metresApart } from './protocol.js';
 import { FRAME_COUNT, personParts } from './footPerson.js';
 import { GAME } from './gameConfig.js';
@@ -46,8 +47,8 @@ export function nameTag(maps3d, position, name) {
 
 export class PeopleView {
   // people: from world.js. glbUrl: turns a model into an address.
-  constructor({ maps3d, map, people, glbUrl, cars, mine }) {
-    Object.assign(this, { maps3d, map, people, glbUrl, cars, mine });
+  constructor({ maps3d, map, people, glbUrl, cars, mine, offset }) {
+    Object.assign(this, { maps3d, map, people, glbUrl, cars, mine, offset });
     this.carModels = new Map(); // car id: { element, tag, source key }
     this.carSources = new Map();
     this.parkedAt = -Infinity;
@@ -86,6 +87,10 @@ export class PeopleView {
     for (const member of this.people.othersOnline) this.updatePerson(member, viewer, now);
     this.addNextModel(now);
     this.updateCars(viewer, now);
+  }
+
+  clockOffset() {
+    return this.offset?.() ?? 0;
   }
 
   carsChanged() {
@@ -153,7 +158,11 @@ export class PeopleView {
         shown.element.src = this.carSource(car);
         shown.wrecked = !!car.wrecked;
       }
-      if (shown && (shown.lat !== car.lat || shown.lng !== car.lng)) this.moveCar(shown, car, viewer);
+      if (shown && car.coast) { // rolling to a stop with nobody at the wheel
+        const place = coastPlace(car.coast, Date.now() + this.clockOffset());
+        this.moveCar(shown, place, viewer);
+        if (place.done) car.coast = null;
+      } else if (shown && (shown.lat !== car.lat || shown.lng !== car.lng)) this.moveCar(shown, car, viewer);
       if (shown?.tag) {
         shown.tag.remove();
         shown.tag = null;

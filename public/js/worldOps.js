@@ -116,10 +116,10 @@ const MPH = 2.23694;
 // is all that's hurt, and the driver carries on. config: GAME.crash.
 export function crashOutcome(kind, closing, config) {
   const mph = closing * MPH;
-  if (mph < config.injuredFromMph) return { kill: [], hurt: [], wreck: [] };
-  if (kind === 'person') return mph >= config.personDeadlyMph ? { kill: ['other'], hurt: [], wreck: [] } : { kill: [], hurt: ['other'], wreck: [] };
+  if (mph < config.injuredFromMph) return { kill: [], hurt: [], wreck: [], mph };
+  if (kind === 'person') return mph >= config.personDeadlyMph ? { kill: ['other'], hurt: [], wreck: [], mph } : { kill: [], hurt: ['other'], wreck: [], mph };
   const people = kind === 'car' ? ['me', 'other'] : ['me'];
-  return mph >= config.carDeadlyMph ? { kill: people, hurt: [], wreck: ['me', 'other'] } : { kill: [], hurt: people, wreck: [] };
+  return mph >= config.carDeadlyMph ? { kill: people, hurt: [], wreck: ['me', 'other'], mph } : { kill: [], hurt: people, wreck: [], mph };
 }
 
 // Whether a report of a deadly crash holds up, from what each has said about where they were and how fast. A wrong death can't be undone, so someone's game saying so isn't enough.

@@ -154,10 +154,12 @@ kbd { display: inline-flex; min-width: 24px; justify-content: center; border: 1p
 .gauges { display: flex; gap: 4px; align-items: center; }
 .gauges canvas { width: 138px; height: 138px; display: block; }
 .revs { display: flex; flex-direction: column; align-items: center; }
-#fuel { display: flex; align-items: center; gap: 4px; width: 128px; font-size: 9px; letter-spacing: .05em; color: #9baebb; font-variant-numeric: tabular-nums; }
-#fuel i { flex: 1; height: 5px; border-radius: 3px; background: #ffffff1f; overflow: hidden; }
-#fuel b { display: block; height: 100%; width: 100%; background: #5cf0c0; }
-#fuel.low b { background: #ff5a48; }
+#fuel, #condition { display: flex; align-items: center; gap: 4px; width: 128px; font-size: 9px; letter-spacing: .05em; color: #9baebb; font-variant-numeric: tabular-nums; }
+#fuel i, #condition i { flex: 1; height: 5px; border-radius: 3px; background: #ffffff1f; overflow: hidden; }
+#fuel b, #condition b { display: block; height: 100%; width: 100%; background: #5cf0c0; }
+#fuel.low b, #condition.low b { background: #ff5a48; }
+#condition { visibility: hidden; margin-top: 2px; }
+#condition b { background: #8fc7ff; }
 .carButtons { display: grid; grid-template-rows: repeat(3, auto); grid-auto-flow: column; gap: 5px; margin-left: 4px; }
 .carButtons button { font: inherit; font-size: 11px; font-weight: 650; color: #fff; padding: 7px 8px; background: #ffffff17; border: 1px solid #ffffff24; border-radius: 7px; cursor: pointer; touch-action: none; }
 .carButtons button:hover { background: #ffffff2b; }
@@ -229,7 +231,7 @@ kbd { display: inline-flex; min-width: 24px; justify-content: center; border: 1p
 
 @media (max-width: 1080px) {
   .gauges canvas { width: 112px; height: 112px; }
-  #fuel { width: 104px; }
+  #fuel, #condition { width: 104px; }
   #dash { grid-template-columns: auto minmax(120px, 1fr) 200px; gap: 6px; }
   .trip span:nth-child(n+5) { display: none; }
   .navKeys { display: none; }
@@ -237,7 +239,7 @@ kbd { display: inline-flex; min-width: 24px; justify-content: center; border: 1p
 }
 @media (max-width: 820px) {
   .gauges canvas { width: 86px; height: 86px; }
-  #fuel { width: 80px; }
+  #fuel, #condition { width: 80px; }
   .carButtons button { padding: 5px 6px; font-size: 10px; }
   #dash { grid-template-columns: auto minmax(0, 1fr); }
   .radio { display: none; }
@@ -251,7 +253,7 @@ kbd { display: inline-flex; min-width: 24px; justify-content: center; border: 1p
   .gauges { grid-row: 1; flex-wrap: wrap; width: 180px; align-content: center; }
   .carButtons { grid-template-rows: repeat(2, auto); margin: 0; }
   .gauges canvas { width: 72px; height: 72px; }
-  #fuel { width: 72px; }
+  #fuel, #condition { width: 72px; }
   .knob { width: 28px; height: 28px; }
   .bands button { padding: 2px 3px; }
 }
