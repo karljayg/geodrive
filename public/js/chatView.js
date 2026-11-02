@@ -10,12 +10,13 @@ const PROBLEMS = {
   'too-long': `That's over ${GAME.world.chatLength} characters.`,
   'unknown-command': 'Only /w works here: /w name message',
 };
+const MOST_BUBBLES = 4;
 const ANSWERS = { offline: 'The world can\'t be reached right now.', 'too-fast': 'Slow down a little.', dead: 'They\'re dead.', unknown: 'There\'s nobody by that name.' };
 
 export class ChatView {
   // world: the shared world. sound(): the new-message sound. phoneDead(): no phone, no chat. opened(on): the line opening and closing, for letting go of the keys. onCard(thread): a card was clicked.
-  constructor({ world, line, previews, sound, phoneDead, opened, canShow }) {
-    Object.assign(this, { world, line, previews, sound, phoneDead, opened, canShow });
+  constructor({ world, line, previews, speechBox, spoke, sound, phoneDead, opened, canShow }) {
+    Object.assign(this, { world, line, previews, speechBox, spoke, sound, phoneDead, opened, canShow });
     this.cards = [];
     this.timers = new Map();
     this.input = line.querySelector('input');
@@ -40,9 +41,8 @@ export class ChatView {
     return this.world.people.others.filter((member) => member.lives > 0).map((member) => member.name);
   }
 
-  // Enter, from the game.
+  // Enter, from the game. Speaking needs no phone.
   open() {
-    if (this.phoneDead()) return false;
     this.isOpen = true;
     this.line.classList.add('open');
     this.input.value = '';
@@ -77,16 +77,48 @@ export class ChatView {
     const read = readChatLine(this.input.value, this.names(), GAME.world.chatLength);
     if (!read) return this.close();
     if (read.error) return this.tell(read.error === 'unknown-name' ? `There's nobody called ${read.name}.` : PROBLEMS[read.error]);
+    if (read.to && this.phoneDead()) return this.tell('Your phone\'s dead.');
     const to = read.to ? this.world.people.byName(read.to)?.id : null;
     const text = this.input.value;
     this.input.value = '';
-    const answer = await this.world.link.ask({ t: 'say', text: read.text, ...(to ? { to } : {}) });
+    const answer = await this.world.link.ask(to ? { t: 'say', text: read.text, to } : { t: 'speak', text: read.text });
     if (answer.why) {
       if (this.isOpen && !this.input.value) this.input.value = text; // what was typed stays
       return this.tell(ANSWERS[answer.why] ?? 'That didn\'t send.');
     }
     if (answer.offline) this.flash(`${read.to} is away, and will see it when they're back.`);
+    if (!to) {
+      this.speech(this.world.you.id, read.text);
+      if (!answer.heard) this.speechNote('Nobody\'s close enough to hear.');
+    }
     this.close();
+  }
+
+  // Said aloud, shown for a few seconds and then gone. Nothing keeps it.
+  speech(from, text) {
+    const bubble = document.createElement('div'), name = document.createElement('b'), words = document.createElement('p');
+    bubble.className = `speechBubble${from === this.world.you.id ? ' mine' : ''}`;
+    name.textContent = from === this.world.you.id ? 'You' : this.world.nameOf(from) ?? '';
+    words.textContent = text;
+    bubble.append(name, words);
+    this.showBubble(bubble, showFor(text));
+    this.spoke?.(from);
+  }
+
+  speechNote(text) {
+    const bubble = document.createElement('div');
+    bubble.className = 'speechBubble note';
+    bubble.textContent = text;
+    this.showBubble(bubble, 2500);
+  }
+
+  showBubble(bubble, ms) {
+    this.speechBox.append(bubble);
+    while (this.speechBox.childElementCount > MOST_BUBBLES) this.speechBox.firstElementChild.remove();
+    setTimeout(() => {
+      bubble.classList.add('leaving');
+      setTimeout(() => bubble.remove(), 250);
+    }, ms);
   }
 
   // One new message. It's kept whatever happens; this is only the preview, which doesn't show with the thread already open.

@@ -551,3 +551,33 @@ test('a crash takes everyone in the car with it', () => pair(async ({ create, jo
   const wreck = await until(() => { const known = a.cars.records.get(A_CAR.id); return known?.wrecked && known; }, 'the wreck');
   assert.deepEqual(wreck.seats, []);
 }));
+
+test('speech reaches those in the car or close by, and nothing keeps it', () => pair(async ({ create, join, back }) => {
+  const a = await create(), b = await join(a, 'Dana'), c = await join(a, 'Mo'), d = await join(a, 'Far'), heard = [];
+  for (const [name, w] of [['b', b], ['c', c], ['d', d]]) w.on.spoken = (m) => heard.push(`${name}:${m.text}`);
+  placeAt(a, HERE.lat, HERE.lng, 0);
+  placeAt(b, HERE.lat + 20 / 111320, HERE.lng, 0);
+  placeAt(c, HERE.lat + 25 / 111320, HERE.lng, 0);
+  placeAt(d, HERE.lat + 100 / 111320, HERE.lng, 0);
+  await new Promise((r) => setTimeout(r, 40));
+  assert.equal((await a.link.ask({ t: 'speak', text: 'over here' })).heard, 2);
+  await until(() => heard.length === 2, 'it to be heard');
+  assert.deepEqual(heard.sort(), ['b:over here', 'c:over here'], 'not by someone 100 m off');
+  heard.length = 0;
+  b.setBuilding(HANGAR);
+  await new Promise((r) => setTimeout(r, 30));
+  assert.equal((await a.link.ask({ t: 'speak', text: 'through a wall' })).heard, 1, 'someone indoors can\'t hear someone outdoors');
+  b.setBuilding(null);
+  await a.cars.getIn(A_CAR);
+  await until(() => d.cars.records.has(A_CAR.id), 'Far to hear');
+  await d.cars.getIn(d.cars.records.get(A_CAR.id));
+  heard.length = 0;
+  assert.equal((await a.link.ask({ t: 'speak', text: 'in the car' })).heard, 1, 'in a car, only the car, wherever they are');
+  await until(() => heard.length, 'Far');
+  assert.deepEqual(heard, ['d:in the car']);
+  assert.equal((await b.link.ask({ t: 'speak', text: 'knock knock' })).heard, 1, 'and someone outside hears only those outside');
+  assert.deepEqual((await b.link.ask({ t: 'speak', text: 'x'.repeat(401) })).why, 'too-long');
+  a.link.close();
+  const again = await back(a);
+  assert.equal(again.chat.messages('group').length, 0, 'and nothing was kept');
+}));

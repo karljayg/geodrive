@@ -519,3 +519,15 @@ body:not(.onFoot) #previews { bottom: auto; top: 76px; }
 #carSeats ul { margin: 0; padding: 0; list-style: none; font-size: 12px; line-height: 1.5; }
 #carSeats li small { color: #9fb0bd; }
 #carSeats .seatBadge.speaking circle { stroke: #fff; stroke-width: 2.5; }
+
+/* Said aloud: a speech bubble in the middle of the view, for a few seconds. In a car it sits above the little car, which lights up who spoke. */
+#speech { position: absolute; left: 50%; top: 14%; z-index: 4; display: flex; flex-direction: column; align-items: center; gap: 8px; width: min(440px, calc(100% - 32px)); transform: translateX(-50%); pointer-events: none; }
+.speechBubble { position: relative; max-width: 100%; padding: 8px 14px; color: #111; background: #fffffff5; border-radius: 16px; box-shadow: 0 6px 18px #0005; animation: msgIn .22s ease-out; transition: opacity .25s; }
+.speechBubble::after { content: ""; position: absolute; left: 22px; bottom: -7px; width: 14px; height: 14px; background: inherit; transform: rotate(45deg); border-radius: 2px; }
+.speechBubble b { display: block; font-size: 11px; font-weight: 700; color: #47606f; }
+.speechBubble p { margin: 0; font-size: 15px; line-height: 1.25; overflow-wrap: anywhere; }
+.speechBubble.mine { color: #fff; background: #0a84ff; }
+.speechBubble.mine b { color: #d6e9ff; }
+.speechBubble.note { padding: 5px 12px; font-size: 13px; color: #fff; background: #0d1621d9; }
+.speechBubble.note::after { display: none; }
+.speechBubble.leaving { opacity: 0; }

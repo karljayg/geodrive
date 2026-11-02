@@ -205,6 +205,7 @@ export class Room {
     if (!place) return;
     client.at = { lat: place.lat, lng: place.lng };
     client.flags = place.flags;
+    client.floor = place.floor;
     client.track.push({ at: now, lat: place.lat, lng: place.lng, speed: place.speed });
     while (client.track.length && now - client.track[0].at > TRACK_KEPT) client.track.shift();
     stampPresence(bytes, client.order);
@@ -223,7 +224,7 @@ export class Room {
     const client = connection.client;
     if (!client || !message || typeof message !== 'object') return;
     const answer = (result) => { if (message.id !== undefined) client.send({ t: result.why ? 'no' : 'ok', id: message.id, ...result }); };
-    const handler = { invite: 'makeInvite', setBackup: 'chooseBackup', say: 'say', sleep: 'sleep', save: 'savePlayer', where: 'where', area: 'area', claimPlan: 'claimPlan', claimFloor: 'claimFloor', floorOp: 'floorOp', switchesOn: 'switchesOn', dropAdd: 'dropAdd', dropTake: 'dropTake', getIn: 'getIn', getOut: 'getOut', carStore: 'carStore', plantCar: 'plantCar', bump: 'bump', crash: 'crash', slide: 'slide' }[message.t];
+    const handler = { invite: 'makeInvite', setBackup: 'chooseBackup', say: 'say', sleep: 'sleep', save: 'savePlayer', where: 'where', area: 'area', claimPlan: 'claimPlan', claimFloor: 'claimFloor', floorOp: 'floorOp', switchesOn: 'switchesOn', dropAdd: 'dropAdd', dropTake: 'dropTake', getIn: 'getIn', getOut: 'getOut', carStore: 'carStore', plantCar: 'plantCar', bump: 'bump', crash: 'crash', slide: 'slide', speak: 'speak' }[message.t];
     if (!handler) return answer({ why: 'unknown' });
     answer(this[handler](client, message) ?? {});
   }
@@ -300,6 +301,26 @@ export class Room {
     if (typeof drop !== 'string' || !this.store.takeDrop(drop)) return { why: 'gone' };
     this.tellOthers(client.id, { t: 'dropTaken', id: drop });
     return {};
+  }
+
+  // Spoken aloud: heard by those in the same car, or close by in the same place. Passed on and forgotten, with nothing saved.
+  speak(client, { text }) {
+    const now = this.now(), { chatLength, chatBurst, chatBurstSeconds, hearWithin } = this.config;
+    if (typeof text !== 'string' || !text.trim()) return { why: 'empty' };
+    if (text.length > chatLength) return { why: 'too-long' };
+    client.said = client.said.filter((at) => now - at < chatBurstSeconds * 1000);
+    if (client.said.length >= chatBurst) return { why: 'too-fast' };
+    client.said.push(now);
+    let heard = 0;
+    for (const other of this.clients.values()) {
+      if (other === client) continue;
+      const sameCar = client.car && other.car === client.car;
+      const near = client.at && other.at && metresApart(client.at, other.at) <= hearWithin && (other.building ?? null) === (client.building ?? null) && (!client.building || other.floor === client.floor);
+      if (!sameCar && (!near || client.car || other.car)) continue; // through a car's windows nobody hears
+      other.send({ t: 'spoken', from: client.id, text, inCar: !!sameCar });
+      heard++;
+    }
+    return { heard };
   }
 
   // My game saw a hit: the other game hears, so that both agree it happened and both stop.

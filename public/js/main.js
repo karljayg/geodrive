@@ -2524,7 +2524,7 @@ document.addEventListener('keydown', (e) => {
   if (lettered >= 0) { e.preventDefault(); return answer(lettered); }
   if (k === 'enter' && !e.repeat && chatView && !asking && pocket?.app !== 'call') {
     e.preventDefault();
-    if (!chatView.open()) notice('Your phone\'s dead. Charge it to talk to anyone.', 3000);
+    chatView.open();
     return;
   }
   if (k === 'l' && !e.repeat) { e.preventDefault(); return pressL(); }
@@ -2769,6 +2769,14 @@ function syncSeats() {
   box.innerHTML = seatsPicture(carColour(), people.map((id) => (id ? { id, name: world.nameOf(id) ?? '?', initials: initialsOf(world.nameOf(id) ?? '?'), colour: badgeColour(world.people.member(id) ?? {}) } : null)));
 }
 
+// Who just spoke lights up in the little car.
+function flashSeat(id) {
+  const badge = el('carSeats').querySelector(`[data-seat="${CSS.escape(id)}"]`);
+  if (!badge) return;
+  badge.classList.add('speaking');
+  setTimeout(() => badge.classList.remove('speaking'), 2500);
+}
+
 // What's sent about this person. A timer asks, as the game loop stops in a hidden tab.
 function whereIAm() {
   if (!map) return null;
@@ -2824,7 +2832,7 @@ async function startPeople() {
   const [{ PeopleView }, { ChatView }] = await Promise.all([import('./peopleView.js'), import('./chatView.js')]);
   peopleView = new PeopleView({ maps3d, map, people: world.people, glbUrl, cars: world.cars, mine: () => (foot || riding ? null : myCar?.id) });
   chatView = new ChatView({
-    world, line: el('chatLine'), previews: el('previews'), sound: () => sfx('message'), phoneDead: () => vitals.stats.phone <= 0,
+    world, line: el('chatLine'), previews: el('previews'), speechBox: el('speech'), spoke: flashSeat, sound: () => sfx('message'), phoneDead: () => vitals.stats.phone <= 0,
     opened: (on) => { if (on) { keys.clear(); jumpPressed = false; releaseMouse(); } },
     canShow: (thread) => !(pocket?.app === 'messages' && world.chat.threadWith(pocket.contact === 'group' ? null : pocket.contact) === thread),
   });
@@ -2873,6 +2881,7 @@ async function startPeople() {
     }
     notice(why === 'offline' ? 'The world can\'t be reached right now, so that didn\'t happen.' : 'Someone else got there first.', 3000);
   };
+  world.on.spoken = ({ from, text }) => chatView.speech(from, text);
   world.on.said = (line) => {
     pocket?.chatChanged();
     chatView.said(line);

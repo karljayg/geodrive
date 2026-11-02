@@ -8,7 +8,7 @@ export const GAME = {
   // Shared worlds. See docs/MODE2_DESIGN.md. clockRate: game hours per real hour, so 12 is an hour every 5 minutes.
   world: {
     clockRate: 12, playersOnline: 8, lives: 10, inviteHours: 24, appearWithin: 300, nameTagsWithin: 100, peopleShownWithin: 1500,
-    chatKept: 50, chatLength: 400, chatBurst: 5, chatBurstSeconds: 5, newWorldsPerDay: 5, allWorldsBytes: 5e9,
+    chatKept: 50, chatLength: 400, hearWithin: 30, chatBurst: 5, chatBurstSeconds: 5, newWorldsPerDay: 5, allWorldsBytes: 5e9,
   },
   clock: { onFootHoursPerMinute: 1 }, // game hours per real minute on foot: 24 minutes is a day. In the car it's always real time.
 
