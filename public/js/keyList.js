@@ -66,7 +66,7 @@ export const KEY_LIST = {
         [['B'], 'Bag, and the car\'s storage beside the car'],
       ] },
       { name: 'Phone', keys: [
-        [['1–8'], 'Open an app'],
+        [['1–9'], 'Open an app'],
         [['0'], 'Home screen (in the Phone app, numbers dial)'],
       ] },
       { name: 'Bag open', keys: [

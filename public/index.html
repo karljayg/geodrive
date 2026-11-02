@@ -24,7 +24,6 @@
     <button id="shareButton">Share <span class="keyHint">(J)</span></button>
     <button id="pauseButton"><u>P</u>ause</button>
     <button id="helpButton"><u>K</u>eys</button>
-    <button id="sendLog" title="Sends the performance log to the server for review, including where the car has been">Send log</button>
     <div class="where" id="where"></div>
   </header>
   <div id="notice"></div>
@@ -37,7 +36,7 @@
   <div id="signalRight">▶</div>
   <div id="attribution">Roads: OpenFreeMap © OpenMapTiles, © OpenStreetMap contributors · Places: Overture Maps · Terrain: Mapzen, USGS and others</div>
   <div id="touch">
-    <button data-key="a">◀</button><button data-key="w">▲</button><button data-key="s">▼</button><button data-key="d">▶</button><button data-key=" ">−</button><button data-key="z">+</button><button id="touchQ">Q</button><button id="touchE">E</button><button id="touchF">F</button><button id="touchPause">❚❚</button><button id="touchL">L</button>
+    <button data-key="a">◀</button><button data-key="w">▲</button><button data-key="s">▼</button><button data-key="d">▶</button><button data-key=" ">−</button><button data-key="z">+</button><button id="touchQ" aria-label="Signal left">↰</button><button id="touchE" aria-label="Signal right">↱</button><button id="touchF" class="word">FSD</button><button id="touchPause">❚❚</button><button id="touchL" class="word">Exit</button>
   </div>
   <div class="panel" id="help"></div>
 </div>
@@ -60,13 +59,6 @@
   <div class="centre">
     <div class="navTop">
       <span id="eta" title="Estimated arrival time, time left and miles left"></span>
-      <div class="navMetrics">
-        <div id="apiPanel" class="apiPanel" tabindex="0">
-          <span id="apiSummary" title="Hover for billed calls and the other requests this page">API 0</span>
-          <div id="apiDetail" class="apiDetail" aria-hidden="true"></div>
-        </div>
-        <span id="perf" title="Frames per second, the slowest frame in the last second, and JavaScript memory"></span>
-      </div>
       <span class="navKeys">Signal <span class="keyHint">(Q E)</span> · <u>Z</u>oom <span class="keyHint">(Space)</span> · FSD speed <span class="keyHint">(- =)</span></span>
       <button id="timeButton" title="Move the time on an hour"><u>T</u>ime +1h</button>
     </div>
@@ -156,14 +148,25 @@
     </div>
   </div>
 </div>
+<div id="confirm" role="alertdialog" aria-labelledby="confirmTitle">
+  <div class="startBox">
+    <h1 id="confirmTitle"></h1>
+    <p id="confirmText"></p>
+    <div class="row">
+      <button class="primary" id="confirmYes" type="button"><span id="confirmYesText"></span> <span class="keyHint">(Enter)</span></button>
+      <button class="quiet" id="confirmNo" type="button">Cancel <span class="keyHint">(Esc)</span></button>
+    </div>
+  </div>
+</div>
 <div id="settings" role="dialog" aria-label="Settings">
   <h2>Settings</h2>
-  <section>
+  <div id="settingsTabs" role="tablist"><button type="button" data-tab="car">Car</button><button type="button" data-tab="foot">On foot</button><button type="button" data-tab="world">World</button><button type="button" data-tab="sound">Sound</button><button type="button" data-tab="graphics">Graphics</button><button type="button" data-tab="diagnostics">Diagnostics</button></div>
+  <section data-tab="world">
     <h3>Start location</h3>
     <div id="settingsStart"></div>
     <button class="link" id="changeStart" type="button">Change start location</button>
   </section>
-  <section>
+  <section data-tab="car">
     <h3>Car</h3>
     <label for="carProfile">Car profile</label>
     <select id="carProfile" data-setting="carProfile"></select>
@@ -173,20 +176,20 @@
     <label for="carScale">Size <span data-value="carScale"></span></label>
     <input id="carScale" data-setting="carScale" type="range" min="0.3" max="5" step="0.1">
   </section>
-  <section>
+  <section data-tab="foot">
     <h3>On foot</h3>
     <label for="walkSpeed">Walking speed <span data-value="walkSpeed"></span></label>
     <input id="walkSpeed" data-setting="walkSpeed" type="range" min="1" max="15" step="0.5">
     <label for="runSpeed">Running speed (Shift) <span data-value="runSpeed"></span></label>
     <input id="runSpeed" data-setting="runSpeed" type="range" min="2" max="30" step="0.2">
   </section>
-  <section>
+  <section data-tab="world">
     <h3>Time of day</h3>
     <label for="hour">Time <span data-value="hour"></span></label>
     <input id="hour" data-setting="hour" type="range" min="0" max="24" step="0.25">
     <label class="check"><input id="headlights" data-setting="headlights" type="checkbox"> Headlights on</label>
   </section>
-  <section>
+  <section data-tab="sound">
     <h3>Sound</h3>
     <label class="check"><input id="muted" data-setting="muted" type="checkbox"> Mute all sound</label>
     <label for="engineSound">Engine sound</label>
@@ -208,7 +211,7 @@
     <label for="signalVolume">Sound effects <span data-value="signalVolume"></span></label>
     <input id="signalVolume" data-setting="signalVolume" type="range" min="0" max="1" step="0.05">
   </section>
-  <section>
+  <section data-tab="graphics">
     <h3>Graphics</h3>
     <label for="mapQuality">Map quality</label>
     <select id="mapQuality" data-setting="mapQuality"><option value="PERFORMANCE">Smoother</option><option value="FIDELITY">More detail</option></select>
@@ -218,17 +221,26 @@
     <input id="mapScale" data-setting="mapScale" type="range" min="0.5" max="1" step="0.05">
     <label class="check"><input id="mapLabels" data-setting="mapLabels" type="checkbox"> Road and place names on the map</label>
   </section>
-  <section>
+  <section data-tab="car">
     <h3>Driving</h3>
     <label class="check"><input id="roadFollow" data-setting="roadFollow" type="checkbox"> Follow the road when not steering</label>
     <button class="link" id="newTrip" type="button">Reset trip stats</button>
   </section>
-  <section>
+  <section data-tab="foot">
     <h3>Buildings</h3>
     <button class="link" id="forgetBuildings" type="button">Forget building interiors</button>
   </section>
+  <section data-tab="diagnostics">
+    <h3>Performance</h3>
+    <div id="perf" title="Frames per second, the slowest frame in the last second, and JavaScript memory"></div>
+    <h3>Calls this page</h3>
+    <div id="apiSummary"></div>
+    <div id="apiDetail"></div>
+    <h3>For the developer</h3>
+    <button class="link" id="sendLog" type="button" title="Sends the performance log to the server for review, including where the car has been">Send log</button>
+    <button class="link" id="settingsCopy" type="button">Copy settings (to make them the new-player defaults)</button>
+  </section>
   <button class="link" id="settingsReset" type="button">Reset all to defaults</button>
-  <button class="link" id="settingsCopy" type="button">Copy settings (to make them the new-player defaults)</button>
   <button class="primary wide" id="settingsDone" type="button">Done <span class="keyHint">(Esc)</span></button>
 </div>
 <div id="dest">

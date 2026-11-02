@@ -68,6 +68,7 @@ export const SAYINGS = {
   coffeeEmpty: ['The coffee machine is out of beans.', 'It gurgles, and nothing comes.', 'No coffee. A dark moment.'],
 
   // Getting around
+  driveTip: ['W drives, S brakes, A and D steer. G picks a destination, L gets out and K lists every key.'],
   stopFirst: ['Stop the car first, then press L to get out.', 'Best to stop before you get out.', 'Getting out at this speed is a bold choice. Stop first.'],
   walkUpFirst: ['Walk up to a building, or back to the car, then press L.', 'There\'s nothing to go into here. Try a building or the car.', 'L works by a building or the car. This is neither.'],
   backInCar: ['Get back in the car first.', 'That one\'s for the car. Get back in first.', 'You\'d need the car for that.'],

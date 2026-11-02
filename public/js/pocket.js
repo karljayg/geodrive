@@ -25,6 +25,7 @@ const APPS = [
   { id: 'map', label: 'Map', art: 'map' },
   { id: 'torch', label: 'Flashlight', art: 'torch' },
   { id: 'health', label: 'Health', art: 'health' },
+  { id: 'recent', label: 'Recent', art: 'recent' },
 ];
 const REFRESH = 100;       // ms between updates of the live figures
 const MAP_REFRESH = 333;   // ms, as for the nav screen
@@ -269,6 +270,12 @@ export class Pocket {
     this.mapDrawn = 0;
   }
 
+  async startOver() {
+    if (!await this.calls.confirm('Start over?', 'Every need goes back to its start, and the record of what you\'ve eaten, slept and walked is cleared.', 'Start over')) return;
+    this.calls.vitals().vitals.reset();
+    if (this.app === 'health') this.renderHealth();
+  }
+
   // --- Clicks ---------------------------------------------------------------------------------------------------
 
   onClick(e) {
@@ -277,10 +284,7 @@ export class Pocket {
     if (button.dataset.drop) return this.dropItem(button.dataset.drop, button.dataset.side);
     if ('undoDrop' in button.dataset) return this.undoDrop();
     if (button.dataset.slot) return this.pressSlot(button.dataset.slot, button.dataset.side);
-    if ('healthReset' in button.dataset) {
-      this.calls.vitals().vitals.reset();
-      return this.renderHealth();
-    }
+    if ('healthReset' in button.dataset) return this.startOver();
     const { tray, app, thread, digit, dialContact, radius } = button.dataset;
     if (tray) this.press(tray);
     else if ('close' in button.dataset) this.closePhone();
@@ -318,6 +322,7 @@ export class Pocket {
     else if (app === 'messages') this.renderMessages();
     else if (app === 'map') this.renderMap();
     else if (app === 'health') this.renderHealth();
+    else if (app === 'recent') this.renderRecent();
   }
 
   title(text, extra = '', zeroGoesHome = true) {
@@ -336,6 +341,15 @@ export class Pocket {
     this.area.innerHTML = `${this.title('Health')}<table class="healthTable"><tr><td></td><td>Now</td><td>Rate</td><td>Left</td></tr>${rows.map(row).join('')}</table>
       <p class="healthTotals">Day ${Math.floor(state.hours / 24) + 1}. Eaten ${t.food}, drinks ${t.drink}, restroom ${t.restroom}, accidents ${t.accidents}, slept ${t.sleeps} times, collapsed ${t.collapses}.</p>
       <button class="healthReset" data-health-reset>Start over</button>`;
+  }
+
+  // What the game has said, newest first, as a message on screen goes after a few seconds.
+  renderRecent() {
+    const said = this.calls.recentSaid();
+    this.recentShown = said[0];
+    this.area.innerHTML = `${this.title('Recent')}<div class="list">${said.length
+      ? said.map(({ at, text }) => `<div class="row said"><small>${esc(at)}</small><b>${esc(text)}</b></div>`).join('')
+      : '<p class="empty">Nothing yet. Messages stay here after they leave the screen.</p>'}</div>`;
   }
 
   renderHome() {
@@ -519,6 +533,7 @@ export class Pocket {
       this.root.querySelector('.trayDial .hour').style.transform = `rotate(${(at.hour % 12) * 30}deg)`;
       this.root.querySelector('.trayDial .minute').style.transform = `rotate(${(at.hour % 1) * 360}deg)`;
     }
+    if (this.app === 'recent' && this.calls.recentSaid()[0] !== this.recentShown) this.renderRecent();
     if (this.app === 'health' && now - (this.healthDrawn || 0) > 1000) {
       this.healthDrawn = now;
       this.renderHealth();

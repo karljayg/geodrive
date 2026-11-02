@@ -908,6 +908,8 @@ async function getOut() {
   perfLog.event('foot', { on: true });
   notice('WASD walks, Shift runs, Space jumps. Q and E turn the view, to see round a building.', 5000);
   el('touch').querySelector('[data-key=" "]').textContent = 'Jump';
+  el('touchF').textContent = 'Use';
+  el('touchL').textContent = 'Enter';
 }
 
 function stopFoot() {
@@ -929,6 +931,8 @@ function stopFoot() {
   el('help').classList.remove('open');
   syncLift();
   el('touch').querySelector('[data-key=" "]').textContent = '−';
+  el('touchF').textContent = 'FSD';
+  el('touchL').textContent = 'Exit';
   applySound();
   show('cam', CAMERAS[camIndex].name);
   navDrawnAt = 0;
@@ -1109,6 +1113,8 @@ async function pocketReady() {
     phoneLight: () => carryLight('phone'),
     stowed: () => { if (foot?.light === 'flash') carryLight('flash'); }, // it can't stay on in the car
     flashlightOn: () => foot?.light === 'flash',
+    recentSaid: () => recentSaid,
+    confirm: askFirst,
   });
   return pocket;
 }
@@ -1550,7 +1556,9 @@ el('changeDest').addEventListener('click', () => {
   else if (!dialogOpen) openDialog('dest');
 });
 el('changeStartHeader').addEventListener('click', () => { if (!dialogOpen) openDialog('start'); });
-el('resetButton').addEventListener('click', () => { if (!dialogOpen) reset(); });
+el('resetButton').addEventListener('click', async () => {
+  if (!dialogOpen && await askFirst('Back to start?', 'The car goes back to your start, and this begins a new trip.', 'Back to start')) reset();
+});
 
 // --- Pause ----------------------------------------------------------------------------------------------------
 
@@ -1598,7 +1606,8 @@ function setPaused(on) {
 el('pauseButton').addEventListener('click', () => setPaused(!paused));
 el('touchPause').addEventListener('click', () => setPaused(!paused));
 el('resume').addEventListener('click', () => setPaused(false));
-el('tripReset').addEventListener('click', () => {
+el('tripReset').addEventListener('click', async () => {
+  if (!await askFirst('Reset trip stats?', 'Elapsed time, miles and the other trip figures go back to zero. The car stays where it is.', 'Reset trip')) return;
   trip = newTrip();
   renderTrip();
   updateHud(0);
@@ -1750,8 +1759,8 @@ function updateApiBadge() {
   const summary = el('apiSummary');
   summary.textContent = text;
   summary.title = billed
-    ? `Billed this page: ${perfLog.totals.geocodes || 0} geocode, ${perfLog.totals.routes || 0} routes, ${perfLog.totals.elevations || 0} elevation. Hover for the list.`
-    : 'No billed calls yet this page. Hover for the list.';
+    ? `Billed this page: ${perfLog.totals.geocodes || 0} geocode, ${perfLog.totals.routes || 0} routes, ${perfLog.totals.elevations || 0} elevation.`
+    : 'No billed calls yet this page.';
 }
 
 function renderApiDetail() {
@@ -1905,13 +1914,28 @@ function previewEngine() {
   blip();
 }
 
-el('newTrip').addEventListener('click', () => { trip = newTrip(); updateHud(0); });
+el('newTrip').addEventListener('click', async () => {
+  if (!await askFirst('Reset trip stats?', 'Elapsed time, miles and the other trip figures go back to zero. The car stays where it is.', 'Reset trip')) return;
+  trip = newTrip();
+  updateHud(0);
+});
+
+// One tab of the panel at a time. Diagnostics reads its call list only when it's shown, as that list is costly to draw.
+let settingsTab = 'car';
+function showTab(name) {
+  settingsTab = name;
+  for (const section of document.querySelectorAll('#settings section')) section.hidden = section.dataset.tab !== name;
+  for (const b of el('settingsTabs').children) b.classList.toggle('on', b.dataset.tab === name);
+  if (name === 'diagnostics') renderApiDetail();
+}
+el('settingsTabs').addEventListener('click', (e) => { if (e.target.dataset.tab) showTab(e.target.dataset.tab); });
 
 function openSettings() {
   releaseMouse();
   dialogOpen = true;
   keys.clear();
   showSettings();
+  showTab(settingsTab);
   el('settings').classList.add('open');
 }
 
@@ -1921,12 +1945,14 @@ function closeSettings() {
   saveSettings();
 }
 
-el('settingsReset').addEventListener('click', () => {
+el('settingsReset').addEventListener('click', async () => {
+  if (!await askFirst('Reset all settings?', 'Every setting goes back to its default.', 'Reset all')) return;
   Object.assign(settings, DEFAULTS);
   showSettings();
   saveSettings();
 });
 el('forgetBuildings').addEventListener('click', async () => {
+  if (!await askFirst('Forget building interiors?', 'Every building you\'ve visited is furnished afresh, and whatever you took or switched there comes back as new.', 'Forget them')) return;
   const { forgetBuildings } = await import('./foot.js');
   forgetBuildings();
   notice('Buildings forgotten. They will be furnished afresh the next time you get out of the car.', 3000);
@@ -1939,7 +1965,7 @@ el('openSettings').addEventListener('click', () => {
 // Clicking anywhere outside the panel closes it; changes have already saved.
 document.addEventListener('pointerdown', (e) => {
   const panel = el('settings');
-  if (!panel.classList.contains('open') || panel.contains(e.target) || el('openSettings').contains(e.target)) return;
+  if (!panel.classList.contains('open') || panel.contains(e.target) || el('openSettings').contains(e.target) || el('confirm').contains(e.target)) return;
   closeSettings();
 }, { capture: true });
 
@@ -2050,6 +2076,30 @@ function dismissStart() {
   else el('useDefault').click();
 }
 
+// Are you sure, for what one click would otherwise lose. Resolves true for yes. Enter says yes; Escape or a click outside says no.
+let answerConfirm = null;
+function askFirst(title, text, yes) {
+  const wasOpen = dialogOpen;
+  releaseMouse();
+  dialogOpen = true;
+  keys.clear();
+  el('confirmTitle').textContent = title;
+  el('confirmText').textContent = text;
+  el('confirmYesText').textContent = yes;
+  el('confirm').classList.add('open');
+  return new Promise((resolve) => {
+    answerConfirm = (ok) => {
+      answerConfirm = null;
+      el('confirm').classList.remove('open');
+      dialogOpen = wasOpen;
+      resolve(ok);
+    };
+  });
+}
+el('confirmYes').addEventListener('click', () => answerConfirm?.(true));
+el('confirmNo').addEventListener('click', () => answerConfirm?.(false));
+el('confirm').addEventListener('click', (e) => { if (e.target === el('confirm')) answerConfirm?.(false); });
+
 // Closes the one thing on top, and says whether there was anything to close.
 function closeTop() {
   if (answerShared) { answerShared(false); return true; }
@@ -2095,6 +2145,12 @@ el('settingsCopy').addEventListener('click', async () => {
 const DRIVE_KEYS = new Set(['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', ' ', 'z', 'shift']);
 const DRIVING_ONLY = new Set(['b', 'c', 'g', 'q', 'e', 'f', 'h', 'r', 'v', '/', '\\', ',', '.', '=', '+', '-']);
 document.addEventListener('keydown', (e) => {
+  if (answerConfirm) { // nothing else while it's asking
+    if (e.key === 'Escape' || e.key === 'Enter') answerConfirm(e.key === 'Enter');
+    e.preventDefault();
+    e.stopPropagation();
+    return;
+  }
   if (e.target === el('radioList')) { // the station list: its own keys while open, and gone once a key means something else
     if (['ArrowUp', 'ArrowDown', 'Enter'].includes(e.key)) return;
     e.target.blur();
@@ -2130,6 +2186,7 @@ document.addEventListener('keydown', (e) => {
   if (foot && k === ' ') jumpPressed = true; // a quick tap can come and go between two frames
   if (foot && (k === 'q' || k === 'e')) keys.add(k);
   if (DRIVE_KEYS.has(k)) { keys.add(k); e.preventDefault(); e.stopPropagation(); }
+  if (!foot && 'wasd'.includes(k)) markDriveTipSeen();
   if (e.repeat || (foot && DRIVING_ONLY.has(k))) return;
   if (k === 'c') switchCamera();
   if (k === 'g') { e.preventDefault(); openDialog('dest'); }
@@ -2174,8 +2231,24 @@ el('asking').addEventListener('click', (e) => {
 el('touchF').addEventListener('click', () => { if (foot) pressUse(); else setFsd(!fsd); });
 el('touchL').addEventListener('click', pressL);
 
+// The first drive's tip goes once they've driven, as the first walk's goes with the walk.
+const DRIVE_TIP = 'geodrive_drive_tip_v1';
+function driveTipSeen() {
+  try { return !!localStorage.getItem(DRIVE_TIP); } catch (err) { return true; }
+}
+function markDriveTipSeen() {
+  try { localStorage.setItem(DRIVE_TIP, '1'); } catch (err) { /* it just shows again next time */ }
+}
+
+// What's been said, for the phone's Recent app, as messages go after a few seconds. Passing figures such as the time aren't kept.
+const SAID_KEPT = 40, BRIEF = 2000;
+const recentSaid = [];
 let noticeTimer = null;
 function notice(message, hideAfter = 0) {
+  if ((!hideAfter || hideAfter >= BRIEF) && recentSaid[0]?.text !== message) {
+    recentSaid.unshift({ at: clockText(settings.hour), text: message });
+    recentSaid.length = Math.min(recentSaid.length, SAID_KEPT);
+  }
   el('notice').textContent = message;
   el('notice').style.display = 'block';
   clearTimeout(noticeTimer);
@@ -2225,8 +2298,10 @@ async function boot() {
     applyDaylight();
     if (saved) {
       if (destination && !resumeRoute()) requestRoute(true);
-      notice(`${fromLink ? 'Shared drive loaded' : 'Trip restored'}${destination ? `, heading to ${destination.label}` : ''}. Use Start in the header for a new start.`, 6000);
+      notice(`${fromLink ? 'Shared drive loaded' : 'Trip restored'}${destination ? `, heading to ${destination.label}` : ''}. Use New start in the header to begin again.`, 6000);
     }
+    if (saved && trip.meters) markDriveTipSeen();
+    if (!driveTipSeen()) notice(say('driveTip'), 9000);
     window.__geodrive = Object.assign(debug, {
       foot: () => foot, settings, gearbox, saveTrip, engine, radio, map, model, ground: () => ground, match: () => match, onBridge: () => onBridge, placeCar, pressSignal,
       vitals, GAME, trip: () => trip, paused: () => paused, nav: () => ({ fsd, destination, route, routeIndex, signal, lane, laneNow }),
@@ -2240,8 +2315,6 @@ observeBrowser(perfLog);
 perfLog.event('load', { saved: !!loadSession(), version: 1 });
 updateApiBadge();
 renderApiDetail();
-el('apiPanel').addEventListener('pointerenter', renderApiDetail);
-el('apiPanel').addEventListener('focusin', renderApiDetail);
 
 // The saved or default station, ready to play at the first click or key press, as browsers require.
 radio.restore(settings.radioStation);
