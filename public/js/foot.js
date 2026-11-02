@@ -1,8 +1,7 @@
 // Walking: the person, and what they can bump into, around the parked car. Outdoors the driving map is what you see, and main.js
 // moves its camera and the person's model from here. Only a room is drawn here, because the map has no insides.
 // The data, the person and the meshes are in footData, footWalker and footScene.
-import { BuildingStore, dice, floorHeight, hashText, identify, isLocked, planLabel, typeName } from './buildings.js';
-import { BODY_SHAPES } from './carModel.js';
+import { dice, floorHeight, hashText, identify, isLocked, ownFrame, planLabel, typeName } from './buildings.js';
 import { tintAt } from './daylight.js';
 import { FootGl, bearing, lookAt, multiply, perspective, swing, translate } from './footGl.js';
 import { Place, fromLocal, parseTile, toLocal } from './footData.js';
@@ -33,7 +32,6 @@ const INDOOR_RANGE = 0.45;   // of the camera's distance outdoors, as furniture 
 export const PERSON_SIZE = 1.1; // times real size, which is hard to follow from the driving camera
 
 let gl = null, shared = null; // one context for the visit, and the meshes that never change
-let saved = null;             // the buildings this browser has been in
 let furniture = null, furnitureLoading = false, furnitureFailed = -Infinity; // the models, once fetched
 const GROUND_FLOOR = 1;
 const PICK_REPEAT = 0.16;    // s between floors while W or S is held in a lift
@@ -42,10 +40,6 @@ const PLACE_REACH = 30;      // m around a building to ask about places, which c
 const LIE_HEIGHT = 0.72;     // m of a person lying on a bed, on the mattress rather than the height of the headboard
 const TYPE_WINDOW = 1500;    // ms in which a second digit makes a two-figure floor
 
-// The button in Settings. Buildings already identified on this walk stay as they are until the next one.
-export function forgetBuildings() {
-  (saved ||= new BuildingStore()).forget();
-}
 const terrain = new Terrain(undefined, TERRAIN_ZOOM);
 const overture = new Overture();
 
@@ -55,8 +49,9 @@ function personMesh(frame) {
 }
 
 export class Foot {
-  // tiles: the RoadTiles that fetches the same map tiles for driving. view: the camera to match.
-  constructor({ canvas, origin, heading, profile, scale, tiles, view, onLocked, onLoadCar, onFound, onSlept, drops, onDropsChanged, hasKey, hasHammer, onSay, onGetIn, onOpenBag, onUsed, onSound }) {
+  // cars: those that can be walked up to, { x, y, heading, halfWidth, halfLength } in metres from the origin. tiles: the RoadTiles that fetches the same map tiles for driving. view: the camera to match.
+  constructor({ canvas, origin, heading, cars, buildings, tiles, view, onLocked, onLoadCar, onFound, onSlept, drops, onDropsChanged, hasKey, hasHammer, onSay, onGetIn, onOpenBag, onUsed, onSound }) {
+    this.saved = buildings; // the store of buildings entered, from the world
     this.hasKey = hasKey;
     this.hasHammer = hasHammer;
     this.onSay = onSay;
@@ -76,7 +71,6 @@ export class Foot {
     this.pose = null;         // sitting or lying on something
     this.light = null;        // a flashlight or phone light that's on
     this.origin = origin;
-    this.heading = heading;
     this.tiles = tiles;
     this.place = new Place(origin);
     this.tileFailed = new Map();
@@ -90,18 +84,18 @@ export class Foot {
     this.level = GROUND_FLOOR; // which floor the person is on
     this.picking = null;       // the floor being chosen in a lift
     this.world = { place: this.place, height: (x, y) => this.height(x, y), floor: (b) => this.floorOf(b) + this.rise(b) };
-    this.setCar(profile, scale);
+    this.setCars(cars);
     this.loadTilesAt(0, 0);
-    const shape = BODY_SHAPES[profile] || BODY_SHAPES.sport;
-    const spot = spawnSpot(heading, shape.w * scale, shape.l * scale, (x, y) => !this.place.footprintAt(x, y) && !this.place.inWater(x, y));
+    const [beside] = cars;
+    const spot = beside ? spawnSpot(beside.heading, beside.halfWidth, beside.halfLength, (x, y) => !this.place.footprintAt(x, y) && !this.place.inWater(x, y)) : { x: 0, y: 0 };
     this.walker = newWalker(spot.x, spot.y, (heading * Math.PI) / 180);
     gl.clearAway();
   }
 
-  // The parked car's outline, in whatever size the Settings panel has it right now.
-  setCar(profile, scale) {
-    const shape = BODY_SHAPES[profile] || BODY_SHAPES.sport;
-    this.carWalls = this.world.carWalls = carWalls(this.heading, shape.w * scale, shape.l * scale);
+  // The parked cars' outlines, in whatever size the Settings panel has them right now.
+  setCars(cars) {
+    this.cars = cars;
+    this.world.carWalls = cars.flatMap((car) => carWalls(car.heading, car.halfWidth, car.halfLength, car.x, car.y));
   }
 
   // Height above the ground under the car, or null if that tile isn't here yet.
@@ -191,7 +185,7 @@ export class Foot {
       return null;
     }
     const places = this.placesAround(building);
-    return places && identify(this.place, building, saved ||= new BuildingStore(), Date.now(), places.sure);
+    return places && identify(this.place, building, this.saved, Date.now(), places.sure);
   }
 
   // Someone a building filled in around needs to know what it is too.
@@ -239,17 +233,17 @@ export class Foot {
     }
     const id = building.buildingId;
     if (plan.floors > GROUND_FLOOR && plan.core === undefined) {
-      plan.core = coreOf(building.pieces, plan, furniture.models, dice(hashText(`${id}:core`)));
+      plan.core = coreOf(ownFrame(building.pieces, this.origin, id), plan, furniture.models, dice(hashText(`${id}:core`)));
       if (!plan.core) plan.floors = GROUND_FLOOR; // too narrow for stairs, so what can be reached is all there is
-      saved.saveIndex();
+      this.saved.saveIndex();
       if (!furnished && !plan.core) return null;
     }
     const cache = building.pieces[0].furnishing ||= new Map(), known = cache.get(this.level);
     if (known) return known;
-    let record = furnished ? upgradeFloor(saved.floor(id, this.level)) : null;
+    let record = furnished ? upgradeFloor(this.saved.floor(id, this.level)) : null;
     if (!record) {
-      record = furnished ? layoutFloor(building.pieces, plan, this.level, furniture.models, dice(hashText(`${id}:${this.level}`))) : plainFloor(plan, this.level);
-      if (furnished) saved.saveFloor(id, this.level, record); // with the building's look, which it has now if it hadn't
+      record = furnished ? layoutFloor(ownFrame(building.pieces, this.origin, id), plan, this.level, furniture.models, dice(hashText(`${id}:${this.level}`))) : plainFloor(plan, this.level);
+      if (furnished) this.saved.saveFloor(id, this.level, record); // with the building's look, which it has now if it hadn't
     }
     const furnishing = { record: withoutTaken(record, plan, this.level), furniture, level: this.level };
     cache.set(this.level, furnishing);
@@ -434,7 +428,7 @@ export class Foot {
       furnishing.record = { ...furnishing.record, items: furnishing.record.items.filter((other) => other !== gone) };
       this.room.stale = true;
     }
-    saved.saveIndex();
+    this.saved.saveIndex();
     return result.say;
   }
 
@@ -449,7 +443,7 @@ export class Foot {
     furnishing.record = pushThing(record, building.plan, this.level, entry, to);
     this.room.stale = true;
     this.onSound?.(result.sound);
-    saved.saveIndex();
+    this.saved.saveIndex();
     return result.say;
   }
 
@@ -522,7 +516,7 @@ export class Foot {
     this.room.stale = true;
     this.onUsed?.({ energy });
     this.onSound?.('wallBreak');
-    saved.saveIndex();
+    this.saved.saveIndex();
     this.onSay?.(say('wallBroken'));
     this.endBusy();
   }
@@ -724,7 +718,7 @@ export class Foot {
     const building = this.walker.inside, pieces = building.pieces, footprint = pieces.reduce((sum, p) => sum + (p.maxX - p.minX) * (p.maxY - p.minY), 0);
     const needsKey = switchNeedsKey(building.plan, footprint, building.buildingId), said = useSwitch(building.plan, this.level, needsKey, this.hasKey?.());
     this.onSound?.(needsKey && !building.plan.switchesOn ? 'locked' : 'click');
-    saved.saveIndex();
+    this.saved.saveIndex();
     return said;
   }
 
@@ -797,11 +791,11 @@ export class Foot {
   }
 
   distanceToCar() {
-    return distanceToCar(this.walker, this.carWalls);
+    return distanceToCar(this.walker, this.world.carWalls);
   }
 
   canGetIn() {
-    return !this.walker.inside && distanceToCar(this.walker, this.carWalls) <= GET_IN_REACH;
+    return !this.walker.inside && distanceToCar(this.walker, this.world.carWalls) <= GET_IN_REACH;
   }
 
   // The short line on screen: where you are, and the way back to the car, as past the view it can't be seen.
@@ -810,31 +804,38 @@ export class Foot {
       const { plan } = this.walker.inside;
       if (!plan) return 'Inside · press L to go back out';
       if (this.picking) return `Elevator · floor ${this.picking.floor} of ${plan.floors} · click a floor, or type it · L goes`;
-      const here = planLabel(plan, this.level), near = this.coreHere();
-      if (this.pose) return `${here} · press F or walk to get up`;
+      const near = this.coreHere();
+      if (this.pose) return 'Press F or walk to get up';
       const offered = this.fHint(), also = offered ? ` · ${offered}` : '';
-      if (near === 'lift') return `${here} · press L for the elevator${also}`;
+      if (near === 'lift') return `Press L for the elevator${also}`;
       if (near === 'stairs') {
-        if (this.level >= plan.floors) return `${here} · press L to go downstairs${also}`;
-        return (this.level > GROUND_FLOOR ? `${here} · L upstairs, Shift+L downstairs` : `${here} · press L to go upstairs`) + also;
+        if (this.level >= plan.floors) return `Press L to go downstairs${also}`;
+        return (this.level > GROUND_FLOOR ? 'L upstairs, Shift+L downstairs' : 'Press L to go upstairs') + also;
       }
-      if (offered) return `${here}${this.charging ? ' · charging' : ''}${also}`;
-      return this.level > GROUND_FLOOR ? `${here} · find the stairs to go down` : `${here} · press L to go back out`;
+      if (offered) return `${this.charging ? 'Charging · ' : ''}${offered}`;
+      return this.level > GROUND_FLOOR ? 'Find the stairs to go down' : 'Press L to go back out';
     }
     if (this.canGetIn()) return `Press L to get in · ${this.fHint()}`;
     const near = buildingWithin(this.walker, this.world), outside = this.fHint();
     if (!near && outside) return outside;
     if (near) return near.building.plan && isLocked(near.building.plan) ? `${typeName(near.building.plan) || 'This building'} · locked` : this.waiting ? 'Checking this building…' : 'Press L to go inside';
-    const { metres, direction } = wayToCar(this.walker);
-    return `Car ${metres} m ${direction}`;
+    const way = this.carWay();
+    return way ? `Car ${way.metres} m ${way.direction}` : '';
   }
 
+  // The way to the first car, or null with none.
   carWay() {
-    return wayToCar(this.walker);
+    return this.cars.length ? wayToCar(this.walker, this.cars[0]) : null;
   }
 
   label() {
     return this.walker.inside ? 'INSIDE' : 'ON FOOT';
+  }
+
+  // The building and floor, above the health panel. Empty outdoors.
+  placeLabel() {
+    const plan = this.walker.inside?.plan;
+    return plan ? planLabel(plan, this.level) : '';
   }
 
   stats() {

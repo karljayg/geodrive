@@ -348,3 +348,11 @@ test('outdoors F can tell a road, a named place, the land and the water apart', 
   assert.deepEqual(place.whatsAround(5, 5), { kind: 'land', name: 'grass' });
   assert.equal(place.whatsAround(100, 100).name, undefined);
 });
+
+test('a car can stand anywhere, and someone can walk with no car at all', () => {
+  const walls = carWalls(0, 1, 2, 100, 50), at = newWalker(100, 53.5, 0);
+  assert.ok(Math.abs(distanceToCar(at, walls) - 1.5) < 1e-9, 'measured to the car where it is');
+  assert.equal(distanceToCar(newWalker(0, 0, 0), []), Infinity, 'with no car, nothing is ever in reach');
+  assert.deepEqual(wayToCar(newWalker(100, 40, 0), { x: 100, y: 50 }), { metres: 10, direction: 'N' });
+  assert.deepEqual(wayToCar(newWalker(0, 10, 0)), { metres: 10, direction: 'S' }, 'and the first car is at the origin as ever');
+});

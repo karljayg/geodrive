@@ -46,7 +46,7 @@ export class Pocket {
   // radio: the car's radio, which the Music app works. calls: music(on), setRadioVolume(v), radioVolume(), muted(), onOpen(), onTyping().
   constructor(root, radio, calls) {
     Object.assign(this, { root, radio, calls });
-    this.data = new PocketData();
+    this.data = new PocketData(calls.store);
     this.app = null;       // the open app, or 'home', or null with the phone away
     this.bagOpen = false;
     this.lastUpdate = 0;
@@ -596,11 +596,12 @@ export class Pocket {
     }
     if (this.app) this.write('clock', this.root.querySelector('[data-clock]'), clockText(at.hour));
     const metres = Math.hypot(on.x, on.y), bearing = bearingToCar(on.x, on.y);
-    const carLine = metres < 3 ? 'Your car is right here' : `Car ${distanceText(metres)} ${compassName(bearing)}`;
+    const carLine = !at.parked ? '' : metres < 3 ? 'Your car is right here' : `Car ${distanceText(metres)} ${compassName(bearing)}`;
     if (this.app === 'compass') {
       this.turnCard(this.area.querySelector('[data-card]'), facing);
       const mark = this.area.querySelector('[data-car-mark]');
-      if (mark) {
+      if (mark) mark.style.display = at.parked ? '' : 'none';
+      if (mark && at.parked) {
         const turn = turnToCar(on.x, on.y, facing).toFixed(1);
         mark.style.transform = `rotate(${turn}deg)`;
         mark.firstElementChild.style.transform = `rotate(${-turn}deg)`; // the car stays upright as it goes round

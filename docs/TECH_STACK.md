@@ -51,6 +51,7 @@ Google usage and spend can only be seen in Google Cloud Console; the API key can
 | `synthEngine.js` | Synth engine: electric, option, fallback | Browser, by ear |
 | `share.js` | Share links | Yes |
 | `session.js` | Saves the trip across a refresh | Browser |
+| `world.js` | Which world this page is in, where its saves live and what it allows | Browser |
 | `radio.js` | Station search, bands, tuning, playback, holding for a scene | Parsing and holding yes, playback browser |
 | `musicConfig.js`, `music.js` | Soundtrack moods and songs; which mood, when to fade, what's next | Yes |
 | `musicPlayer.js` | Plays and crossfades the soundtrack | Browser (`public/_music.html`, not deployed) |

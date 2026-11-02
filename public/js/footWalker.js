@@ -25,9 +25,9 @@ export function newWalker(x, y, yaw) {
 }
 
 // The parked car's outline as walls, from the same half sizes the model is built with.
-export function carWalls(headingDeg, halfWidth, halfLength) {
+export function carWalls(headingDeg, halfWidth, halfLength, x = 0, y = 0) {
   const h = (headingDeg * Math.PI) / 180, fx = Math.sin(h), fy = Math.cos(h), rx = fy, ry = -fx;
-  const corner = (f, r) => ({ x: fx * f * halfLength + rx * r * halfWidth, y: fy * f * halfLength + ry * r * halfWidth });
+  const corner = (f, r) => ({ x: x + fx * f * halfLength + rx * r * halfWidth, y: y + fy * f * halfLength + ry * r * halfWidth });
   const c = [corner(1, 1), corner(-1, 1), corner(-1, -1), corner(1, -1)];
   return c.map((a, i) => ({ ax: a.x, ay: a.y, bx: c[(i + 1) % 4].x, by: c[(i + 1) % 4].y }));
 }
@@ -283,8 +283,8 @@ export function placeCamera(walker, view) {
 
 const NAMES = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
 // The way back to the car, for the label on screen.
-export function wayToCar(walker) {
-  const metres = Math.round(Math.hypot(walker.x, walker.y));
-  const bearing = (Math.atan2(-walker.x, -walker.y) * 180) / Math.PI;
+export function wayToCar(walker, car = { x: 0, y: 0 }) {
+  const dx = walker.x - car.x, dy = walker.y - car.y, metres = Math.round(Math.hypot(dx, dy));
+  const bearing = (Math.atan2(-dx, -dy) * 180) / Math.PI;
   return { metres, direction: NAMES[Math.round(((bearing + 360) % 360) / 45) % 8] };
 }

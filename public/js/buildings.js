@@ -1,7 +1,7 @@
 // What a building is: its type, how many floors, its style, and a saved record so it stays that way. Pure, tested in node.
 // Tiles have no building types, so the type comes from points of interest inside it, the land it stands on, and its size.
 // See docs/INTERIORS.md, whose tables these follow.
-import { fromLocal } from './footData.js';
+import { fromLocal, toLocal } from './footData.js';
 import { CATEGORY_TYPE } from './overture.js';
 
 const STORE = 'geodrive_rooms_v3'; // this stays v3, so what people have done survives updates; earlier ones held guessed types
@@ -179,6 +179,20 @@ export function buildingId(origin, { minX, maxX, minY, maxY }) {
   return `${Math.round(lat / ID_GRID)}_${Math.round(lng / ID_GRID)}`;
 }
 
+// A building's pieces in metres from its own id, to the millimetre. Metres from the car scale with where it's parked, and a few centimetres can tip a
+// layout, so this is what a floor is laid out from: everyone gets the same rooms from the same dice.
+export function ownFrame(pieces, origin, id) {
+  const [lat, lng] = id.split('_').map((n) => Number(n) * ID_GRID), centre = { lat, lng };
+  const own = ({ x, y }) => {
+    const here = fromLocal(origin, x, y), there = toLocal(centre, here.lat, here.lng);
+    return { x: Math.round(there.x * 1000) / 1000, y: Math.round(there.y * 1000) / 1000 };
+  };
+  return pieces.map((piece) => {
+    const rings = piece.rings.map((ring) => ({ ...ring, pts: ring.pts.map(own) })), pts = rings[0].pts;
+    return { ...piece, rings, minX: Math.min(...pts.map((p) => p.x)), maxX: Math.max(...pts.map((p) => p.x)), minY: Math.min(...pts.map((p) => p.y)), maxY: Math.max(...pts.map((p) => p.y)) };
+  });
+}
+
 // What this browser remembers about the buildings entered, so they stay as they were found. It can always be lost: the
 // same id rolls the same plan.
 export class BuildingStore {
@@ -301,5 +315,6 @@ export const floorHeight = (plan) => TYPES[plan.type].floor;
 // The line on screen: Bank · Floor 1 of 20.
 export function planLabel(plan, floor = 1) {
   const type = floor === 1 && plan.ground ? plan.ground : plan.type, ownName = plan.name && (type === (plan.ground || plan.type));
-  return `${ownName ? plan.name : TYPES[type].name} · Floor ${floor} of ${plan.floors}`;
+  const name = ownName ? plan.name : TYPES[type].name, where = `Floor ${floor} of ${plan.floors}`;
+  return name ? `${name} · ${where}` : where;
 }

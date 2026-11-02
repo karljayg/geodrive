@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { BuildingStore, dice, hashText } from '../public/js/buildings.js';
-import { Place, inRings } from '../public/js/footData.js';
+import { BuildingStore, buildingId, dice, hashText, ownFrame } from '../public/js/buildings.js';
+import { Place, fromLocal, inRings, toLocal } from '../public/js/footData.js';
 import { Mesh, clipToRect, lowWall, roomMesh } from '../public/js/footScene.js';
 import { FLOOR_VERSION, upgradeFloor, axisOf, colourFor, coreNear, coreOf, frameOf, layoutFloor, plainFloor, solidsOf, worldBearing } from '../public/js/furnish.js';
 import { ITEMS, bake, isSolid, parseFurniture, triangleCount, usedModels } from '../public/js/furniture.js';
@@ -940,4 +940,40 @@ test('homes come in different shapes, by size and chance, saved in the plan', ()
   assert.ok(kinds[14].openPlan >= 3 && kinds[14].standard >= 10, JSON.stringify(kinds[14]));
   const big = layoutFloor([rectangle(22, 14)], { type: 'home', floors: 1, style: 'modern' }, 1, models, dice(4));
   assert.ok(big.zones.filter((z) => z[0] === 'bedroom').length >= 2);
+});
+
+// Two people park in different places, so the same building reaches each of them in different metres.
+const seenFrom = (corners, origin) => piece(corners.map(({ lat, lng }) => toLocal(origin, lat, lng)));
+const FAR_SPOTS = [[0, 0], [500, -300], [-1400, 1400], [7000, 7000], [0, 40000]];
+
+test('a floor comes out the same wherever the car is parked', () => {
+  for (const [name, shape] of Object.entries(SHAPES)) {
+    const corners = shape.rings[0].pts.map(({ x, y }) => fromLocal(ORIGIN, x + 300, y - 200));
+    const layouts = FAR_SPOTS.map(([x, y]) => {
+      const origin = fromLocal(ORIGIN, x, y), seen = seenFrom(corners, origin), id = buildingId(origin, seen);
+      return { id, layout: JSON.stringify(layoutFloor(ownFrame([seen], origin, id), { type: 'office', floors: 1, style: 'modern' }, 1, models, dice(hashText(`${id}:1`)))) };
+    });
+    for (const { id, layout } of layouts) {
+      assert.equal(id, layouts[0].id, `${name} has one id`);
+      assert.equal(layout, layouts[0].layout, `${name} has one layout`);
+    }
+  }
+});
+
+test('a building has the same stairs wherever the car is parked', () => {
+  const corners = rectangle(30, 22).rings[0].pts.map(({ x, y }) => fromLocal(ORIGIN, x, y));
+  const cores = FAR_SPOTS.map(([x, y]) => {
+    const origin = fromLocal(ORIGIN, x, y), seen = seenFrom(corners, origin), id = buildingId(origin, seen);
+    return JSON.stringify(coreOf(ownFrame([seen], origin, id), { type: 'office', floors: 4, style: 'modern' }, models, dice(hashText(`${id}:core`))));
+  });
+  assert.ok(cores[0] !== 'null');
+  for (const core of cores) assert.equal(core, cores[0]);
+});
+
+test('a building in its own frame is the same shape, about its id', () => {
+  const seen = rectangle(30, 22), id = buildingId(ORIGIN, seen), [own] = ownFrame([seen], ORIGIN, id);
+  assert.ok(Math.abs(own.maxX - own.minX - 30) < 0.01 && Math.abs(own.maxY - own.minY - 22) < 0.01);
+  assert.ok(Math.abs((own.minX + own.maxX) / 2) < 2 && Math.abs((own.minY + own.maxY) / 2) < 2, 'centred within the 2 m the id is rounded to');
+  assert.deepEqual(own.rings[0].seam, seen.rings[0].seam);
+  assert.equal(seen.minX, 0, 'and the piece it came from is untouched');
 });

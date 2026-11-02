@@ -1,9 +1,8 @@
 import { BUILDING_KEY } from './footActions.js';
-import { Drops, parcelParts } from './drops.js';
+import { parcelParts } from './drops.js';
 import { GAME } from './gameConfig.js';
 import { keyListHtml } from './keyList.js';
 import { say } from './sayings.js';
-import { Vitals } from './vitals.js';
 import { newCar, stepCar } from './physics.js';
 import { distance, easeAngle, leadDistance, move } from './camera.js';
 import { FLAG_ONEWAY, RoadNet } from './road.js';
@@ -12,7 +11,7 @@ import { CAR_PROFILES, hornFor, profileFor } from './cars.js';
 import { engineFadeAt } from './engineMix.js';
 import { BODY_SHAPES, buildCarGlb, buildPersonGlb, carPicture } from './carModel.js';
 import { beamPools, brakeLit, drawDots, drawPools, tailDots, torchPools } from './headlights.js';
-import { advanceHour, clockText, darknessAt, tintAt } from './daylight.js';
+import { clockText, darknessAt, tintAt } from './daylight.js';
 import { drawGauge, drawNav, navBehind, revRange, speedRange, speedStep } from './dash.js';
 import { EngineAudio } from './engineSound.js';
 import { bagSound } from './sounds.js';
@@ -22,7 +21,7 @@ import { frequencyText, Radio } from './radio.js';
 import { chooseMusic, Scenes } from './music.js';
 import { MUSIC } from './musicConfig.js';
 import { Soundtrack } from './musicPlayer.js';
-import { clearRoute, loadRoute, loadSession, saveRoute, saveSession } from './session.js';
+import { openWorld } from './world.js';
 import { DEFAULTS, saveSettings, settings } from './settings.js';
 import { decodeShare, encodeShare, packShare, shareSummary } from './share.js';
 import { RoadTiles } from './tiles.js';
@@ -83,6 +82,7 @@ const car = newCar();
 const pos = { lat: ORIGINAL_START.lat, lng: ORIGINAL_START.lng };
 const roads = new RoadNet();
 const tiles = new RoadTiles(roads);
+const world = openWorld({ search: location.search, storage: browserStorage(), settings, saveSettings });
 let start = loadStart();
 let map = null, model = null, maps3d = null, camIndex = 0, camHeading = 0, zoom = 1, tilt = CAMERAS[0].tilt, range = CAMERAS[0].range;
 let last = 0, dialogOpen = false, pendingSnap = false, match = null, recentWays = null, onBridge = false, tilesCheckedAt = 0;
@@ -114,6 +114,13 @@ const NAV_RANGES = [800, 1500, 3000, 6000]; // m from the car to the top of the 
 const TUNE_STEP = 12; // px of knob turn per station
 const RADIO_RESEARCH = 50000; // m driven before looking for stations again
 const terrain = new Terrain();
+function browserStorage() {
+  try {
+    return localStorage;
+  } catch (err) {
+    return null;
+  }
+}
 function logStore() {
   try {
     return localStorage;
@@ -137,7 +144,7 @@ const debug = { hold: false, car, pos, keys, roads, tiles, perfLog }; // window.
 
 function loadStart() {
   try {
-    const saved = JSON.parse(localStorage.getItem(START_STORE));
+    const saved = JSON.parse((world.store ?? localStorage).getItem(START_STORE));
     if (saved && Number.isFinite(saved.lat) && Number.isFinite(saved.lng) && Number.isFinite(saved.heading) && saved.label) return saved;
   } catch (err) {
     console.warn('saved start:', err);
@@ -148,8 +155,9 @@ function loadStart() {
 function saveStart(value) {
   start = value;
   try {
-    if (value === ORIGINAL_START) localStorage.removeItem(START_STORE);
-    else localStorage.setItem(START_STORE, JSON.stringify(value));
+    const storage = world.store ?? localStorage;
+    if (value === ORIGINAL_START) storage.removeItem(START_STORE);
+    else storage.setItem(START_STORE, JSON.stringify(value));
   } catch (err) {
     console.warn('saving start:', err); // it still applies for this visit
   }
@@ -257,7 +265,7 @@ async function requestRoute(force = false) {
     if (destination) {
       useRoute(usable, 'google');
       drawRoute();
-      saveRoute(destination, usable);
+      world.trips.saveRoute(destination, usable);
     }
     return true;
   } catch (err) {
@@ -278,7 +286,7 @@ function useRoute(points, source) {
 
 // A refresh carries on with the route it had, as asking again is billed. Off that route, FSD asks for a new one as usual.
 function resumeRoute() {
-  const saved = loadRoute(destination);
+  const saved = world.trips.loadRoute(destination);
   if (!saved) return false;
   useRoute(saved, 'saved');
   routeIndex = route.locate(pos.lat, pos.lng).index;
@@ -334,7 +342,7 @@ function setFsd(on, message) {
 }
 
 function clearDestination() {
-  clearRoute();
+  world.trips.clearRoute();
   destination = null;
   route = null;
   routeIndex = null;
@@ -526,7 +534,11 @@ function updateHud(t) {
       show('road', '–');
       show('cam', foot.label());
       show('footHint', foot.hint());
-    } else show('road', onBridge ? 'ON BRIDGE' : match ? 'ON ROAD' : tiles.hasRoads(pos.lat, pos.lng) ? 'OFF ROAD' : 'LOADING ROADS');
+      show('placeLabel', foot.placeLabel());
+    } else {
+      show('road', onBridge ? 'ON BRIDGE' : match ? 'ON ROAD' : tiles.hasRoads(pos.lat, pos.lng) ? 'OFF ROAD' : 'LOADING ROADS');
+      show('placeLabel', '');
+    }
   }
 
   const blinkOn = Math.floor(t / 400) % 2 === 0;
@@ -584,12 +596,12 @@ function drawDash(t) {
     navDrawnAt = t;
     const navRoute = fsd || destination ? route : null;
     const navPos = foot ? foot.where() : pos, navHeading = foot ? foot.compass() : car.heading;
-    const now = `NOW ${clockText(settings.hour)}`;
+    const now = `NOW ${clockText(world.clock.hour)}`;
     const navKey = `${navPos.lat.toFixed(6)}|${navPos.lng.toFixed(6)}|${navHeading.toFixed(1)}|${navRadius}|${navRoute?.length}|${routeIndex}|${now}|${roads.changes}`;
     if (navKey !== navShown || navBehind(roads)) { // parked, nothing on it has changed
       navShown = navKey;
       const navBegan = performance.now();
-      navVertices = drawNav(el('navScreen'), { roads, pos: navPos, heading: navHeading, parked: foot ? pos : null, route: navRoute, routeIndex, radius: navRadius, hour: settings.hour, clock: now });
+      navVertices = drawNav(el('navScreen'), { roads, pos: navPos, heading: navHeading, parked: foot && world.rules.ownCar ? pos : null, route: navRoute, routeIndex, radius: navRadius, hour: world.clock.hour, clock: now });
       perfLog.spend('nav', performance.now() - navBegan);
     }
     show('navRangeValue', `${(navRadius / 1609.344).toFixed(1)} mi`);
@@ -597,7 +609,7 @@ function drawDash(t) {
     if (destination && route) {
       const at = routeIndex ?? 0, seconds = route.secondsToEnd[at], miles = (route.length - route.cum[at]) / 1609.344;
       const left = seconds < 3600 ? `${Math.max(1, Math.round(seconds / 60))} min` : `${Math.floor(seconds / 3600)} h ${Math.round((seconds % 3600) / 60)} min`;
-      eta = `ETA ${clockText((settings.hour + seconds / 3600) % 24)} · ${left} · ${miles.toFixed(1)} mi`;
+      eta = `ETA ${clockText((world.clock.hour + seconds / 3600) % 24)} · ${left} · ${miles.toFixed(1)} mi`;
     }
     show('eta', eta);
   }
@@ -696,20 +708,20 @@ function updateMusic() {
   darkSince = dark ? darkSince ?? now : null;
   const asked = scenes.active(now);
   if (dark && now - darkSince >= MUSIC.darkRoom.delay) asked.push(MUSIC.darkRoom.mood);
-  const { mood, holdRadio } = chooseMusic({ hour: settings.hour, scenes: asked, radio: radio.soundState(MUSIC.radioGrace * 1000), test: musicTest, blocked: !!stopped }, MUSIC);
+  const { mood, holdRadio } = chooseMusic({ hour: world.clock.hour, scenes: asked, radio: radio.soundState(MUSIC.radioGrace * 1000), test: musicTest, blocked: !!stopped }, MUSIC);
   radio.setHeld(holdRadio ? stopped || 'Stopped for now' : null, stopped ? 0 : MUSIC.radioFade, MUSIC.radioFadeIn);
   soundtrack.update(mood);
 }
 
-// Every clock reads settings.hour. Pausing or a dialog stops it, and it's saved now and then so a refresh keeps the time.
+// Every clock reads world.clock.hour. Pausing or a dialog stops it, and it's saved now and then so a refresh keeps the time.
 let clockSavedAt = 0;
 function tickClock(t, seconds) {
   if (debug.hold || dialogOpen || paused) return;
-  settings.hour = advanceHour(settings.hour, seconds, !!foot, GAME.clock.onFootHoursPerMinute);
+  world.clock.advance(seconds, !!foot, GAME.clock.onFootHoursPerMinute);
   passNeeds(t, seconds * (foot ? GAME.clock.onFootHoursPerMinute / 60 : 1 / 3600));
   if (t - clockSavedAt > 15000) {
     clockSavedAt = t;
-    saveSettings();
+    world.clock.save();
   }
 }
 
@@ -855,7 +867,7 @@ function tipAboutPushing(fromX, fromY, dt) {
 function runFoot(t, dt) {
   const began = performance.now(), live = !debug.hold && !dialogOpen && !paused;
   const fromX = foot.walker.x, fromY = foot.walker.y;
-  foot.update(live ? dt : 0, live ? footInput(dt) : {}, settings.hour);
+  foot.update(live ? dt : 0, live ? footInput(dt) : {}, world.clock.hour);
   if (live) tipAboutPushing(fromX, fromY, dt);
   syncFootScene(dt);
   // The radio, road and wind stay in the car, though the phone can play music. The engine idles on, fading with distance.
@@ -864,6 +876,10 @@ function runFoot(t, dt) {
   perfLog.spend('drive', performance.now() - began);
   if (!live) return;
   noteWalk(dt);
+  if (!world.rules.ownCar && t - savedAt > SAVE_EVERY) { // the person is all there is to bring back
+    savedAt = t;
+    saveTrip();
+  }
   if (radio.on) refreshStations();
   syncLift();
   checkAsking();
@@ -873,7 +889,7 @@ function runFoot(t, dt) {
     notice(say('lightsAreOff'), 5000);
   }
   const walker = foot.walker;
-  pocket.update(t, { x: walker.x, y: walker.y, facing: foot.compass(), where: foot.where() }, { roads, tiles, parked: pos, hour: settings.hour });
+  pocket.update(t, { x: walker.x, y: walker.y, facing: foot.compass(), where: foot.where() }, { roads, tiles, parked: world.rules.ownCar ? pos : null, hour: world.clock.hour });
   if (t - tilesCheckedAt > 1000) {
     tilesCheckedAt = t;
     const at = foot.where();
@@ -913,12 +929,25 @@ async function getOut() {
   if (!map || foot || footLoading) return;
   if (Math.abs(car.speed) * MPS_TO_MPH >= STOPPED_MPH) return notice(say('stopFirst'), 2500);
   if (onBridge) return notice('There is nothing to stand on here. Get off the bridge first.', 3000);
+  await startWalking();
+}
+
+// The cars someone on foot can walk up to, in metres from where they began. A world without an own car has none yet.
+function footCars() {
+  if (!world.rules.ownCar) return [];
+  const shape = BODY_SHAPES[settings.carProfile] || BODY_SHAPES.sport;
+  return [{ x: 0, y: 0, heading: car.heading, halfWidth: shape.w * settings.carScale, halfLength: shape.l * settings.carScale }];
+}
+
+// On foot from wherever the car is, or from the start in a world where nobody has a car.
+async function startWalking() {
   footLoading = true;
   try {
+    const buildings = await world.openBuildings();
     const { Foot, PERSON_SIZE: personSize } = await import('./foot.js'); // only those who walk load any of this
     await makePeople();
     (await pocketReady()).close();
-    foot = new Foot({ onGetIn: () => stopFoot(), onOpenBag: () => { if (!pocket.bagOpen) pocket.toggleBag(); }, drops, onDropsChanged: () => { dropsSyncedAt = -Infinity; }, onSound: sfx, onUsed: (effect, count) => { vitals.apply(effect, count); }, hasKey: () => pocket.data.bagHas(BUILDING_KEY), hasHammer: () => pocket.data.bagHas(GAME.hammer.item), onSay: (text) => notice(text, 3000), onLocked: showLocked, onLoadCar: loadCar, onFound: (name) => pocket.collect(name), onSlept: sleepUntilMorning, canvas: el('foot'), origin: { lat: pos.lat, lng: pos.lng }, heading: car.heading, profile: settings.carProfile, scale: settings.carScale, tiles, view: { tilt: CAMERAS[0].tilt, range: CAMERAS[0].range * FOOT_RANGE_SHARE, fov: FOV_Y, below: CAR_BELOW_CENTRE } });
+    foot = new Foot({ onGetIn: () => stopFoot(), onOpenBag: () => { if (!pocket.bagOpen) pocket.toggleBag(); }, drops, onDropsChanged: () => { dropsSyncedAt = -Infinity; }, onSound: sfx, onUsed: (effect, count) => { vitals.apply(effect, count); }, hasKey: () => pocket.data.bagHas(BUILDING_KEY), hasHammer: () => pocket.data.bagHas(GAME.hammer.item), onSay: (text) => notice(text, 3000), onLocked: showLocked, onLoadCar: loadCar, onFound: (name) => pocket.collect(name), onSlept: sleepUntilMorning, canvas: el('foot'), origin: { lat: pos.lat, lng: pos.lng }, heading: car.heading, cars: footCars(), buildings, tiles, view: { tilt: CAMERAS[0].tilt, range: CAMERAS[0].range * FOOT_RANGE_SHARE, fov: FOV_Y, below: CAR_BELOW_CENTRE } });
     showPerson(personSize);
   } catch (err) {
     console.warn('getting out:', err);
@@ -941,7 +970,7 @@ async function getOut() {
   lightKey = '';
   document.body.classList.add('onFoot');
   el('help').classList.remove('open');
-  sfx('carDoor');
+  if (world.rules.ownCar) sfx('carDoor');
   applySound();
   mapBox = null;
   navDrawnAt = 0;
@@ -1107,7 +1136,7 @@ function checkAsking() {
 
 // --- Things left behind ----------------------------------------------------------------------------------------
 
-const drops = new Drops();
+const drops = world.drops;
 const dropModels = new Map(); // id: { element, real }, for outdoor ones near enough to show
 const dropPictures = new Map(); // name: the model's address, once made from the real thing
 let dropsSyncedAt = -Infinity;
@@ -1154,6 +1183,7 @@ async function pocketReady() {
   if (pocket) return pocket;
   const { Pocket } = await import('./pocket.js');
   pocket ||= new Pocket(el('pockets'), radio, {
+    store: world.store,
     music: (on) => {
       engine.start();
       applySound();
@@ -1222,11 +1252,11 @@ async function openStorage() {
 
 // A bed: time passes asleep and says how long.
 function sleepUntilMorning() {
-  const hours = vitals.sleepHours(settings.hour);
+  const hours = vitals.sleepHours(world.clock.hour);
   sayEvents(vitals.sleep(hours));
-  settings.hour = (settings.hour + hours) % 24;
+  world.clock.skip(hours);
   applyDaylight();
-  saveSettings();
+  world.clock.save();
   vitals.save();
   perfLog.event('vital', { sleep: hours });
   return say('slept', { hours: Math.round(hours) });
@@ -1234,7 +1264,7 @@ function sleepUntilMorning() {
 
 // --- The clock and the person's needs -------------------------------------------------------------------------
 
-const vitals = new Vitals();
+const vitals = world.vitals;
 let vitalsSavedAt = 0, vitalsDrawnAt = 0;
 
 function doingNow() {
@@ -1292,7 +1322,7 @@ const tipFor = (name) => (name === 'health' ? GAME.health : GAME.stats[name]).ti
 
 function collapseNow() {
   const { hours, say, events } = vitals.collapse();
-  settings.hour = (settings.hour + hours) % 24;
+  world.clock.skip(hours);
   if (foot?.light) foot.toggleLight(foot.light);
   lightKey = '';
   applyDaylight();
@@ -1407,10 +1437,10 @@ async function placeCar(where) {
 
 // --- Saved trip -----------------------------------------------------------------------------------------------
 
-const tripState = () => ({ pos, heading: car.heading, zoom, camIndex, destination, fsd, fsdBoost, trip, lane, navRadius, label: startLabel, place: placeKnown });
+const tripState = () => ({ pos: foot && !world.rules.ownCar ? foot.where() : pos, heading: car.heading, zoom, camIndex, destination, fsd, fsdBoost, trip, lane, navRadius, label: startLabel, place: placeKnown });
 
 function saveTrip() {
-  saveSession({
+  world.trips.save({
     ...tripState(),
   });
 }
@@ -1445,7 +1475,7 @@ async function restoreTrip(saved) {
 
 // Copies a link to this drive and these settings. Everything is in the link's # part, which browsers don't send to servers.
 async function shareDrive() {
-  if (!map) return;
+  if (!map || !world.rules.share) return;
   const code = await encodeShare(packShare({ settings, defaults: DEFAULTS, session: tripState(), start, defaultStart: ORIGINAL_START }));
   const link = `${location.origin}${location.pathname}#d=${code}`;
   debug.lastShare = link;
@@ -1488,6 +1518,7 @@ el('shared').addEventListener('click', (e) => { if (e.target === el('shared')) a
 // An accepted link replaces this browser's settings and trip. The link is taken out of the address bar either way,
 // so a refresh carries on from the saved copy rather than asking again.
 async function openSharedLink() {
+  if (!world.rules.share) return false;
   const code = location.hash.match(/^#d=([\w-]+)/)?.[1];
   if (!code) return false;
   history.replaceState(null, '', location.pathname + location.search);
@@ -1505,7 +1536,7 @@ async function openSharedLink() {
   Object.assign(settings, DEFAULTS, shared.settings);
   saveSettings();
   if (shared.start) saveStart(shared.start);
-  saveSession(shared.session);
+  world.trips.save(shared.session);
   radio.restore(settings.radioStation);
   applySound();
   renderRadio();
@@ -1603,6 +1634,7 @@ el('startForm').addEventListener('submit', async (e) => {
   }
 });
 el('changeStart').addEventListener('click', () => {
+  if (!world.rules.changeStart) return;
   closeSettings();
   openDialog('start');
 });
@@ -1640,8 +1672,9 @@ el('changeDest').addEventListener('click', () => {
   if (foot) notice(say('backInCar'), 2500);
   else if (!dialogOpen) openDialog('dest');
 });
-el('changeStartHeader').addEventListener('click', () => { if (!dialogOpen) openDialog('start'); });
+el('changeStartHeader').addEventListener('click', () => { if (!dialogOpen && world.rules.changeStart) openDialog('start'); });
 el('resetButton').addEventListener('click', async () => {
+  if (!world.rules.changeStart) return;
   if (!dialogOpen && await askFirst('Back to start?', 'The car goes back to your start, and this begins a new trip.', 'Back to start')) reset();
 });
 
@@ -1657,12 +1690,12 @@ const hoursText = (hours) => (hours === null ? '' : hours >= 48 ? `${Math.round(
 // The person rather than the car: their needs, the most urgent first with what to do about them, how far they've walked, and the way back.
 function renderFootPause() {
   const rows = vitals.needRows(VITAL_ROWS, vitals.rates(doingNow())), now = walkFigures(walk), all = walkFigures(vitals.state.walked), t = vitals.state.totals;
-  const { metres, direction } = foot.carWay();
-  el('pauseTitle').innerHTML = `Paused · On foot <small>Day ${Math.floor(vitals.state.hours / 24) + 1}, ${clockText(settings.hour)}</small>`;
+  const way = foot.carWay();
+  el('pauseTitle').innerHTML = `Paused · On foot <small>Day ${Math.floor(vitals.state.hours / 24) + 1}, ${clockText(world.clock.hour)}</small>`;
   el('footStats').innerHTML = `<h2>Needs</h2>${rows.map(({ label, value, level, hoursLeft, tip }) => `<div class="pauseNeed ${level}"><span>${label}</span><i><b style="width:${value}%"></b></i><span>${value}%</span><span>${hoursText(hoursLeft)}</span>${level === 'good' ? '' : `<small>${tip}</small>`}</div>`).join('')}
     <div class="pauseWalks">${[['This walk', now], ['All walks', all]].map(([name, f]) => `<dl><h2>${name}</h2><div><dt>Distance</dt><dd>${f.distance}</dd></div><div><dt>Time</dt><dd>${f.time}</dd></div><div><dt>Running</dt><dd>${f.running}</dd></div><div><dt>Buildings</dt><dd>${f.buildings}</dd></div><div><dt>Floors</dt><dd>${f.floors}</dd></div></dl>`).join('')}</div>
     <p class="pauseTotals">Eaten ${t.food}, drinks ${t.drink}, restroom ${t.restroom}, slept ${t.sleeps}, accidents ${t.accidents}, collapsed ${t.collapses}.</p>
-    <p class="pauseWhere"><b>Car</b> ${metres < 3 ? 'right here' : `${metres} m ${direction}`} · <b>Bag</b> ${pocket?.bagText() ?? ''}</p>`;
+    <p class="pauseWhere">${way ? `<b>Car</b> ${way.metres < 3 ? 'right here' : `${way.metres} m ${way.direction}`} · ` : ''}<b>Bag</b> ${pocket?.bagText() ?? ''}</p>`;
 }
 
 function setPaused(on) {
@@ -1737,19 +1770,19 @@ function parkedCarView({ x, y }, width, height, angle) {
 }
 
 function applyDaylight() {
-  const indoors = !!foot?.walker.inside, carried = (!indoors && foot?.light) || null, dark = darknessAt(settings.hour); // nobody at the wheel on foot, and the beams sit where the car does on screen
+  const indoors = !!foot?.walker.inside, carried = (!indoors && foot?.light) || null, dark = darknessAt(world.clock.hour); // nobody at the wheel on foot, and the beams sit where the car does on screen
   mapBox ||= { width: el('map').clientWidth, height: el('map').clientHeight }; // asking every frame would force a layout
   const { width, height } = mapBox;
   const carAngle = ((car.heading - camHeading + 540) % 360) - 180;
   const perMetre = height / (2 * Math.tan(rad(FOV_Y / 2)) * Math.max(range, 1)), foreshorten = Math.cos(rad(tilt));
   // The car's lights stay on when someone gets out, and on foot the car is wherever it was left, which is the middle of the walker's own map.
-  const carView = foot && !indoors ? parkedCarView(foot.walker, width, height, carAngle) : { x: width / 2, y: height * (0.5 + CAR_BELOW_CENTRE / 2), perMetre, foreshorten, angle: carAngle };
+  const carView = foot && !indoors ? (world.rules.ownCar ? parkedCarView(foot.walker, width, height, carAngle) : null) : { x: width / 2, y: height * (0.5 + CAR_BELOW_CENTRE / 2), perMetre, foreshorten, angle: carAngle };
   const lit = settings.headlights && !indoors && !!carView;
   const shownBraking = braking && !foot;
   const personAngle = carried ? ((foot.posture().facing - camHeading + 540) % 360) - 180 : 0;
   // Only the headlights and brake lights depend on the view, so with neither on nothing redraws while driving.
   const moving = lit || shownBraking || carried ? `${Math.round(range / 2)}|${Math.round(tilt)}|${Math.round(carAngle * 2)}|${Math.round(personAngle * 2)}|${Math.round(carView?.x ?? 0)}|${Math.round(carView?.y ?? 0)}` : '';
-  const key = `${indoors}|${carried}|${clockText(settings.hour)}|${lit}|${shownBraking}|${settings.carScale}|${settings.carProfile}|${width}x${height}|${moving}`;
+  const key = `${indoors}|${carried}|${clockText(world.clock.hour)}|${lit}|${shownBraking}|${settings.carScale}|${settings.carProfile}|${width}x${height}|${moving}`;
   if (key === lightKey) return;
   lightKey = key;
   el('lightsButton').setAttribute('aria-pressed', String(settings.headlights));
@@ -1766,7 +1799,7 @@ function applyDaylight() {
   const pools = beamPools(length, carWidth, !!foot);
   const tint = night.getContext('2d');
   tint.globalCompositeOperation = 'source-over';
-  tint.fillStyle = `rgb(${tintAt(settings.hour).join(',')})`;
+  tint.fillStyle = `rgb(${tintAt(world.clock.hour).join(',')})`;
   tint.fillRect(0, 0, width, height);
   const light = beam.getContext('2d');
   light.clearRect(0, 0, width, height);
@@ -1886,8 +1919,8 @@ function sampleLog(t) {
     cam: camIndex,
     fsd: fsd ? 1 : 0,
     lights: settings.headlights ? 1 : 0,
-    dark: darknessAt(settings.hour),
-    hour: settings.hour,
+    dark: darknessAt(world.clock.hour),
+    hour: world.clock.hour,
     ...Object.fromEntries(VITAL_ROWS.map((name) => [name, vitals.stats[name]])),
   });
 }
@@ -1958,7 +1991,7 @@ function showSettings() {
   applyGraphics();
   el('settingsStart').textContent = startLabel || start.label;
   if (model) model.scale = settings.carScale; // fixed in world units, so the car shrinks with the map when zooming out
-  foot?.setCar(settings.carProfile, settings.carScale);
+  foot?.setCars(footCars());
   applySound();
   showMusicNow();
 }
@@ -2048,9 +2081,9 @@ el('settingsReset').addEventListener('click', async () => {
   saveSettings();
 });
 el('forgetBuildings').addEventListener('click', async () => {
+  if (!world.rules.forgetBuildings) return;
   if (!await askFirst('Forget building interiors?', 'Every building you\'ve visited is furnished afresh, and whatever you took or switched there comes back as new.', 'Forget them')) return;
-  const { forgetBuildings } = await import('./foot.js');
-  forgetBuildings();
+  (await world.openBuildings()).forget(); // those already identified on this walk stay as they are until the next one
   notice('Buildings forgotten. They will be furnished afresh the next time you get out of the car.', 3000);
 });
 el('settingsDone').addEventListener('click', closeSettings);
@@ -2123,10 +2156,11 @@ function openStations() {
   try { list.showPicker(); } catch (err) { /* older browsers: arrow keys still choose from the focused list */ }
 }
 function addHour() {
-  settings.hour = (settings.hour + 1) % 24;
+  if (!world.rules.skipTime) return;
+  world.clock.skip(1);
   applyDaylight();
-  saveSettings();
-  notice(clockText(settings.hour), 1500);
+  world.clock.save();
+  notice(clockText(world.clock.hour), 1500);
 }
 function toggleMute() {
   settings.muted = !settings.muted;
@@ -2379,7 +2413,7 @@ const recentSaid = [];
 let noticeTimer = null;
 function notice(message, hideAfter = 0) {
   if ((!hideAfter || hideAfter >= BRIEF) && recentSaid[0]?.text !== message) {
-    recentSaid.unshift({ at: clockText(settings.hour), text: message });
+    recentSaid.unshift({ at: clockText(world.clock.hour), text: message });
     recentSaid.length = Math.min(recentSaid.length, SAID_KEPT);
   }
   el('notice').textContent = message;
@@ -2414,7 +2448,7 @@ async function boot() {
     geocoder = new (await google.maps.importLibrary('geocoding')).Geocoder();
     routesLib = await google.maps.importLibrary('routes');
     const fromLink = await openSharedLink();
-    const saved = loadSession();
+    const saved = world.trips.load();
     if (saved) await restoreTrip(saved);
     else await openDialog('start'); // the map itself loads only once the start is chosen
     // Accepting was the click browsers require, so a shared drive's radio can start straight away.
@@ -2422,7 +2456,7 @@ async function boot() {
     map = new maps3d.Map3DElement({ center: { ...pos, altitude: ground }, heading: car.heading, tilt, range, fov: FOV_Y, mode: 'HYBRID', defaultUIHidden: true });
     applyGraphics();
     el('map').replaceChildren(map);
-    if (maps3d.Model3DElement) {
+    if (maps3d.Model3DElement && world.rules.ownCar) {
       model = new maps3d.Model3DElement({ position: { ...pos, altitude: 0 }, altitudeMode: 'RELATIVE_TO_GROUND', orientation: { heading: car.heading, tilt: 0, roll: 0 }, scale: settings.carScale });
       map.append(model);
     }
@@ -2434,18 +2468,30 @@ async function boot() {
       notice(`${fromLink ? 'Shared drive loaded' : 'Trip restored'}${destination ? `, heading to ${destination.label}` : ''}. Use New start in the header to begin again.`, 6000);
     }
     if (saved && trip.meters) markDriveTipSeen();
-    if (!driveTipSeen()) notice(say('driveTip'), 9000);
+    if (!driveTipSeen() && world.rules.ownCar) notice(say('driveTip'), 9000);
     window.__geodrive = Object.assign(debug, {
       foot: () => foot, settings, gearbox, saveTrip, engine, radio, map, model, ground: () => ground, match: () => match, onBridge: () => onBridge, placeCar, pressSignal,
-      vitals, GAME, trip: () => trip, paused: () => paused, nav: () => ({ fsd, destination, route, routeIndex, signal, lane, laneNow }),
+      vitals, GAME, world, trip: () => trip, paused: () => paused, nav: () => ({ fsd, destination, route, routeIndex, signal, lane, laneNow }),
+      crowdTest: async (options) => (await import('./crowdTest.js')).runCrowdTest({ maps3d, map, at: foot ? foot.where() : pos, glbUrl, log: perfLog, ...options }),
     });
+    if (world.rules.startsOnFoot) await startWalking();
   } catch (err) {
     notice('Could not load the map: ' + err.message);
   }
 }
 
+// What this world doesn't allow isn't offered. The sandbox allows it all, so nothing changes there.
+function applyRules() {
+  const { rules } = world, hide = (...elements) => { for (const element of elements) if (element) element.style.display = 'none'; };
+  if (!rules.changeStart) hide(el('changeStartHeader'), el('resetButton'), el('changeStart'));
+  if (!rules.share) hide(el('shareButton'));
+  if (!rules.skipTime) hide(el('timeButton'), el('hour'), document.querySelector('label[for="hour"]'));
+  if (!rules.forgetBuildings) hide(el('forgetBuildings'));
+}
+applyRules();
+
 observeBrowser(perfLog);
-perfLog.event('load', { saved: !!loadSession(), version: 1 });
+perfLog.event('load', { saved: !!world.trips.load(), version: 1 });
 updateApiBadge();
 renderApiDetail();
 

@@ -1,27 +1,7 @@
-// The current trip, kept in this browser's localStorage so a refresh carries on where it left off.
+// The current trip and its route, kept in this browser so a refresh carries on where it left off. Each world has its own (world.js).
+// The route's source line is kept apart from the trip because it's large and only changes when a new route comes, so a refresh can
+// rebuild it instead of paying for it again. As whole numbers, each the change from the last point.
 const STORE = 'geodrive_session_v1';
-
-export function saveSession(state) {
-  try {
-    localStorage.setItem(STORE, JSON.stringify(state));
-  } catch (err) {
-    console.warn('saving trip:', err);
-  }
-}
-
-// The saved trip, or null if there isn't a usable one.
-export function loadSession() {
-  try {
-    const s = JSON.parse(localStorage.getItem(STORE));
-    return s && Number.isFinite(s.pos?.lat) && Number.isFinite(s.pos?.lng) && Number.isFinite(s.heading) ? s : null;
-  } catch (err) {
-    console.warn('saved trip:', err);
-    return null;
-  }
-}
-
-// The route's source line, kept apart from the trip because it's large and only changes when a new route comes,
-// so a refresh can rebuild it instead of paying for it again. As whole numbers, each the change from the last point.
 const ROUTE_STORE = 'geodrive_route_v1';
 const NO_CRUISE = -1;
 
@@ -46,31 +26,61 @@ export function unpackRoute(text) {
   return points;
 }
 
-export function saveRoute(destination, points) {
-  try {
-    localStorage.setItem(ROUTE_STORE, JSON.stringify({ lat: destination.lat, lng: destination.lng, line: packRoute(points) }));
-  } catch (err) {
-    console.warn('saving route:', err); // a refresh will ask for it again instead
+export class TripStore {
+  // storage: where to keep them, or localStorage if not given, looked up each time as a blocked one throws.
+  constructor(storage) {
+    this.given = storage;
   }
-}
 
-// The saved line, if it's for this destination.
-export function loadRoute(destination) {
-  try {
-    const saved = JSON.parse(localStorage.getItem(ROUTE_STORE));
-    if (!saved || saved.lat !== destination.lat || saved.lng !== destination.lng) return null;
-    const points = unpackRoute(saved.line);
-    return points.length > 1 && points.every((p) => Number.isFinite(p.lat) && Number.isFinite(p.lng)) ? points : null;
-  } catch (err) {
-    console.warn('saved route:', err);
-    return null;
+  get storage() {
+    return this.given ?? localStorage;
   }
-}
 
-export function clearRoute() {
-  try {
-    localStorage.removeItem(ROUTE_STORE);
-  } catch (err) {
-    console.warn('clearing route:', err);
+  save(state) {
+    try {
+      this.storage.setItem(STORE, JSON.stringify(state));
+    } catch (err) {
+      console.warn('saving trip:', err);
+    }
+  }
+
+  // The saved trip, or null if there isn't a usable one.
+  load() {
+    try {
+      const s = JSON.parse(this.storage.getItem(STORE));
+      return s && Number.isFinite(s.pos?.lat) && Number.isFinite(s.pos?.lng) && Number.isFinite(s.heading) ? s : null;
+    } catch (err) {
+      console.warn('saved trip:', err);
+      return null;
+    }
+  }
+
+  saveRoute(destination, points) {
+    try {
+      this.storage.setItem(ROUTE_STORE, JSON.stringify({ lat: destination.lat, lng: destination.lng, line: packRoute(points) }));
+    } catch (err) {
+      console.warn('saving route:', err); // a refresh will ask for it again instead
+    }
+  }
+
+  // The saved line, if it's for this destination.
+  loadRoute(destination) {
+    try {
+      const saved = JSON.parse(this.storage.getItem(ROUTE_STORE));
+      if (!saved || saved.lat !== destination.lat || saved.lng !== destination.lng) return null;
+      const points = unpackRoute(saved.line);
+      return points.length > 1 && points.every((p) => Number.isFinite(p.lat) && Number.isFinite(p.lng)) ? points : null;
+    } catch (err) {
+      console.warn('saved route:', err);
+      return null;
+    }
+  }
+
+  clearRoute() {
+    try {
+      this.storage.removeItem(ROUTE_STORE);
+    } catch (err) {
+      console.warn('clearing route:', err);
+    }
   }
 }
