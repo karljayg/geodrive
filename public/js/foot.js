@@ -7,7 +7,7 @@ import { tintAt } from './daylight.js';
 import { FootGl, bearing, lookAt, multiply, perspective, swing, translate } from './footGl.js';
 import { Place, fromLocal, parseTile, toLocal } from './footData.js';
 import { SIT_FRAME, personFloats } from './footPerson.js';
-import { SWITCH_REACH, outletSpots, switchNeedsKey, switchSpots, useSwitch, poseSpot, modelNamed, questionsFor, thingsNear, uniqueChoices, useThing, withoutTaken } from './footActions.js';
+import { SWITCH_REACH, outletSpots, switchNeedsKey, switchSpots, useSwitch, poseSpot, coreQuestions, modelNamed, questionsFor, thingsNear, uniqueChoices, useThing, withoutTaken } from './footActions.js';
 import { CORE_SCHEME, roomMesh } from './footScene.js';
 import { FURNISHED, colourFor, coreNear, coreOf, frameOf as buildingFrame, layoutFloor, plainFloor, solidsOf, upgradeFloor, worldBearing } from './furnish.js';
 import { parseFurniture } from './furniture.js';
@@ -349,6 +349,7 @@ export class Foot {
     const list = this.dropsInReach().map((drop) => ({ label: `Pick up the ${drop.name.toLowerCase()}?`, run: () => this.pickUpDrop(drop) }));
     if (this.canGetIn()) list.unshift({ label: 'Load into car?', html: '<u>L</u>oad into car?', key: 'l', run: () => this.onLoadCar?.() });
     if (!building?.plan || !record || !furniture) return uniqueChoices(list);
+    for (const { label, down } of coreQuestions(this.coreHere(), this.level, building.plan.floors, GROUND_FLOOR)) list.push({ label, run: () => { this.pressBuilding(down); return ''; } });
     if (this.switchHere()) list.push({ label: this.roomLightsOn() ? 'Turn off the lights?' : 'Turn on the lights?', run: () => this.useLightSwitch() });
     if (this.outletHere()) list.push({ label: this.charging ? 'Unplug?' : 'Plug in here?', run: () => this.useOutlet() });
     const near = thingsNear(record, buildingFrame(building.pieces, record.axis), furniture.models, this.walker.x, this.walker.y, this.walker.facing);
@@ -655,11 +656,11 @@ export class Foot {
     if (this.walker.inside) {
       const { plan } = this.walker.inside;
       if (!plan) return 'Inside · press L to go back out';
-      if (this.picking) return `Lift · floor ${this.picking.floor} of ${plan.floors} · click a floor, or type it · L goes`;
+      if (this.picking) return `Elevator · floor ${this.picking.floor} of ${plan.floors} · click a floor, or type it · L goes`;
       const here = planLabel(plan, this.level), near = this.coreHere();
       if (this.pose) return `${here} · press F or walk to get up`;
       const offered = this.fHint(), also = offered ? ` · ${offered}` : '';
-      if (near === 'lift') return `${here} · press L for the lift${also}`;
+      if (near === 'lift') return `${here} · press L for the elevator${also}`;
       if (near === 'stairs') {
         if (this.level >= plan.floors) return `${here} · press L to go downstairs${also}`;
         return (this.level > GROUND_FLOOR ? `${here} · L upstairs, Shift+L downstairs` : `${here} · press L to go upstairs`) + also;

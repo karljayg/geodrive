@@ -153,6 +153,16 @@ export function questionsFor(entry) {
   });
 }
 
+// What F offers at stairs or an elevator, as L does. down says which way to press it. near: 'lift' or 'stairs', from coreNear.
+export function coreQuestions(near, level, floors, groundFloor) {
+  if (near === 'lift') return [{ label: 'Take the elevator?', down: false }];
+  if (near !== 'stairs') return [];
+  const ways = [];
+  if (level < floors) ways.push({ label: 'Go upstairs?', down: false });
+  if (level > groundFloor) ways.push({ label: 'Go downstairs?', down: true });
+  return ways;
+}
+
 // The choices to put to someone: no question twice, however many chairs there are, and no more than a number key can pick.
 export const MOST_CHOICES = 9;
 export function uniqueChoices(choices) {

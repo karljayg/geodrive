@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { actionsOf, questionsFor, thingsNear, uniqueChoices, usableNear, useThing, withoutTaken, switchNeedsKey, switchSpots, useSwitch } from '../public/js/footActions.js';
+import { actionsOf, coreQuestions, questionsFor, thingsNear, uniqueChoices, usableNear, useThing, withoutTaken, switchNeedsKey, switchSpots, useSwitch } from '../public/js/footActions.js';
 import { SAYINGS } from '../public/js/sayingsConfig.js';
 import { SOUNDS, bagSound, bakeOrder, footfall, lengthOf, play, stepSound, takesOf, useSound } from '../public/js/sounds.js';
 import { GAME } from '../public/js/gameConfig.js';
@@ -214,4 +214,12 @@ test('sitting and lying down are soft: a slow swell of low air, with nothing tha
     assert.ok(layer.attack >= 0.05, `${name} swells rather than hits`);
     assert.ok(layer.level <= 0.16, `${name} is quiet`);
   }
+});
+
+test('F offers the elevator and the stairs, the ways there are to go', () => {
+  assert.deepEqual(coreQuestions('lift', 1, 6, 1).map((q) => q.label), ['Take the elevator?']);
+  assert.deepEqual(coreQuestions('stairs', 1, 3, 1).map((q) => [q.label, q.down]), [['Go upstairs?', false]]);
+  assert.deepEqual(coreQuestions('stairs', 2, 3, 1).map((q) => [q.label, q.down]), [['Go upstairs?', false], ['Go downstairs?', true]]);
+  assert.deepEqual(coreQuestions('stairs', 3, 3, 1).map((q) => [q.label, q.down]), [['Go downstairs?', true]]);
+  assert.deepEqual(coreQuestions(null, 1, 3, 1), []);
 });

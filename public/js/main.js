@@ -990,6 +990,11 @@ const WALK_AWAY = 0.7; // m that drops the question
 let asking = null;
 
 function pressUse() {
+  if (foot.picking) {
+    foot.goToFloor(foot.picking.floor);
+    syncLift();
+    return;
+  }
   if (foot.pose) {
     foot.standUp();
     sfx('sit');

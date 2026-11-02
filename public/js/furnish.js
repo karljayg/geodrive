@@ -114,7 +114,7 @@ const CORE_IN_CORNER = new Set(['parking', 'warehouse', 'factory', 'hangar', 'st
 const ASPECT_MOST = 4.5;   // of a room's length to its width
 const LIFT_GAP = 0.3;      // m between the stairs and the lift
 const CORE_CLEAR = 1.4;    // m in front of the stairs and lift kept free on every floor
-const CORE_REACH = 1.2;    // m from them that L uses them
+const CORE_REACH = 1.6;    // m from them that L or F uses them
 // Layouts can improve without this changing: a saved floor stays as it was found. Only for a change a saved floor can't work without,
 // add a step to upgradeFloor rather than raising FLOOR_OLDEST, which throws saved floors away.
 export const FLOOR_VERSION = 3;
