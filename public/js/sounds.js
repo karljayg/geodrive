@@ -13,7 +13,8 @@ export const SOUNDS = {
   // Used for anything without a sound of its own: two short, quiet, rising notes.
   ack: [tone(660, 660, 0, 0.06, 0.16), tone(880, 880, 0.06, 0.09, 0.16)],
   explosion: [noise(900, 60, 0, 1.3, 0.8), tone(90, 30, 0, 1.1, 0.7), noise(5000, 800, 0, 0.25, 0.4)],
-  rumble: [noise(220, 110, 0, 0.5, 0.2), noise(70, 50, 0.05, 0.4, 0.22)],
+  roughGround: [noise(220, 110, 0, 0.5, 0.2), noise(70, 50, 0.05, 0.4, 0.22)],
+  fillUp: [noise(1500, 1400, 0, 0.7, 0.1), tone(660, 880, 0.65, 0.12, 0.16)],
   message: [tone(1046, 1046, 0, 0.09, 0.14), tone(1397, 1397, 0.09, 0.16, 0.14)],
 
   click: CLICK,

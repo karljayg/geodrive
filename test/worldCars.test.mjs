@@ -6,6 +6,7 @@ import { GAME } from '../public/js/gameConfig.js';
 import { SAYINGS } from '../public/js/sayingsConfig.js';
 import { SharedCars } from '../public/js/sharedWorld.js';
 import { seatsPicture } from '../public/js/carSeats.js';
+import { stationFor, stationWorks } from '../public/js/stations.js';
 import { carDamageAt, coastDistance, coastPlace, cutsOut, drivable, healthLossHit, healthLossInCar, offRoadSlowing, offRoadWear, powerOf, reliabilityText } from '../public/js/carDamage.js';
 import { BumpLimit, carTouchesPerson, carsTouch, closingSpeed, firstHit } from '../public/js/collide.js';
 import { metresApart } from '../public/js/protocol.js';
@@ -218,4 +219,30 @@ test('with no driver a car rolls on, slowing, and stops', () => {
   assert.equal(end.done, true);
   assert.ok(Math.abs((end.lat - 38.9) * 111320 - metres) < 1);
   assert.equal(coastPlace({ ...coast, speed: 0 }, 5000).done, true, 'not moving, it stays');
+});
+
+const AT = { lat: 38.9, lng: -77.4 };
+const shop = (metres, kind = 'fuel', name = 'Shell') => ({ lat: AT.lat + metres / 111320, lng: AT.lng, kind, name });
+
+test('about half of gas stations work, the same for everyone', () => {
+  const many = Array.from({ length: 400 }, (_, i) => ({ lat: 30 + i * 0.01, lng: -80 - i * 0.013, kind: 'fuel' }));
+  const share = many.filter((s) => stationWorks(s)).length / many.length;
+  assert.ok(Math.abs(share - GAME.stations.workingChance) < 0.08, `${share}`);
+  assert.equal(stationWorks(many[3]), stationWorks({ ...many[3] }));
+});
+
+test('a car can only use what\'s in reach and suits it', () => {
+  assert.equal(stationFor(AT, [], false), null);
+  assert.equal(stationFor(AT, [shop(200)], false), null, 'too far');
+  assert.equal(stationFor(AT, [shop(10)], false).station.name, 'Shell');
+  assert.equal(stationFor(AT, [shop(10, 'charger', 'Tesla')], false), null, 'a charger is no use to a gas car');
+  assert.equal(stationFor(AT, [shop(30), shop(10, 'fuel', 'BP')], false).station.name, 'BP', 'nearest first');
+});
+
+test('an electric car charges at a real charger, always, or at a gas station if it works', () => {
+  const real = stationFor(AT, [shop(10), shop(40, 'charger', 'Tesla Supercharger')], true);
+  assert.equal(real.station.name, 'Tesla Supercharger');
+  assert.equal(real.works, true);
+  const atPumps = stationFor(AT, [shop(10)], true);
+  assert.equal(atPumps.works, stationWorks(atPumps.station));
 });

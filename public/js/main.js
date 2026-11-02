@@ -26,6 +26,8 @@ import { FLAGS } from './protocol.js';
 import { bearingBetween, initialsOf, statusLine } from './people.js';
 import { BOUNCE, BumpLimit, firstHit } from './collide.js';
 import { seatsPicture } from './carSeats.js';
+import { stationFor, stationsFromTile } from './stations.js';
+import { vectorTileAt } from './vector.js';
 import { coastPlace, cutsOut, drivable, offRoadSlowing, offRoadWear, powerOf, reliabilityText } from './carDamage.js';
 import { DEFAULTS, saveSettings, settings } from './settings.js';
 import { RoadTiles } from './tiles.js';
@@ -1022,8 +1024,17 @@ function conditionNow() {
   return myCar ? world.cars.get(myCar.id)?.condition ?? myCar.condition ?? 100 : 100;
 }
 
-let toldDead = false;
+let toldDead = false, toldEmpty = false;
 function limitByCondition(controls, t) {
+  if (trip.fuel <= 0) {
+    controls.throttle = 0;
+    if (!toldEmpty) {
+      toldEmpty = true;
+      setFsd(false);
+      notice(say(carType() === 'electric' ? 'outOfCharge' : 'outOfFuel'), 4000);
+    }
+    return;
+  }
   const condition = conditionNow();
   if (!drivable(condition)) {
     controls.throttle = 0;
@@ -1048,7 +1059,7 @@ function wearCar(controls, t) {
   car.speed = offRoadSlowing(car.speed, dt);
   if (t - rumbleAt > RUMBLE_EVERY) {
     rumbleAt = t;
-    sfx('rumble');
+    sfx('roughGround');
   }
   if (t - wearSentAt > GAME.damage.reportEvery * 1000 && wearWaiting > 0) {
     wearSentAt = t;
@@ -1278,8 +1289,48 @@ function answerAsked() {
 }
 
 // F in a stopped car with nowhere set, which otherwise has nothing to do. Moving, or with a destination, it stays self-driving.
-function pressCarF() {
-  if (answerAsked()) return;
+// A gas station or charger within reach of a stopped car, if the map has one here. From the same free tile as the roads, so asking costs nothing.
+const stationsOf = new Map();
+async function stationHere() {
+  if (Math.abs(car.speed) * MPS_TO_MPH >= STOPPED_MPH) return null;
+  const { x, y } = vectorTileAt(pos.lat, pos.lng), key = `${x}_${y}`;
+  if (!stationsOf.has(key)) {
+    try {
+      const bytes = await tiles.tileBytes(x, y);
+      stationsOf.set(key, bytes ? stationsFromTile(bytes, x, y) : []);
+    } catch (err) {
+      return null; // try again next time, and nothing's lost
+    }
+  }
+  return stationFor(pos, stationsOf.get(key), carType() === 'electric');
+}
+
+function fillUp(place) {
+  const electric = carType() === 'electric';
+  if (!place.works) return say(electric ? 'chargerDead' : 'stationDry');
+  trip.fuel = 100;
+  if (myCar) myCar.fuel = 100;
+  toldEmpty = false;
+  sfx('fillUp');
+  perfLog.event('fill', { electric, at: place.station.name ?? '' });
+  return say(electric ? 'chargedUp' : 'fuelledUp');
+}
+
+let carFAsking = false;
+async function pressCarF() {
+  if (answerAsked() || carFAsking) return;
+  if (!riding) {
+    carFAsking = true;
+    const place = await stationHere();
+    carFAsking = false;
+    if (place) {
+      const electric = carType() === 'electric', where = place.station.name ? ` at ${place.station.name}` : '';
+      return ask([
+        { label: `${electric ? 'Charge' : 'Fuel'} up${where}?`, run: () => fillUp(place) },
+        { label: 'Get out of the car?', run: () => { getOut(); return ''; } },
+      ], { car: true });
+    }
+  }
   if (riding) {
     const known = world.cars.get(riding.id) ?? riding, stopped = Math.abs(car.speed) * MPS_TO_MPH < STOPPED_MPH;
     if (!stopped) return notice(`${known.driver ? world.nameOf(known.driver) : 'Nobody'} is driving.`, 2000);

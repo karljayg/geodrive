@@ -1,6 +1,13 @@
 // What the game says, several ways, so the common ones don't get repetitive. Each key's lines take turns. Add, change or remove lines freely; deployed with the site, so it's the same for everyone.
 // {name}, {found} and {hours} are filled in where a line uses them.
 export const SAYINGS = {
+  // Filling up
+  fuelledUp: ['Tank full.', 'You fill it to the top.'],
+  chargedUp: ['Fully charged.', 'It takes a full charge.'],
+  stationDry: ['The pumps are out of order.', 'Nothing comes out. This station is shut.'],
+  chargerDead: ['The charger here is dead.', 'The charger\'s screen is blank.'],
+  outOfFuel: ['Out of fuel. It rolls to a stop.'],
+  outOfCharge: ['The battery\'s flat. It rolls to a stop.'],
   // Crashes, in a shared world
   restInBed: ['You lie still. You\'re too badly hurt to sleep it off. Stay here, and let someone bring you what you need.', 'You lie down carefully. Rest will help, if someone keeps you fed.'],
   useFromBed: ['{found}', '{found}'],

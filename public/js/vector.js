@@ -111,7 +111,7 @@ export function decodeLines(commands) {
   return lines;
 }
 
-const tileToGeo = (tx, ty, extent, zoom) => {
+export const tileToGeo = (tx, ty, extent, zoom) => {
   const n = 2 ** zoom;
   return {
     toLng: (px) => (((tx + px / extent) / n) * 360) - 180,
