@@ -3,10 +3,15 @@
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { GAME } from '../public/js/gameConfig.js';
 import { FLAGS, GROUP_THREAD, cleanLook, clockHour, dmThread, metresApart, nameKey, nameProblem, stampPresence, unpackPresence } from '../public/js/protocol.js';
+import { applyFloorOp, cleanDrop, emptyFloorState, mergePlan, tileOfBuilding } from '../public/js/worldOps.js';
 
 const FAR = 3000;          // m; past this someone is only a dot on a phone
 const FAR_EVERY = 5000;    // ms between passing on the place of someone that far off
 const MOST_MESSAGES = 30;  // a second of presence from one person, well above what the game sends
+const BUILDING_ID = /^-?\d{1,9}_-?\d{1,9}$/;
+const FLOOR_MOST = 300;    // floors up or down
+const TILES_MOST = 200;    // that one person can be watching
+const DROPS_MOST = 5000;   // left around one world
 const STARTING_HOUR = 8;   // a morning, so a new world doesn't begin in the dark
 const KEPT_FROM_TRIP = ['elapsed', 'moving', 'meters', 'fsdMeters', 'offRoadMeters', 'fsdSeconds', 'topSpeed', 'bridges', 'takeovers', 'signals']; // never an address or a town
 
@@ -14,7 +19,9 @@ export const hashOf = (text) => createHash('sha256').update(String(text)).digest
 export const newToken = (bytes = 24) => randomBytes(bytes).toString('base64url');
 const sameHash = (a, b) => a.length === b.length && timingSafeEqual(Buffer.from(a), Buffer.from(b));
 
-const publicMember = (member, online) => ({ id: member.id, name: member.name, order: member.order, lives: member.lives, figure: member.figure, colours: member.colours, lastSeen: member.lastSeen, online, lat: member.lat, lng: member.lng });
+const okBuilding = (id) => typeof id === 'string' && BUILDING_ID.test(id);
+const okFloor = (floor) => Number.isInteger(floor) && Math.abs(floor) <= FLOOR_MOST;
+const publicMember = (member, online, building = null) => ({ building, id: member.id, name: member.name, order: member.order, lives: member.lives, figure: member.figure, colours: member.colours, lastSeen: member.lastSeen, online, lat: member.lat, lng: member.lng });
 
 export class Room {
   constructor(store, { now = Date.now, config = GAME.world } = {}) {
@@ -114,7 +121,7 @@ export class Room {
       old.send({ t: 'replaced' });
       old.close();
     } else if (this.clients.size === 0) this.settleClock(false);
-    const client = { ...connection, id: member.id, order: member.order, at: member.lat === null ? null : { lat: member.lat, lng: member.lng }, said: [], sentAt: new Map(), count: 0, countFrom: this.now(), asleep: false };
+    const client = { ...connection, id: member.id, order: member.order, at: member.lat === null ? null : { lat: member.lat, lng: member.lng }, said: [], sentAt: new Map(), count: 0, countFrom: this.now(), asleep: false, tiles: new Set(), building: null };
     connection.client = client;
     this.clients.set(member.id, client);
     this.store.touchMember(member.id, this.now());
@@ -125,12 +132,12 @@ export class Room {
 
   welcome(member, secret) {
     const world = this.store.world(), player = this.store.player(member.id);
-    const members = this.store.members().map((m) => publicMember(m, this.clients.has(m.id)));
+    const members = this.store.members().map((m) => publicMember(m, this.clients.has(m.id), this.clients.get(m.id)?.building ?? null));
     return {
       t: 'welcome', you: { id: member.id, order: member.order, name: member.name, lives: member.lives, ...(secret ? { secret } : {}) },
       world: { id: world.id, name: world.name, mode: world.mode, creator: world.creator, owner: world.owner, backup: world.backup },
       members, clock: this.clock(), player: { pocket: player.pocket, vitals: player.vitals, trip: player.trip, lat: player.lat, lng: player.lng },
-      chat: this.store.chatFor(member.id), near: this.appearNear(member.id),
+      chat: this.store.chatFor(member.id), near: this.appearNear(member.id), drops: this.store.drops(),
     };
   }
 
@@ -210,9 +217,83 @@ export class Room {
     const client = connection.client;
     if (!client || !message || typeof message !== 'object') return;
     const answer = (result) => { if (message.id !== undefined) client.send({ t: result.why ? 'no' : 'ok', id: message.id, ...result }); };
-    const handler = { invite: 'makeInvite', setBackup: 'chooseBackup', say: 'say', sleep: 'sleep', save: 'savePlayer' }[message.t];
+    const handler = { invite: 'makeInvite', setBackup: 'chooseBackup', say: 'say', sleep: 'sleep', save: 'savePlayer', where: 'where', area: 'area', claimPlan: 'claimPlan', claimFloor: 'claimFloor', floorOp: 'floorOp', switchesOn: 'switchesOn', dropAdd: 'dropAdd', dropTake: 'dropTake' }[message.t];
     if (!handler) return answer({ why: 'unknown' });
     answer(this[handler](client, message) ?? {});
+  }
+
+  // Which building someone's in, for those on the same floor. Places say where in it.
+  where(client, { building }) {
+    if (building !== null && !okBuilding(building)) return { why: 'bad' };
+    client.building = building;
+    this.tellOthers(client.id, { t: 'where', member: client.id, building });
+    return {};
+  }
+
+  // Those watching the tile a building's in, besides whoever did it.
+  tellArea(building, except, message) {
+    const tile = tileOfBuilding(building);
+    for (const client of this.clients.values()) if (client.id !== except && client.tiles.has(tile)) client.send(message);
+  }
+
+  // Everything known about these tiles, and from now on what happens in them.
+  area(client, { tiles }) {
+    if (!Array.isArray(tiles) || !tiles.every((tile) => typeof tile === 'string' && /^\d{1,6}_\d{1,6}$/.test(tile))) return { why: 'bad' };
+    if (client.tiles.size + tiles.length > TILES_MOST) client.tiles.clear(); // the oldest are the furthest, and asking again costs little
+    for (const tile of tiles) client.tiles.add(tile);
+    return { buildings: this.store.buildingsIn(tiles) };
+  }
+
+  // What a building is. The first to say keeps it, and later ones only fill in what's missing. Answers with what's kept.
+  claimPlan(client, { building, plan }) {
+    if (!okBuilding(building) || !plan || typeof plan !== 'object' || Array.isArray(plan)) return { why: 'bad' };
+    const known = this.store.plan(building), merged = known ? mergePlan(known, plan) : plan;
+    if (!known || JSON.stringify(known) !== JSON.stringify(merged)) {
+      this.store.savePlan(building, tileOfBuilding(building), merged);
+      this.tellArea(building, client.id, { t: 'plan', building, plan: merged });
+    }
+    return { plan: merged };
+  }
+
+  // A floor as first laid out, kept for good. Answers with what's kept.
+  claimFloor(client, { building, floor, record }) {
+    if (!okBuilding(building) || !okFloor(floor) || !record || typeof record !== 'object') return { why: 'bad' };
+    const known = this.store.floorRow(building, floor);
+    if (known?.record) return { record: known.record };
+    this.store.saveFloorRow(building, floor, { record, state: known?.state ?? emptyFloorState() });
+    this.tellArea(building, client.id, { t: 'floor', building, floor, record });
+    return { record };
+  }
+
+  floorOp(client, { building, floor, op, key, u, v, hole, on }) {
+    if (!okBuilding(building) || !okFloor(floor)) return { why: 'bad' };
+    const state = this.store.floorRow(building, floor)?.state ?? emptyFloorState(), change = { op, key, u, v, hole, on };
+    const why = applyFloorOp(state, change);
+    if (why) return { why };
+    this.store.saveFloorRow(building, floor, { state });
+    this.tellArea(building, client.id, { t: 'floorOp', building, floor, ...change });
+    return {};
+  }
+
+  switchesOn(client, { building }) {
+    if (!okBuilding(building)) return { why: 'bad' };
+    this.store.setSwitchesOn(building);
+    this.tellArea(building, client.id, { t: 'switchesOn', building });
+    return {};
+  }
+
+  dropAdd(client, { drop }) {
+    const clean = cleanDrop(drop);
+    if (!clean) return { why: 'bad' };
+    if (this.store.drops().length >= DROPS_MOST) return { why: 'too-many' };
+    if (this.store.addDrop(clean)) this.tellOthers(client.id, { t: 'dropAdded', drop: clean });
+    return {};
+  }
+
+  dropTake(client, { drop }) {
+    if (typeof drop !== 'string' || !this.store.takeDrop(drop)) return { why: 'gone' };
+    this.tellOthers(client.id, { t: 'dropTaken', id: drop });
+    return {};
   }
 
   isManager(id) {

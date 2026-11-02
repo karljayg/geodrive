@@ -959,7 +959,7 @@ async function startWalking() {
     const { Foot, PERSON_SIZE: personSize } = await import('./foot.js'); // only those who walk load any of this
     await makePeople();
     (await pocketReady()).close();
-    foot = new Foot({ onGetIn: () => stopFoot(), onOpenBag: () => { if (!pocket.bagOpen) pocket.toggleBag(); }, drops, onDropsChanged: () => { dropsSyncedAt = -Infinity; }, onSound: sfx, onUsed: (effect, count) => { vitals.apply(effect, count); }, hasKey: () => pocket.data.bagHas(BUILDING_KEY), hasHammer: () => pocket.data.bagHas(GAME.hammer.item), onSay: (text) => notice(text, 3000), onLocked: showLocked, onLoadCar: loadCar, onFound: (name) => pocket.collect(name), onSlept: sleepUntilMorning, roughChoices, canvas: el('foot'), origin: { lat: pos.lat, lng: pos.lng }, heading: car.heading, cars: footCars(), buildings, look, others: world.rules.people ? () => world.people.solidNow(performance.now()) : null, tiles, view: { tilt: CAMERAS[0].tilt, range: CAMERAS[0].range * FOOT_RANGE_SHARE, fov: FOV_Y, below: CAR_BELOW_CENTRE } });
+    foot = new Foot({ onGetIn: () => stopFoot(), onOpenBag: () => { if (!pocket.bagOpen) pocket.toggleBag(); }, drops, onDropsChanged: () => { dropsSyncedAt = -Infinity; }, onSound: sfx, onUsed: (effect, count) => { vitals.apply(effect, count); }, hasKey: () => pocket.data.bagHas(BUILDING_KEY), hasHammer: () => pocket.data.bagHas(GAME.hammer.item), onSay: (text) => notice(text, 3000), onLocked: showLocked, onLoadCar: loadCar, onFound: (name) => pocket.collect(name), onSlept: sleepUntilMorning, roughChoices, canvas: el('foot'), origin: { lat: pos.lat, lng: pos.lng }, heading: car.heading, cars: footCars(), buildings, look, others: world.rules.people ? () => world.people.solidNow(performance.now()) : null, roomPeople: world.rules.people ? (building, floor) => world.peopleOnFloor(building, floor, performance.now()) : null, tiles, view: { tilt: CAMERAS[0].tilt, range: CAMERAS[0].range * FOOT_RANGE_SHARE, fov: FOV_Y, below: CAR_BELOW_CENTRE } });
     showPerson(personSize);
   } catch (err) {
     console.warn('getting out:', err);
@@ -1931,6 +1931,8 @@ function measureFrame(t) {
   const heap = performance.memory ? ` · JS ${Math.round(performance.memory.usedJSHeapSize / 1048576)} MB` : '';
   const box = el('perf');
   box.textContent = `${fps} FPS · slowest ${Math.round(perfSlowest)} ms${heap}`;
+  el('fpsNow').textContent = `${fps} FPS`;
+  el('fpsNow').classList.toggle('slow', fps < 30);
   box.classList.toggle('slow', fps < 30 || perfSlowest > 100);
   debug.perf = { fps, slowest: Math.round(perfSlowest) };
   perfFrames = 0;
@@ -2481,6 +2483,7 @@ function loadGoogle(key, channel) {
 // --- Other people, in a shared world ------------------------------------------------------------------------------
 
 let peopleView = null, chatView = null;
+const SIT_GAIT = 17; // SIT_FRAME in footPerson.js, which only those who walk load
 const badgeColour = (member) => member.colours?.jacket ?? '#5a6470';
 
 // What's sent about this person. A timer asks, as the game loop stops in a hidden tab.
@@ -2490,8 +2493,9 @@ function whereIAm() {
   if (!foot) return { ...pos, heading: car.heading, speed: car.speed, onFoot: false, away, flags: (away ? FLAGS.away : 0) | (settings.headlights ? FLAGS.headlights : 0) | (braking ? FLAGS.brake : 0) | (onBridge ? FLAGS.bridge : 0) };
   const at = foot.where(), posture = foot.posture(), running = posture.frame > 8, moving = posture.frame !== 0, frame = foot.frameOfBuilding();
   const speed = moving ? (running ? playerRun() : playerWalk()) : 0;
+  world.setBuilding(foot.walker.inside?.buildingId ?? null);
   return {
-    ...at, heading: posture.facing, speed, onFoot: true, away, gait: posture.frame, floor: foot.level, ...frame,
+    ...at, heading: posture.facing, speed, onFoot: true, away, gait: foot.pose && foot.pose.kind !== 'sleep' ? SIT_GAIT : posture.frame, floor: foot.level, ...frame,
     flags: FLAGS.onFoot | (away ? FLAGS.away : 0) | (foot.walker.inside ? FLAGS.indoors : 0) | (running ? FLAGS.running : 0) | (foot.pose?.kind === 'sleep' ? FLAGS.asleep : 0),
   };
 }
@@ -2541,6 +2545,18 @@ async function startPeople() {
     canShow: (thread) => !(pocket?.app === 'messages' && world.chat.threadWith(pocket.contact === 'group' ? null : pocket.contact) === thread),
   });
   world.whereAmI = whereIAm;
+  world.drops.onChange = () => { dropsSyncedAt = -Infinity; foot?.dropsChanged(); };
+  world.drops.onLost = (drop) => { // someone else picked it up in the same moment
+    pocket?.data.takeFromBag(drop.name);
+    notice(`Someone else got the ${drop.name.toLowerCase()} first.`, 3000);
+  };
+  world.buildings.onRefused = (id, floor, op, why) => {
+    if (op.key) {
+      const name = foot?.takenBack(op.key);
+      if (name) pocket?.data.takeFromBag(name);
+    }
+    notice(why === 'offline' ? 'The world can\'t be reached right now, so that didn\'t happen.' : 'Someone else got there first.', 3000);
+  };
   world.on.said = (line) => {
     pocket?.chatChanged();
     chatView.said(line);

@@ -386,8 +386,4 @@ test('another person outdoors can\'t be walked through, and two on the same spot
   world.solidPeople = () => [{ x: 0, y: 0.1 }];
   stepWalker(onTop, { strafe: 1, walkSpeed: 3 }, 1 / 60, world);
   assert.ok(Number.isFinite(onTop.x), 'exactly on top of someone is no trouble');
-  const inside = newWalker(1, 1, 0);
-  world.inner = { walls: [], boxes: [] };
-  stepWalker(inside, {}, 1 / 60, world);
-  assert.equal(inside.x, 1, 'and indoors they don\'t count yet');
 });

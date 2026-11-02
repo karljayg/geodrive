@@ -7,6 +7,7 @@ import { TripStore } from './session.js';
 import { Vitals } from './vitals.js';
 import { GAME } from './gameConfig.js';
 import { People, presenceRate } from './people.js';
+import { SharedBuildings, SharedDrops } from './sharedWorld.js';
 import { PROTOCOL, clockHour, packPresence, unpackPresence } from './protocol.js';
 
 const CLOCK_STORE = 'geodrive_clock_v1';
@@ -201,6 +202,8 @@ export class PrivateWorld extends World {
     this.seq = 0;
     this.sentAt = -Infinity;
     this.me = savedMe(storage, id);
+    this.buildings = new SharedBuildings(link);
+    this.drops = new SharedDrops(link, welcome.you.id, welcome.drops ?? []);
     this.accept(welcome);
     link.onMessage = (message) => this.heard(message);
     link.onBytes = (bytes) => {
@@ -211,6 +214,11 @@ export class PrivateWorld extends World {
     link.stayOpen(() => ({ t: 'hello', protocol: PROTOCOL, world: id, player: this.me.id, secret: this.me.secret }));
     this.saving = setInterval(() => this.flush(), SAVE_EVERY);
     this.placing = setInterval(() => this.sendPlace(), LOOK_EVERY);
+  }
+
+  // Shared buildings are here already, and read at once from what's arrived.
+  openBuildings() {
+    return Promise.resolve(this.buildings);
   }
 
   accept({ members, clock, chat, world }) {
@@ -224,6 +232,9 @@ export class PrivateWorld extends World {
   heard(message) {
     if (message.t === 'welcome') { // back after losing the line
       this.accept(message);
+      this.drops.setAll(message.drops ?? []);
+      this.inBuilding = undefined; // the server has forgotten, so it's said again
+      this.buildings.rejoined();
       this.on.link?.('open');
       if (this.missed) this.on.missed?.(this.missed);
     } else if (message.t === 'member') {
@@ -239,6 +250,21 @@ export class PrivateWorld extends World {
       this.on.managers?.();
     } else if (message.t === 'said') {
       if (this.chat.add(message)) this.on.said?.(message);
+    } else if (message.t === 'where') {
+      const member = this.people.member(message.member);
+      if (member) member.building = message.building;
+    } else if (message.t === 'floorOp') {
+      this.buildings.heardFloorOp(message);
+    } else if (message.t === 'plan') {
+      this.buildings.heardPlan(message);
+    } else if (message.t === 'floor') {
+      this.buildings.heardFloor(message);
+    } else if (message.t === 'switchesOn') {
+      this.buildings.heardSwitchesOn(message);
+    } else if (message.t === 'dropAdded') {
+      this.drops.heardAdded(message.drop);
+    } else if (message.t === 'dropTaken') {
+      this.drops.heardTaken(message.id);
     }
   }
 
@@ -264,6 +290,22 @@ export class PrivateWorld extends World {
 
   markChatSeen() {
     this.local.setItem(CHAT_SEEN, String(this.chat.markSeen()));
+  }
+
+  // Says which building this person is in, when that changes.
+  setBuilding(id) {
+    if (this.inBuilding === id) return;
+    this.inBuilding = id;
+    this.link.send({ t: 'where', building: id });
+  }
+
+  // Everyone on this floor of this building: { member, place }.
+  peopleOnFloor(building, floor, now) {
+    return this.people.othersOnline.flatMap((member) => {
+      if (member.building !== building) return [];
+      const place = this.people.drawnAt(member.id, now);
+      return place && place.floor === floor ? [{ member, place }] : [];
+    });
   }
 
   // The newest place, if one's due at the rate for what they're doing. On a timer, as the game loop stops in a hidden tab.

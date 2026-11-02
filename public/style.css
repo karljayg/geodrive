@@ -504,3 +504,9 @@ body:not(.onFoot) #previews { bottom: auto; top: 76px; }
 .person button { flex: none; padding: 4px 8px; font-size: 11px; }
 .personMark .badge { width: 22px; height: 22px; font-size: 8px; }
 .bubble small { display: block; margin-bottom: 1px; font-size: 11px; opacity: .7; }
+
+/* The frame rate, always. */
+#fpsNow { position: absolute; top: 12px; right: 12px; z-index: 6; padding: 3px 8px; font-size: 12px; font-weight: 650; font-variant-numeric: tabular-nums; color: #cfe3d8; background: #0d1621cc; border-radius: 6px; pointer-events: none; }
+#fpsNow.slow { color: #ffb060; }
+/* A name over someone indoors. */
+.roomTag { position: absolute; left: 0; top: 0; z-index: 4; padding: 2px 8px; font-size: 14px; font-weight: 600; color: #fff; white-space: nowrap; background: #0000008c; border-radius: 5px; pointer-events: none; }

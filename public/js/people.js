@@ -27,7 +27,7 @@ export function placeAt(places, time) {
     if (time < a.at) continue;
     if (metresApart(a, b) > TELEPORT) return b;
     const t = (time - a.at) / (b.at - a.at || 1);
-    return { ...b, lat: a.lat + (b.lat - a.lat) * t, lng: a.lng + (b.lng - a.lng) * t, heading: (a.heading + shortestTurn(a.heading, b.heading) * t + 360) % 360, speed: a.speed + (b.speed - a.speed) * t };
+    return { ...b, lat: a.lat + (b.lat - a.lat) * t, lng: a.lng + (b.lng - a.lng) * t, heading: (a.heading + shortestTurn(a.heading, b.heading) * t + 360) % 360, speed: a.speed + (b.speed - a.speed) * t, u: (a.u ?? 0) + ((b.u ?? 0) - (a.u ?? 0)) * t, v: (a.v ?? 0) + ((b.v ?? 0) - (a.v ?? 0)) * t };
   }
   return places[0];
 }

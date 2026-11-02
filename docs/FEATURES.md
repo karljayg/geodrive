@@ -89,7 +89,9 @@ Settings' Diagnostics tab shows FPS, the slowest frame in the last second, and J
 
 `J` in a world copies an invite link, if you're a manager: the creator or the backup. The first person to join becomes the backup, and either can choose another in the People app, which also makes a rejoin link for someone who has lost their browser. An invite works once and lasts a day. Whoever opens one chooses a name, unique in that world for good, and a look, then appears on a road within about 300 m of someone. A browser that knows a world asks where to play when it opens.
 
-Others appear as people in their own colours, with a name tag within 100 m. Each person's walking models arrive about 6 s apart, as the map froze when they all went on at once. The phone gets a People app, and badges on its Map and Compass. Nobody can walk through anyone outdoors, except someone away.
+Buildings are shared: whoever goes in first decides what's there, and from then on everyone sees the same rooms, what's been taken or moved, holes, lights and things dropped, as they happen. If two people grab one thing, the first to reach the server gets it. People on your floor are drawn with their names, and block you.
+
+Others appear as people in their own colours, with a name tag within 100 m. Each person's walking models arrive about 6 s apart, as the map froze when they all went on at once. The phone gets a People app, and badges on its Map and Compass. Nobody can walk through anyone, except someone away.
 
 The world has one clock, 1 game hour per 5 real minutes, stopped when nobody is online. Needs keep their rates. Sleeping skips only your own body unless everyone else online is in bed.
 

@@ -44,7 +44,8 @@ const USES = {
 const SWITCHES = { tv: 'The TV flickers on and off.', radio: 'A burst of music, and you turn it off.', tableLamp: 'Click. Click.', floorLamp: 'Click. Click.', surgeryLamp: 'It blazes, and you turn it off.', speakerStand: 'A burst of static.' };
 
 // A thing's name for its state, where it started out even after being pushed, which is the ninth value of its entry.
-const key = (entry) => entry[8] ?? `${entry[0]}|${entry[2]}|${entry[3]}`;
+export const thingKey = (entry) => entry[8] ?? `${entry[0]}|${entry[2]}|${entry[3]}`;
+const key = thingKey;
 const stateOf = (plan, floor) => ((plan.state ||= {})[floor] ||= { taken: [], opened: [] });
 
 // A floor as the person has left it: without what they've picked up.

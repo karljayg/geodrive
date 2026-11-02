@@ -5,7 +5,7 @@
   "scripts": {
     "start": "node scripts/serve.mjs",
     "pretest": "[ -d server/node_modules ] || npm --prefix server ci",
-    "test": "node --test test/physics.test.mjs test/road.test.mjs test/streets.test.mjs test/dash.test.mjs test/audio.test.mjs test/log.test.mjs test/walk.test.mjs test/buildings.test.mjs test/furnish.test.mjs test/pocket.test.mjs test/overture.test.mjs test/actions.test.mjs test/light.test.mjs test/vitals.test.mjs test/drops.test.mjs test/keys.test.mjs test/breakthrough.test.mjs test/music.test.mjs test/world.test.mjs test/protocol.test.mjs test/server.test.mjs test/people.test.mjs test/link.test.mjs",
+    "test": "node --test test/physics.test.mjs test/road.test.mjs test/streets.test.mjs test/dash.test.mjs test/audio.test.mjs test/log.test.mjs test/walk.test.mjs test/buildings.test.mjs test/furnish.test.mjs test/pocket.test.mjs test/overture.test.mjs test/actions.test.mjs test/light.test.mjs test/vitals.test.mjs test/drops.test.mjs test/keys.test.mjs test/breakthrough.test.mjs test/music.test.mjs test/world.test.mjs test/protocol.test.mjs test/server.test.mjs test/people.test.mjs test/link.test.mjs test/sharedWorld.test.mjs",
     "deploy": "scripts/deploy.sh",
     "logs": "scripts/fetch-logs.sh"
   }

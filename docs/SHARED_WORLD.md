@@ -1,6 +1,6 @@
 # Shared worlds: plan
 
-Status: stage 0 built and measured on the owner's machine. Stage 1 is built and live (2026-11-02), apart from what's listed under it. Written 2026-11-02. Numbers marked "measured" were tested on the code and server as they stood that day.
+Status: stage 0 built and measured on the owner's machine. Stages 1 and 3 are built and live (2026-11-02), apart from what's listed under them and saving worlds. Stage 3 came before stage 2 at the owner's request, after two people in one room couldn't see each other. Cars are next. Written 2026-11-02. Numbers marked "measured" were tested on the code and server as they stood that day.
 
 ## The idea
 Today every browser is its own world. This adds worlds that several people play in together, reached by invite. The invite replaces the Share button (`J`) and its link.
@@ -436,7 +436,7 @@ No freeze. Sets of 17 cost no more than sets of 5 when added, so the number of f
 4. People solid to each other. The People app, Map and compass badges.
 5. Chat: the Enter line, `/w`, previews, the phone's threads.
 
-Stage 1 done so far: all of the above, tried in a browser against 3 bots (`scripts/bots.mjs`). Not done yet: people drawn indoors on the same floor (it comes with shared buildings in stage 3, as `u`, `v` and the floor are already sent), F climbing over someone blocking a doorway, and moving badges on the nav screen, which only matter once there are cars. Not yet tried with two real people on real connections.
+Stage 1 done so far: all of the above, tried with bots and by the owner and a friend. Not done yet: F climbing over someone blocking a doorway, and moving badges on the nav screen, which only matter once there are cars.
 
 **Stage 2. Cars.** A world's ready for friends from here.
 1. Planted cars, getting in and out, one driver, each car's fuel and storage, sledgehammers.
@@ -448,6 +448,8 @@ Stage 1 done so far: all of the above, tried in a browser against 3 bots (`scrip
 2. Taking, opening, pushing, holes and lights, live for people in the room.
 3. Drops, indoors and out.
 4. Saving and loading.
+
+Stage 3 done so far: buildings, floor layouts, what's been taken, opened, pushed and broken, lights and dropped things are on the server, through `sharedWorld.js`, which stands in for `BuildingStore` and `Drops`, and `worldOps.js`, used by both sides. People on your floor are drawn with name labels and are solid. Tried in a browser against a scripted second player. Still to do: saving and loading. What differs from the plan: taking something shows at once and is taken back if someone else got there first, rather than waiting for the server, as the game's actions don't wait; and the bag is still saved whole from the browser rather than in one step with the take, so someone who loses a race for a split second has the thing in their bag, and it's then removed. All dropped things are sent on joining rather than by area, as there are few, limited to 5,000.
 
 **Stage 4. Doing things together.** Passengers, horns heard at a distance, go to friend.
 

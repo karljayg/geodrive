@@ -6,13 +6,14 @@ import { tintAt } from './daylight.js';
 import { FootGl, bearing, lookAt, multiply, perspective, swing, translate } from './footGl.js';
 import { Place, fromLocal, parseTile, toLocal } from './footData.js';
 import { SIT_FRAME, personFloats } from './footPerson.js';
-import { SWITCH_REACH, actionsOf, breakThrough, canClimb, climbQuestion, wallAhead, outletSpots, switchNeedsKey, switchSpots, useSwitch, poseSpot, coreQuestions, modelNamed, inertNear, lookLine, pushFits, pushTarget, pushThing, questionsFor, thingsNear, uniqueChoices, useThing, withoutTaken } from './footActions.js';
+import { SWITCH_REACH, thingKey, actionsOf, breakThrough, canClimb, climbQuestion, wallAhead, outletSpots, switchNeedsKey, switchSpots, useSwitch, poseSpot, coreQuestions, modelNamed, inertNear, lookLine, pushFits, pushTarget, pushThing, questionsFor, thingsNear, uniqueChoices, useThing, withoutTaken } from './footActions.js';
 import { CORE_SCHEME, roomMesh } from './footScene.js';
 import { FURNISHED, colourFor, coreNear, coreOf, frameOf as buildingFrame, layoutFloor, plainFloor, solidsOf, upgradeFloor, worldBearing } from './furnish.js';
 import { parseFurniture } from './furniture.js';
 import { buildingWithin, byOutsideWall, carWalls, climbOver, distanceToCar, enterBuilding, GET_IN_REACH, leaveBuilding, newWalker, frameOf, placeCamera, spawnSpot, stepClearOfThings, stepWalker, wayToCar } from './footWalker.js';
 import { parcelParts, thingParts } from './drops.js';
 import { GAME } from './gameConfig.js';
+import { FLAGS } from './protocol.js';
 import { say } from './sayings.js';
 import { SAYINGS } from './sayingsConfig.js';
 import { footfall, stepSound } from './sounds.js';
@@ -30,6 +31,20 @@ const ROOM_SKY = [0.42, 0.58, 0.76];
 const NEAR = 2, FAR = 400;   // m from the camera
 const INDOOR_RANGE = 0.45;   // of the camera's distance outdoors, as furniture is small from there
 export const PERSON_SIZE = 1.1; // times real size, which is hard to follow from the driving camera
+
+const NAME_ABOVE = 2.15;     // m above the floor that a name goes indoors
+const roomTags = new Map();  // member id: their name on screen
+const otherMeshes = new Map(); // `${who}|${frame}`: how they look, walking, indoors
+function otherMesh(id, look, frame) {
+  const key = `${id}|${frame}`;
+  if (!otherMeshes.has(key)) otherMeshes.set(key, gl.mesh(personFloats(frame, look)));
+  return otherMeshes.get(key);
+}
+
+function clearRoomTags() {
+  for (const tag of roomTags.values()) tag.remove();
+  roomTags.clear();
+}
 
 let gl = null, shared = null, ownLook = null; // one context for the visit, the meshes that never change, and how this person looks
 let furniture = null, furnitureLoading = false, furnitureFailed = -Infinity; // the models, once fetched
@@ -50,8 +65,12 @@ function personMesh(frame) {
 
 export class Foot {
   // cars: those that can be walked up to, { x, y, heading, halfWidth, halfLength } in metres from the origin. tiles: the RoadTiles that fetches the same map tiles for driving. view: the camera to match.
-  constructor({ canvas, origin, heading, cars, buildings, look, others, tiles, view, onLocked, onLoadCar, onFound, onSlept, roughChoices, drops, onDropsChanged, hasKey, hasHammer, onSay, onGetIn, onOpenBag, onUsed, onSound }) {
+  constructor({ canvas, origin, heading, cars, buildings, look, others, roomPeople, tiles, view, onLocked, onLoadCar, onFound, onSlept, roughChoices, drops, onDropsChanged, hasKey, hasHammer, onSay, onGetIn, onOpenBag, onUsed, onSound }) {
     this.saved = buildings; // the store of buildings entered, from the world
+    this.gave = new Map();  // what's gone in the bag from each thing, in case someone else turns out to have got there first
+    this.canvas = canvas;
+    this.roomPeople = roomPeople; // who else is on this floor, in a shared world: (building, floor) => [{ member, place }]
+    this.saved.onChange = (id, floor) => this.buildingChanged(id, floor);
     ownLook = look ?? null;
     this.hasKey = hasKey;
     this.hasHammer = hasHammer;
@@ -85,8 +104,8 @@ export class Foot {
     this.alive = true;
     this.level = GROUND_FLOOR; // which floor the person is on
     this.picking = null;       // the floor being chosen in a lift
-    // Who else is solid here. others: () => [{ lat, lng }], or nothing in a world with only one person in it.
-    this.world = { solidPeople: others ? () => others().map(({ lat, lng }) => toLocal(origin, lat, lng)) : null, place: this.place, height: (x, y) => this.height(x, y), floor: (b) => this.floorOf(b) + this.rise(b) };
+    // Who else is solid here. others: () => [{ lat, lng }], or nothing in a world with only one person in it. Indoors, those on this floor.
+    this.world = { solidPeople: others ? () => (this.walker?.inside ? this.othersInRoom().filter(({ place }) => !(place.flags & FLAGS.away)).map(({ at }) => at) : others().map(({ lat, lng }) => toLocal(origin, lat, lng))) : null, place: this.place, height: (x, y) => this.height(x, y), floor: (b) => this.floorOf(b) + this.rise(b) };
     this.setCars(cars);
     this.loadTilesAt(0, 0);
     const [beside] = cars;
@@ -136,6 +155,7 @@ export class Foot {
       const began = performance.now();
       const parsed = bytes ? parseTile(bytes, x, y, this.origin) : { buildings: [], lands: [], waters: [], roads: [], pois: [] };
       this.place.addTile(key, parsed);
+      this.saved.watch?.(key); // what's known about the buildings here, and from now on what happens to them
       this.floors.clear();
       this.tiles.onWork?.(performance.now() - began);
     }).catch((err) => {
@@ -272,7 +292,10 @@ export class Foot {
       return;
     }
     gl.free(this.room?.mesh);
-    if (this.room && !building) gl.clearAway();
+    if (this.room && !building) {
+      gl.clearAway();
+      clearRoomTags();
+    }
     this.room = building ? { whole, furnishing, level: this.level, floor: this.world.floor(building), mesh: gl.mesh(roomMesh(this.place, building, 0, furnishing, this.dropsHere(building))) } : null;
     this.world.inner = furnishing ? solidsOf(furnishing.record, buildingFrame(building.pieces, furnishing.record.axis), furnishing.furniture.models) : null;
     stepClearOfThings(this.walker, this.world);
@@ -299,6 +322,18 @@ export class Foot {
     const id = this.drops.add({ name, buildingId: building.buildingId, floor: this.level, axis, u, v, facing });
     if (this.room) this.room.stale = true;
     return id;
+  }
+
+  // Someone else got this first: what it gave, to take back out of the bag.
+  takenBack(key) {
+    const name = this.gave.get(key);
+    this.gave.delete(key);
+    return name;
+  }
+
+  // Someone else left or took something: the room shows it.
+  dropsChanged() {
+    if (this.room) this.room.stale = true;
   }
 
   // Takes one back off the ground or floor, for undoing a drop or picking it up.
@@ -426,6 +461,7 @@ export class Foot {
       this.onSound?.('ack');
       return say('bagFull');
     }
+    if (result.give) this.gave.set(thingKey(entry), result.give);
     this.onSound?.(result.sound);
     if (result.taken) {
       const { furnishing } = this.room, gone = entry;
@@ -622,8 +658,9 @@ export class Foot {
     const view = { ...this.view, range: this.view.range * INDOOR_RANGE };
     const aspect = gl.fit(), { eye, target } = placeCamera(this.walker, view);
     const daylight = tintAt(hour).map((v) => v / 255), tint = [1, 1, 1], sky = ROOM_SKY.map((v, i) => v * daylight[i]);
+    const viewProj = multiply(perspective(this.view.fov, aspect, NEAR, FAR), lookAt(eye, target));
     gl.begin({
-      viewProj: multiply(perspective(this.view.fov, aspect, NEAR, FAR), lookAt(eye, target)),
+      viewProj,
       eye, tint, sky, fogFrom: FAR, fogTo: FAR * 2,
     });
     this.syncLightMap(hour);
@@ -635,6 +672,62 @@ export class Foot {
     if (this.pose?.kind === 'sleep') gl.draw(personMesh(0), multiply(multiply(multiply(translate(w.x, w.y, this.room.floor + LIE_HEIGHT), bearing(w.facing)), multiply(swing(Math.PI / 2), translate(0, 0, -0.85))), sized));
     else if (this.pose) gl.draw(personMesh(SIT_FRAME), multiply(multiply(translate(w.x, w.y, this.room.floor), bearing(w.facing)), sized));
     else gl.draw(personMesh(frameOf(w)), multiply(multiply(translate(w.x, w.y, w.z + w.height), bearing(w.facing)), sized));
+    this.drawOthers(sized, viewProj);
+  }
+
+  // Those on this floor, placed by where they say they are in the building's own frame.
+  othersInRoom() {
+    const building = this.walker.inside, axis = this.room?.furnishing?.record?.axis;
+    if (!building?.buildingId || axis === undefined || !this.roomPeople) return [];
+    const frame = buildingFrame(building.pieces, axis);
+    return this.roomPeople(building.buildingId, this.level).map(({ member, place }) => ({ member, place, at: frame.toWorld(place.u, place.v) }));
+  }
+
+  drawOthers(sized, viewProj) {
+    const shownNames = new Set();
+    for (const { member, place, at } of this.othersInRoom()) {
+      const look = { figure: member.figure, colours: member.colours }, asleep = place.flags & FLAGS.asleep;
+      const facing = (place.heading * Math.PI) / 180, base = multiply(translate(at.x, at.y, this.room.floor + (asleep ? LIE_HEIGHT : 0)), bearing(facing));
+      gl.draw(otherMesh(member.id, look, asleep ? 0 : place.gait), asleep ? multiply(multiply(base, multiply(swing(Math.PI / 2), translate(0, 0, -0.85))), sized) : multiply(base, sized));
+      shownNames.add(member.id);
+      this.placeRoomTag(member, at, viewProj);
+    }
+    for (const [id, tag] of roomTags) {
+      if (shownNames.has(id)) continue;
+      tag.remove();
+      roomTags.delete(id);
+    }
+  }
+
+  // A name over someone indoors: outdoors the map draws these, but here it's a label placed from the camera's own numbers.
+  placeRoomTag(member, at, m) {
+    const x = at.x, y = at.y, z = this.room.floor + NAME_ABOVE, w = m[3] * x + m[7] * y + m[11] * z + m[15];
+    let tag = roomTags.get(member.id);
+    if (!tag) {
+      tag = document.createElement('div');
+      tag.className = 'roomTag';
+      tag.textContent = member.name;
+      document.getElementById('hud').append(tag);
+      roomTags.set(member.id, tag);
+    }
+    if (w <= 0) {
+      tag.style.display = 'none';
+      return;
+    }
+    const { canvas } = this, sx = ((m[0] * x + m[4] * y + m[8] * z + m[12]) / w + 1) * 0.5 * canvas.clientWidth, sy = (1 - (m[1] * x + m[5] * y + m[9] * z + m[13]) / w) * 0.5 * canvas.clientHeight;
+    tag.style.display = 'block';
+    tag.style.transform = `translate(calc(${Math.round(sx)}px - 50%), calc(${Math.round(sy)}px - 100%))`;
+  }
+
+  // Something changed in a building that wasn't this person's doing. floor: which, or null if it could be any.
+  buildingChanged(id, floor) {
+    this.onDropsChanged?.();
+    const building = this.walker?.inside;
+    if (building?.buildingId !== id) return;
+    const cache = building.pieces?.[0].furnishing;
+    if (floor === null) cache?.clear();
+    else cache?.delete(floor);
+    if (this.room && (floor === null || floor === this.level)) this.room.stale = true;
   }
 
   // The floor's light from its windows, again as the hour changes or the room does.
@@ -734,6 +827,7 @@ export class Foot {
 
   rebuildAll() {
     shared = null;
+    otherMeshes.clear();
     this.room = null;
   }
 
@@ -856,6 +950,7 @@ export class Foot {
   // The context and the meshes every walk shares stay, for the next time.
   stop() {
     this.alive = false;
+    clearRoomTags();
     gl.free(this.room?.mesh);
     gl.clearAway();
     gl.onRestored = null;
