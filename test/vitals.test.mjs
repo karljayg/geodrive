@@ -9,6 +9,18 @@ const memory = () => { const m = new Map(); return { getItem: (k) => m.get(k) ??
 const fresh = () => new Vitals(memory());
 const entry = (item, u = 0, v = 0) => [item, ITEMS[item].models[0], u, v, 0, 0, 0, 1];
 
+test('a need is good, then caution from its first warning, then critical at its last', () => {
+  const v = fresh(), at = (name, value) => { v.stats[name] = value; return v.levelOf(name); };
+  assert.equal(at('hunger', 41), 'good');
+  assert.equal(at('hunger', 40), 'caution');
+  assert.equal(at('hunger', 9), 'caution');
+  assert.equal(at('hunger', 8), 'critical');
+  assert.equal(at('health', 100), 'good');
+  assert.equal(at('health', 40), 'caution');
+  assert.equal(at('health', 15), 'critical');
+  assert.equal(at('phone', 0), 'critical');
+});
+
 test('rates come out near real figures', () => {
   const hoursToEmpty = (name, activity) => 100 / -GAME.stats[name].perHour[activity];
   assert.ok(Math.abs(hoursToEmpty('energy', 'still') - 16) < 1, 'awake 16 hours');

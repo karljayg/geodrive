@@ -374,8 +374,11 @@ body.onFoot #pockets { display: block; }
 .vital { display: grid; grid-template-columns: 70px 1fr; align-items: center; gap: 6px; padding: 1.5px 0; }
 .vital i { display: block; height: 6px; border-radius: 3px; background: #ffffff1f; overflow: hidden; }
 .vital b { display: block; height: 100%; width: 100%; background: #7fd5a5; transition: width .4s linear; }
-.vital.low b { background: #ff6a5c; }
-.vital.low span { color: #ffb2a8; }
+.vital.caution b { background: #ffd24a; }
+.vital.caution span, .healthTable .caution th, .healthTable .caution td:nth-child(2) { color: #ffe08a; }
+.vital.critical b { background: #ff5a4d; }
+.vital.critical span, .healthTable .critical th, .healthTable .critical td:nth-child(2) { color: #ff9a90; }
+.healthTable .good td:nth-child(2) { color: #7fd5a5; }
 .vital.charging b { background: #7cc4ff; }
 .vital.charging span::after { content: " ⚡"; }
 .healthTable { width: 100%; border-collapse: collapse; font-size: 12px; }

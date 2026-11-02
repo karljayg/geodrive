@@ -1062,7 +1062,6 @@ function collapseNow() {
 }
 
 const VITAL_ROWS = ['health', 'energy', 'hunger', 'thirst', 'bladder', 'bowels', 'phone', 'flashlight'];
-const VITAL_LOW = 25;
 let vitalsShown = {};
 
 // Bars in the corner of the view, full being good, written only when one has moved.
@@ -1073,12 +1072,13 @@ function drawVitals() {
     vitalsShown = {};
   }
   for (const name of VITAL_ROWS) {
-    const value = Math.round(vitals.stats[name]), said = `${value}|${charging}`;
+    const value = Math.round(vitals.stats[name]), level = vitals.levelOf(name), said = `${value}|${level}|${charging}`;
     if (vitalsShown[name] === said) continue;
     vitalsShown[name] = said;
     const row = box.querySelector(`[data-vital="${name}"]`);
     row.querySelector('b').style.width = `${value}%`;
-    row.classList.toggle('low', value <= VITAL_LOW);
+    row.classList.remove('good', 'caution', 'critical');
+    row.classList.add(level);
     row.classList.toggle('charging', charging && (name === 'phone' || (name === 'flashlight' && pocket?.data.bagHas('Flashlight'))));
     row.title = `${value}%`;
   }

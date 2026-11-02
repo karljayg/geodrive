@@ -70,6 +70,13 @@ export class Vitals {
     return rates;
   }
 
+  // How a stat is doing, from its own warnings: 'good' above the first, 'critical' at the last, 'caution' between.
+  levelOf(name) {
+    const levels = ((name === 'health' ? this.config.health : this.config.stats[name]).warn || []).map(([level]) => level), value = this.stats[name];
+    if (!levels.length || value > Math.max(...levels)) return 'good';
+    return value <= Math.min(...levels) ? 'critical' : 'caution';
+  }
+
   // Hours until a stat runs out at this rate, or null if it isn't going down.
   hoursLeft(name, rates) {
     return rates[name] < 0 ? this.stats[name] / -rates[name] : null;
