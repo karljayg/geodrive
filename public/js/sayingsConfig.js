@@ -54,11 +54,12 @@ export const SAYINGS = {
   lookLand_forest: ['Forest. Nice to look at, no use for supper.', 'Lots of trees, no snacks.'],
   lookLand_cemetery: ['Quiet here.', 'You read a headstone. Nobody you know.'],
   lookLand_playground: ['You\'re too big for the swings. Probably.', 'A playground, and no one to race.'],
-  lookLand_residential: ['Someone\'s neighbourhood. Nobody waves.', 'Quiet street. Curtains twitch.'],
+  lookLand_residential: ['Someone\'s neighborhood. Nobody waves.', 'Quiet street. Curtains twitch.'],
   lookLand_retail: ['A shopping area. Worth trying a few doors.', 'Shops around here somewhere.'],
   lookLand_industrial: ['Industrial land. It smells of it.', 'Nothing here but work, and nobody doing it.'],
   // Shoving things in rooms
   pushed: ['You push the {name}.', 'The {name} shifts along.', 'You shove the {name} out of the way.', 'The {name} scrapes across the floor.'],
+  pushTip: ['Something in your way? F can push it.', 'If it won\'t let you past, F can push it out of the way.'],
   pushStuck: ['The {name} won\'t go any further that way.', 'Something\'s in the way of the {name}.', 'The {name} isn\'t going there.'],
   droveIt: ['You get the {name} going, a little, and think better of it.', 'It lurches forward, and you stop while you\'re ahead.'],
   barrierGate: ['The barrier lifts, thinks about it, and drops.', 'Up it goes, and down again.'],

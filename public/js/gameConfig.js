@@ -77,7 +77,7 @@ export const GAME = {
     'Leftover pizza': { hunger: 30, thirst: -4, bowels: -7, say: 'You eat the pizza.', kind: 'food' },
     'Can of soup': { hunger: 25, thirst: 8, bowels: -5, say: 'You eat the soup cold.', kind: 'food' },
     'Box of cereal': { hunger: 25, thirst: -5, bowels: -5, say: 'You eat the cereal dry.', kind: 'food' },
-    'Tin of beans': { hunger: 30, bowels: -10, say: 'You eat the beans.', kind: 'food' },
+    'Can of beans': { hunger: 30, bowels: -10, say: 'You eat the beans.', kind: 'food' },
     'Tray of steaks': { hunger: 55, bowels: -14, say: 'You eat more steak than you should.', kind: 'food' },
     Sandwich: { hunger: 30, bowels: -6, say: 'You eat the sandwich.', kind: 'food' },
     'Fresh loaf': { hunger: 35, thirst: -6, bowels: -8, say: 'You tear into the bread.', kind: 'food' },
@@ -109,7 +109,7 @@ export const GAME = {
     'Juice box': { thirst: 18, hunger: 4, bladder: -5, say: 'You finish the juice box, with the noise.', kind: 'drink' },
     'Glass of water': { thirst: 20, bladder: -5, say: 'You drink the water.', kind: 'drink' },
     Aspirin: { health: 4, say: 'You take an aspirin.', kind: 'medicine' },
-    Plasters: { health: 4, say: 'You patch yourself up.', kind: 'medicine' },
+    'Band-Aids': { health: 4, say: 'You patch yourself up.', kind: 'medicine' },
     Bandages: { health: 10, say: 'You bandage yourself up.', kind: 'medicine' },
     Batteries: { flashlight: 100, say: 'You put new batteries in the flashlight.', kind: 'supply' },
     'Pack of batteries': { flashlight: 100, say: 'You put new batteries in the flashlight.', kind: 'supply' },
@@ -117,11 +117,11 @@ export const GAME = {
 
   // What opening or searching each thing can turn up. Anything that opens without a list is empty.
   finds: {
-    fridge: ['Milk', 'Leftover pizza', 'Orange juice', 'Cold soda', 'Yogurt', 'Cheese', 'Juice box', 'Slice of cake'], counter: ['Can of soup', 'Box of cereal', 'Cutlery', 'Instant noodles', 'Peanut butter', 'Bag of chips', 'Tin of beans'], wardrobe: ['Old jacket', 'Spare keys', 'Shoebox'],
-    nightstand: ['Flashlight', 'Paperback', 'Reading glasses'], sideTable: ['Batteries', 'Pack of cards', 'Old letters', 'Candy bar'], tvStand: ['TV remote', 'Old DVD'], bathCabinet: ['Toothpaste', 'Plasters', 'Aspirin'],
-    bookcase: ['Novel', 'Atlas', 'Photo album'], desk: ['Stapler', 'Notebook', 'USB stick', 'Building key', 'Granola bar', 'Bag of chips'], filingCabinet: ['Old invoices', 'Paperclips', 'Sealed envelope', 'Building key'], locker: ['Gym towel', 'Padlock', 'Trainers', 'Building key', 'Protein bar', 'Energy drink'],
+    fridge: ['Milk', 'Leftover pizza', 'Orange juice', 'Cold soda', 'Yogurt', 'Cheese', 'Juice box', 'Slice of cake'], counter: ['Can of soup', 'Box of cereal', 'Silverware', 'Instant noodles', 'Peanut butter', 'Bag of chips', 'Can of beans'], wardrobe: ['Old jacket', 'Spare keys', 'Shoebox'],
+    nightstand: ['Flashlight', 'Paperback', 'Reading glasses'], sideTable: ['Batteries', 'Pack of cards', 'Old letters', 'Candy bar'], tvStand: ['TV remote', 'Old DVD'], bathCabinet: ['Toothpaste', 'Band-Aids', 'Aspirin'],
+    bookcase: ['Novel', 'Atlas', 'Photo album'], desk: ['Stapler', 'Notebook', 'USB stick', 'Building key', 'Granola bar', 'Bag of chips'], filingCabinet: ['Old invoices', 'Paperclips', 'Sealed envelope', 'Building key'], locker: ['Gym towel', 'Padlock', 'Sneakers', 'Building key', 'Protein bar', 'Energy drink'],
     box: ['Old newspapers', 'Packing tape', 'Holiday lights'], bin: ['Crumpled receipt', 'Empty can'], cashCart: ['Bundle of cash'], toolChest: ['Wrench', 'Screwdriver', 'Tape measure', 'Building key'], medCart: ['Bandages', 'Thermometer'],
-    storeShelf: ['Tin of beans', 'Bottle of water', 'Pack of batteries', 'Bag of chips', 'Instant noodles', 'Can of soup', 'Box of cereal', 'Granola bar', 'Peanut butter'], clothesRack: ['Denim jacket', 'Silk scarf'], displayTable: ['Gift card', 'Sunglasses'], displayCase: ['Old coin', 'Museum guide'],
+    storeShelf: ['Can of beans', 'Bottle of water', 'Pack of batteries', 'Bag of chips', 'Instant noodles', 'Can of soup', 'Box of cereal', 'Granola bar', 'Peanut butter'], clothesRack: ['Denim jacket', 'Silk scarf'], displayTable: ['Gift card', 'Sunglasses'], displayCase: ['Old coin', 'Museum guide'],
     palletRack: ['Box of parts', 'Roll of tape'], bookStack: ['Library book', 'Old atlas'], gearRack: ['Fire helmet', 'Gloves'], walkInFridge: ['Tray of steaks', 'Crate of milk', 'Cheese', 'Bowl of soup', 'Chicken wrap'], toyBox: ['Toy car', 'Teddy bear'],
 till: ['Cash', 'Bundle of cash'], produceStand: ['Apple', 'Banana', 'Orange', 'Grapes'], fridgeCase: ['Sandwich', 'Cold drink', 'Yogurt', 'Energy drink', 'Juice box', 'Cheese'], breadRack: ['Fresh loaf', 'Croissant', 'Muffin', 'Donut', 'Bread roll', 'Slice of cake'], petCage: ['Dog biscuit'],
     barCounter: ['Burger', 'Fries', 'Slice of pizza', 'Chicken wrap', 'Glass of water', 'Cold soda'], prepTable: ['Burger', 'Chicken wrap', 'Bowl of soup', 'Bread roll', 'Fries'], diningTable: ['Half a burger', 'Fries', 'Bread roll', 'Glass of water'],

@@ -20,15 +20,15 @@ const HOMES = new Set(['home', 'shed']);
 const DOOR_GAP_LEAST = 0.6, DOOR_GAP_MOST = 3.2, BESIDE_FRONT_DOOR = 0.85; // m
 
 const NAMES = {
-  tv: 'TV', tvStand: 'TV stand', screen: 'computer', frontDesk: 'front desk', atm: 'cash machine', bin: 'bin', bath: 'bath', basin: 'basin', bathCabinet: 'bathroom cabinet',
+  tv: 'TV', tvStand: 'TV stand', screen: 'computer', frontDesk: 'front desk', atm: 'ATM', till: 'cash register', bin: 'trash can', bath: 'bath', basin: 'sink', bathCabinet: 'bathroom cabinet',
   cashCart: 'cash cart', medCart: 'medical cart', radio: 'radio', books: 'books', toaster: 'toaster', smallPlant: 'little plant', tableLamp: 'lamp', floorLamp: 'lamp', parkedCar: 'car',
 };
 const nameOf = (item) => NAMES[item] || item.replace(/[A-Z]/g, (c) => ` ${c.toLowerCase()}`);
 
-// What using something says. A thing can also give something, as a cash machine gives cash.
+// What using something says. A thing can also give something, as an ATM gives cash.
 const USES = {
   barrierGate: { say: 'barrierGate' }, till: { say: 'tillUse' },
-  atm: { say: 'The cash machine gives you some cash.', give: 'Cash' }, vendingMachine: {}, coffeeMachine: {},
+  atm: { say: 'The ATM gives you some cash.', give: 'Cash' }, vendingMachine: {}, coffeeMachine: {},
   sink: { say: 'washHands' }, basin: { say: 'washHands' }, toilet: { say: 'That\'s better.' }, stall: { say: 'That\'s better.' }, bath: { say: 'You run the water for a moment.' }, stove: { say: 'The ring clicks on and off.' },
   proStove: { say: 'The burners roar, then you turn them off.' }, microwave: { say: 'It hums and beeps.' }, toaster: { say: 'Pop.' }, washer: { say: 'It rumbles through a cycle.' }, screen: { say: 'It asks for a password.' },
   treadmill: { say: 'You jog for a minute.' }, benchPress: { say: 'You lift it twice and put it down.' }, punchBag: { say: 'Thud.' }, weightRack: { say: 'Heavier than it looks.' }, poolTable: { say: 'You knock a ball in.' },

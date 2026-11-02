@@ -15,6 +15,20 @@ export const CONTACTS = [
 
 const blank = () => ({ notes: [], messages: {}, bag: [{ id: FLASHLIGHT, name: FLASHLIGHT, count: 1 }], car: [] });
 
+// Things saved under a name since changed, joined with any of the new name.
+const RENAMED = { Trainers: 'Sneakers', Plasters: 'Band-Aids', 'Tin of beans': 'Can of beans', Cutlery: 'Silverware' };
+function renameOld(list) {
+  for (const item of [...(list || [])]) {
+    const name = RENAMED[item.id];
+    if (!name) continue;
+    const there = list.find((other) => other.id === name);
+    if (there) {
+      there.count += item.count;
+      list.splice(list.indexOf(item), 1);
+    } else Object.assign(item, { id: name, name });
+  }
+}
+
 export class PocketData {
   constructor(storage) {
     this.state = blank();
@@ -22,6 +36,7 @@ export class PocketData {
       this.storage = storage ?? localStorage;
       const saved = JSON.parse(this.storage.getItem(STORE));
       this.state = { ...blank(), ...saved };
+      for (const list of [this.state.bag, this.state.car]) renameOld(list);
       if (saved?.bag && !saved.car) this.state.bag.length < BAG_SLOTS ? this.state.bag.push(blank().bag[0]) : this.state.car.push(blank().bag[0]); // saved before there was a flashlight
     } catch (err) {
       console.warn('saved pocket:', err);

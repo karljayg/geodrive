@@ -275,4 +275,6 @@ test('pushing and driving are offered, and say so', () => {
   assert.ok(lift.push > chairPush.push);
   assert.ok(useThing(entry('barrierGate'), {}, 1, 'b').say);
   assert.ok(useThing(entry('till'), {}, 1, 'b').say);
+  assert.deepEqual(questionsFor(entry('till')).map((q) => q.label), ['Use the cash register?', 'Open the cash register?']);
+  assert.equal(questionsFor(entry('bin'))[0].label, 'Search the trash can?');
 });

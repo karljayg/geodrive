@@ -24,7 +24,7 @@ const ICONS = {
   'Leftover pizza': path('M4 8c8-4 16-4 24 0L16 29z', '#e9b65c') + path('M4 8c8-4 16-4 24 0l-2 3c-7-3-13-3-20 0z', '#b7803a') + circle(13, 14, 2.2, '#c0392b') + circle(19, 15, 2.2, '#c0392b') + circle(16, 21, 2, '#c0392b'),
   'Can of soup': can('#d9dde0', '#c0392b'),
   'Box of cereal': rect(8, 3, 16, 26, '#f0a830', 1) + circle(16, 13, 5, '#fff3cf') + circle(14, 12, 1.2, '#b7803a') + circle(18, 14, 1.2, '#b7803a') + rect(10, 22, 12, 3, '#c0392b'),
-  'Tin of beans': can('#b8c0c6', '#d35e2b') + circle(13, 16.500, 1.6, '#7a3b1c') + circle(19, 16.500, 1.6, '#7a3b1c') + circle(16, 18, 1.6, '#7a3b1c'),
+  'Can of beans': can('#b8c0c6', '#d35e2b') + circle(13, 16.500, 1.6, '#7a3b1c') + circle(19, 16.500, 1.6, '#7a3b1c') + circle(16, 18, 1.6, '#7a3b1c'),
   'Tray of steaks': rect(3, 19, 26, 8, '#aab3ba', 2) + path('M7 10c3-4 9-4 11 0 2 3 0 9-5 9-4 0-8-5-6-9z', '#a83a32') + circle(12, 14, 2, '#f0d9c8') + path('M19 11c3-2 7-1 8 2 1 4-2 6-5 6-3 0-5-5-3-8z', '#a83a32'),
   Sandwich: path('M3 13L16 6l13 7z', '#e0b878') + rect(3, 13, 26, 3, '#7fb24a') + rect(3, 16, 26, 3, '#c0392b') + rect(3, 19, 26, 5, '#e0b878', 1),
   'Fresh loaf': path('M4 18c0-7 5-10 12-10s12 3 12 10v5a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3z', '#c98a45') + line('M11 11l-2 6M17 10l-2 7M23 11l-2 6', '#8f5a25'),
@@ -66,7 +66,7 @@ const ICONS = {
   'Empty can': path('M9 12l13-6 3 6-1 11-7 5-7-5z', '#9aa3aa') + path('M9 12l13-6-5 11z', '#c9d1d6'),
   // Medicine
   Aspirin: bottle('#f2f2f2', '#d6332e') + rect(9, 15, 14, 9, '#d6332e') + rect(14.500, 16.500, 3, 6, '#fff') + rect(13, 18, 6, 3, '#fff'),
-  Plasters: rect(3, 11, 26, 10, '#e2b48c', 5) + rect(11, 11, 10, 10, '#f3d7bd') + circle(14, 14, 0.8, '#b98a62') + circle(18, 14, 0.8, '#b98a62') + circle(14, 18, 0.8, '#b98a62') + circle(18, 18, 0.8, '#b98a62'),
+  'Band-Aids': rect(3, 11, 26, 10, '#e2b48c', 5) + rect(11, 11, 10, 10, '#f3d7bd') + circle(14, 14, 0.8, '#b98a62') + circle(18, 14, 0.8, '#b98a62') + circle(14, 18, 0.8, '#b98a62') + circle(18, 18, 0.8, '#b98a62'),
   Bandages: circle(16, 16, 11, '#f4f1e6') + circle(16, 16, 4, '#cfc8b4') + path('M25 22l5 2-1 5-7-3z', '#f4f1e6') + line('M9 11c4-4 10-4 14 0', '#cfc8b4', 1.4),
   Thermometer: rect(14, 3, 5, 19, '#e8edf0', 2.5) + circle(16.500, 24, 5, '#d6332e') + rect(15.500, 9, 2, 14, '#d6332e'),
   Toothpaste: path('M5 11h17l5 3v4l-5 3H5z', '#f2f6f8') + rect(5, 13, 12, 6, '#2d7fc2') + rect(27, 14, 3, 4, '#c0392b', 1),
@@ -116,13 +116,13 @@ const ICONS = {
   'Denim jacket': jacket('#4a78a8', '#2d5078'),
   'Gym towel': rect(5, 6, 22, 20, '#3fa6c2', 2) + rect(5, 10, 22, 2, '#fff') + rect(5, 21, 22, 2, '#fff'),
   'Silk scarf': path('M9 4c5 4 9 4 14 0 2 4-1 8-4 10l5 14-5-2-3-9-3 9-5 2 5-14C10 12 7 8 9 4z', '#c8488f'),
-  Trainers: path('M3 14l7-3 5 5 11 3c3 1 3 3 3 6H3z', '#f2f6f8') + rect(3, 24, 26, 3, '#3f8fd8', 1) + line('M11 15l3-2M14 17l3-2', '#8a8f96', 1.3),
+  'Sneakers': path('M3 14l7-3 5 5 11 3c3 1 3 3 3 6H3z', '#f2f6f8') + rect(3, 24, 26, 3, '#3f8fd8', 1) + line('M11 15l3-2M14 17l3-2', '#8a8f96', 1.3),
   Gloves: path('M9 28V14l-3-5c-1-2 1-3 2-2l3 4V5c0-2 3-2 3 0v5V3c0-2 3-2 3 0v7V5c0-2 3-2 3 0v13l-2 10z', '#d9741a') + rect(9, 24, 10, 4, '#7a4a1c'),
   'Reading glasses': circle(9, 17, 6, '#a9dcf5') + circle(23, 17, 6, '#a9dcf5') + line('M9 11a6 6 0 1 0 .01 0M23 11a6 6 0 1 0 .01 0M15 16c1-1 1-1 2 0', '#39424c', 1.6),
   Sunglasses: path('M3 13h11v4a5 5 0 0 1-5 5H8a5 5 0 0 1-5-5zM18 13h11v4a5 5 0 0 1-5 5h-1a5 5 0 0 1-5-5z', '#4f7ba8') + line('M14 15h4', '#c9d1d6'),
   'Fire helmet': path('M4 21c0-9 5-14 12-14s12 5 12 14z', '#d6332e') + rect(1, 20, 30, 4, '#a82320', 2) + rect(13, 9, 6, 8, '#f2cf3f', 1),
   // Odds and ends
-  Cutlery: line('M9 4v24M6 4v6a3 3 0 0 0 6 0V4', '#aab3ba') + path('M21 4c4 2 5 9 1 12v12h-2V4z', '#aab3ba'),
+  'Silverware': line('M9 4v24M6 4v6a3 3 0 0 0 6 0V4', '#aab3ba') + path('M21 4c4 2 5 9 1 12v12h-2V4z', '#aab3ba'),
   'Toy car': path('M3 21v-3l4-1 3-5h10l4 5 5 1v3z', '#d6332e') + path('M11.500 13h3.500v4h-6zM17 13h2.500l2.500 4h-5z', '#a9dcf5') + circle(9, 22, 3, '#22282e') + circle(23, 22, 3, '#22282e'),
   'Teddy bear': circle(9, 7, 3.500, '#a8733c') + circle(23, 7, 3.500, '#a8733c') + circle(16, 11, 7.500, '#c08a4c') + circle(16, 24, 7, '#c08a4c') + circle(16, 24, 3.500, '#e0bd8c') + circle(13, 10, 1.1, '#22282e') + circle(19, 10, 1.1, '#22282e') + circle(16, 13, 1.300, '#22282e'),
   // Picked up in rooms

@@ -99,7 +99,7 @@ export const footfall = (before, after) => Math.floor(before * 2 + 0.5) !== Math
 export const stepSound = (running, indoors) => `${running ? 'run' : 'step'}${indoors ? 'In' : 'Out'}`;
 
 // Things in the bag: those that don't go by their kind.
-const BAG_ITEMS = { Apple: 'crunch', 'Candy bar': 'crunch', 'Dog biscuit': 'crunch', 'Box of cereal': 'crunch', Aspirin: 'pills', Plasters: 'bandage', Bandages: 'bandage' };
+const BAG_ITEMS = { Apple: 'crunch', 'Candy bar': 'crunch', 'Dog biscuit': 'crunch', 'Box of cereal': 'crunch', Aspirin: 'pills', 'Band-Aids': 'bandage', Bandages: 'bandage' };
 const BAG_KINDS = { drink: 'drink', food: 'eat', supply: 'batteries' };
 
 // Things where they stand, when used.

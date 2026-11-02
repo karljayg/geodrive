@@ -814,9 +814,25 @@ function syncFootScene(dt) {
 }
 
 // While paused or in a dialog the walk still draws, so a change to the time of day in Settings shows, but nothing moves.
+// The first time someone walks into something they could push, tell them they can.
+const WALK_KEYS = ['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'];
+let pushTipGiven = false, stuckFor = 0;
+function tipAboutPushing(fromX, fromY, dt) {
+  if (pushTipGiven || !foot.walker.inside) return;
+  const trying = WALK_KEYS.some((key) => keys.has(key)), moved = Math.hypot(foot.walker.x - fromX, foot.walker.y - fromY);
+  stuckFor = trying && moved < 0.005 ? stuckFor + dt : 0;
+  if (stuckFor < 0.4) return;
+  stuckFor = 0;
+  if (!foot.choices().some((choice) => choice.label.startsWith('Push'))) return;
+  pushTipGiven = true;
+  notice(say('pushTip'), 5000);
+}
+
 function runFoot(t, dt) {
   const began = performance.now(), live = !debug.hold && !dialogOpen && !paused;
+  const fromX = foot.walker.x, fromY = foot.walker.y;
   foot.update(live ? dt : 0, live ? footInput(dt) : {}, settings.hour);
+  if (live) tipAboutPushing(fromX, fromY, dt);
   syncFootScene(dt);
   // The radio, road and wind stay in the car, though the phone can play music. The engine idles on, fading with distance.
   const profile = profileFor(settings.carProfile);
