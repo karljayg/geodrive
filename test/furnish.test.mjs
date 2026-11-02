@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { BuildingStore, dice, hashText } from '../public/js/buildings.js';
 import { Place, inRings } from '../public/js/footData.js';
 import { Mesh, clipToRect, lowWall, roomMesh } from '../public/js/footScene.js';
-import { FLOOR_VERSION, axisOf, colourFor, coreNear, coreOf, frameOf, layoutFloor, plainFloor, solidsOf, worldBearing } from '../public/js/furnish.js';
+import { FLOOR_VERSION, upgradeFloor, axisOf, colourFor, coreNear, coreOf, frameOf, layoutFloor, plainFloor, solidsOf, worldBearing } from '../public/js/furnish.js';
 import { ITEMS, bake, isSolid, parseFurniture, triangleCount, usedModels } from '../public/js/furniture.js';
 import { JUMP_HEIGHT, frameOf as walkerFrame, newWalker, stepClearOfThings, stepWalker } from '../public/js/footWalker.js';
 
@@ -865,4 +865,25 @@ test('every room can be walked to from the way in without jumping, whatever the 
       }
     }
   }
+});
+
+test('a saved floor survives: it is kept as found, and only ones the game can no longer read are redone', () => {
+  const record = lay(SHAPES.house, 3);
+  assert.equal(record.v, FLOOR_VERSION);
+  assert.equal(upgradeFloor(JSON.parse(JSON.stringify(record))).items.length, record.items.length);
+  assert.ok(upgradeFloor({ ...record, v: FLOOR_VERSION + 5 }), 'a later version is fine too');
+  assert.equal(upgradeFloor({ ...record, v: 2 }), null);
+  assert.equal(upgradeFloor(null), null);
+});
+
+test('over the limit, a building someone has done things in keeps its floors longest', () => {
+  const items = new Map(), storage = { getItem: (k) => items.get(k) ?? null, setItem: (k, v) => items.set(k, v), removeItem: (k) => items.delete(k) }, store = new BuildingStore(storage), big = { axis: 0, zones: [], walls: [], items: 'x'.repeat(600000) };
+  store.remember('touched', { type: 'home', floors: 1, style: 'cheap', state: { 1: { taken: ['a'], opened: [] } } }, 1);
+  store.remember('later', { type: 'home', floors: 1, style: 'cheap' }, 2);
+  store.remember('newest', { type: 'home', floors: 1, style: 'cheap' }, 3);
+  store.saveFloor('touched', 1, big);
+  store.saveFloor('later', 1, big);
+  store.saveFloor('newest', 1, big);
+  assert.ok(store.floor('touched', 1), 'though it is the oldest');
+  assert.equal(store.floor('later', 1), null);
 });

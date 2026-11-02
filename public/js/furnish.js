@@ -106,7 +106,16 @@ const ASPECT_MOST = 4.5;   // of a room's length to its width
 const LIFT_GAP = 0.3;      // m between the stairs and the lift
 const CORE_CLEAR = 1.4;    // m in front of the stairs and lift kept free on every floor
 const CORE_REACH = 1.2;    // m from them that L uses them
-export const FLOOR_VERSION = 3; // a saved floor from before entrances, looks and stairs at the walls is laid out again
+// Layouts can improve without this changing: a saved floor stays as it was found. Only for a change a saved floor can't work without,
+// add a step to upgradeFloor rather than raising FLOOR_OLDEST, which throws saved floors away.
+export const FLOOR_VERSION = 3;
+const FLOOR_OLDEST = 3;
+
+// A saved floor brought up to date, or null if it's from before this game could read them.
+export function upgradeFloor(record) {
+  if (!record || !(record.v >= FLOOR_OLDEST)) return null;
+  return record;
+}
 const ESSENTIAL = { ground: 4, single: 5, upper: 2 };
 const ENTRANCES = ['lobby', 'bankLobby', 'hall', 'foyer', 'hospitalWaiting', 'clinicWaiting', 'policeFront', 'concourse', 'landing', 'corridor'];
 const SEALED = new Set(['vault']); // no way in for the public

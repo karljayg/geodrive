@@ -4,7 +4,7 @@
 import { fromLocal } from './footData.js';
 import { CATEGORY_TYPE } from './overture.js';
 
-const STORE = 'geodrive_rooms_v3'; // earlier ones hold guessed types, so they're dropped
+const STORE = 'geodrive_rooms_v3'; // this stays v3, so what people have done survives updates; earlier ones held guessed types
 const OLD_STORES = ['geodrive_rooms_v1', 'geodrive_rooms_v2'];
 const TERMINAL_AREA = 5000, MALL_AREA = 3000, MALL_POIS = 3; // m², m², points of interest
 const WAREHOUSE_AREA = 2000, LOW = 15, BIG_SHOP_AREA = 3000; // m², m, m²
@@ -242,7 +242,9 @@ export class BuildingStore {
   makeRoom(wanted, keep) {
     const size = (b) => Object.values(b.saved || {}).reduce((sum, n) => sum + n, 0);
     let total = Object.values(this.buildings).reduce((sum, b) => sum + size(b), 0) + wanted;
-    const oldest = Object.entries(this.buildings).filter(([id, b]) => id !== keep && b.saved).sort((a, b) => a[1].seen - b[1].seen);
+    // Dropped floors come back from the dice, unless the layout code has changed since, so a building someone has changed is kept to the last.
+    const touched = (b) => Object.values(b.state || {}).some((s) => s.taken?.length || s.opened?.length);
+    const oldest = Object.entries(this.buildings).filter(([id, b]) => id !== keep && b.saved).sort((a, b) => touched(a[1]) - touched(b[1]) || a[1].seen - b[1].seen);
     for (const [id, building] of oldest) {
       if (total <= FLOOR_LIMIT) break;
       total -= size(building);

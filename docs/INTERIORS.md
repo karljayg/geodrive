@@ -273,6 +273,9 @@ geodrive_rooms_v1_<id>_<n>   [ [item, x, y, rotation, shape, colour, state], ...
 - **Catalogue changes:** visited floors keep what they have, including items later removed from the catalogue, which are skipped when drawn.
 - **Limits:** saved in one browser only. A "Forget building interiors" button goes in Settings.
 
+## Saved buildings survive updates
+Better layouts and types apply to buildings not yet visited, and a visited building stays as it was found. So don't raise `FLOOR_OLDEST` or rename `STORE`: for a change saved data can't work without, add a step to `upgradeFloor`. What someone did in a building is in `plan.state`, apart from its layout, and over the storage limit those buildings lose their saved floors last. The bag is saved separately. "Forget building interiors" in Settings is how to see improvements in visited buildings.
+
 ## What has to change in the game
 | Today | Needed |
 |---|---|

@@ -4,6 +4,7 @@
 import { decodeLines, readLayer } from './vector.js';
 
 const BASE = 'https://overturemaps-extras-us-west-2.s3.amazonaws.com';
+const SERVER = new URL('../places.php', import.meta.url).href; // our own copy of what's been asked for
 const ZOOM = 14;
 const HEADER_BYTES = 16384; // holds the header and the first directory
 const TIMEOUT = 20000;      // ms; a tile of a big city is large
@@ -177,18 +178,33 @@ export class Overture {
     }
   }
 
+  // From the copy on our own server if it can, which keeps what it's asked for, and otherwise from Overture itself.
   async range(start, length) {
-    const res = await this.get(this.file.url, { headers: { Range: `bytes=${start}-${start + length - 1}` } });
-    return new Uint8Array(await res.arrayBuffer());
+    try {
+      const res = await this.get(`${SERVER}?release=${this.file.release}&start=${start}&length=${length}`);
+      return new Uint8Array(await res.arrayBuffer());
+    } catch {
+      const res = await this.get(this.file.url, { headers: { Range: `bytes=${start}-${start + length - 1}` } });
+      return new Uint8Array(await res.arrayBuffer());
+    }
+  }
+
+  async newestRelease() {
+    let listing = '';
+    try {
+      listing = await (await this.get(`${SERVER}?list=1`)).text();
+    } catch {
+      listing = await (await this.get(`${BASE}/?list-type=2&prefix=tiles/&delimiter=/`)).text();
+    }
+    return [...listing.matchAll(/<Prefix>tiles\/([^<]+)\/<\/Prefix>/g)].map((m) => m[1]).sort().at(-1);
   }
 
   // Finds the newest release, once, and reads where things are in its file.
   open() {
     this.opening ||= (async () => {
-      const listing = await (await this.get(`${BASE}/?list-type=2&prefix=tiles/&delimiter=/`)).text();
-      const newest = [...listing.matchAll(/<Prefix>tiles\/([^<]+)\/<\/Prefix>/g)].map((m) => m[1]).sort().at(-1);
+      const newest = await this.newestRelease();
       if (!newest) throw new Error('no Overture release listed');
-      this.file = { url: `${BASE}/tiles/${newest}/places.pmtiles` };
+      this.file = { release: newest, url: `${BASE}/tiles/${newest}/places.pmtiles` };
       const head = await this.range(0, HEADER_BYTES), view = new DataView(head.buffer, head.byteOffset, head.byteLength);
       const number = (at) => Number(view.getBigUint64(at, true));
       if (new TextDecoder().decode(head.subarray(0, 7)) !== 'PMTiles') throw new Error('not a PMTiles file');

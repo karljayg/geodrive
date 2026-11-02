@@ -9,7 +9,7 @@ import { Place, fromLocal, parseTile, toLocal } from './footData.js';
 import { SIT_FRAME, personFloats } from './footPerson.js';
 import { poseSpot, usableNear, usePrompt, useThing, withoutTaken } from './footActions.js';
 import { roomMesh } from './footScene.js';
-import { FLOOR_VERSION, FURNISHED, coreNear, coreOf, frameOf as buildingFrame, layoutFloor, plainFloor, solidsOf, worldBearing } from './furnish.js';
+import { FURNISHED, coreNear, coreOf, frameOf as buildingFrame, layoutFloor, plainFloor, solidsOf, upgradeFloor, worldBearing } from './furnish.js';
 import { parseFurniture } from './furniture.js';
 import { buildingWithin, carWalls, distanceToCar, enterBuilding, GET_IN_REACH, leaveBuilding, newWalker, frameOf, placeCamera, spawnSpot, stepClearOfThings, stepWalker, wayToCar } from './footWalker.js';
 import { Overture } from './overture.js';
@@ -228,8 +228,8 @@ export class Foot {
     }
     const cache = building.pieces[0].furnishing ||= new Map(), known = cache.get(this.level);
     if (known) return known;
-    let record = furnished ? saved.floor(id, this.level) : null;
-    if (record?.v !== FLOOR_VERSION) {
+    let record = furnished ? upgradeFloor(saved.floor(id, this.level)) : null;
+    if (!record) {
       record = furnished ? layoutFloor(building.pieces, plan, this.level, furniture.models, dice(hashText(`${id}:${this.level}`))) : plainFloor(plan, this.level);
       if (furnished) saved.saveFloor(id, this.level, record); // with the building's look, which it has now if it hadn't
     }
