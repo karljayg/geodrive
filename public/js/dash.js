@@ -131,7 +131,7 @@ export const navBehind = (roads) => !!layer && layer.changes !== roads.changes;
 // The navigation screen: a map from very high up, drawn from the road data already loaded, so it adds no map charges.
 // options: { roads, pos, heading, route, routeIndex, radius (m from the car to the top of the screen), parked (where the car is while on foot),
 // streets (names to show as { lines, avoid: [{ fromRight, y, r }] }, for spots the page covers) }
-export function drawNav(canvas, { roads, pos, heading, parked, route, routeIndex, radius, hour, clock, streets }) {
+export function drawNav(canvas, { roads, pos, heading, parked, route, routeIndex, radius, hour, clock, streets, badges }) {
   const { ctx, w, h } = fit(canvas);
   if (!w || !h) return; // a layout with no room for the screen
   ctx.fillStyle = '#0a1420';
@@ -222,6 +222,20 @@ export function drawNav(canvas, { roads, pos, heading, parked, route, routeIndex
     ctx.strokeStyle = '#0a1420';
     ctx.lineWidth = 1.5;
     ctx.beginPath(); ctx.arc(Math.max(5, Math.min(w - 5, px)), Math.max(5, Math.min(h - 5, py)), 4, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+  }
+
+  // Other people, as round badges with their initials, held at the edge if they're off it. badges: [{ lat, lng, text, colour }].
+  for (const { lat, lng, text, colour } of badges ?? []) {
+    const [bx, by] = toScreen(lat, lng), x = Math.max(11, Math.min(w - 11, bx)), y = Math.max(11, Math.min(h - 11, by));
+    ctx.fillStyle = colour;
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.arc(x, y, 9.5, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = '#fff';
+    ctx.font = '700 8.5px system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(text, x, y + 0.5);
   }
 
   // The car always points up, and the map turns under it. N shows which way north is.

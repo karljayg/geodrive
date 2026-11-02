@@ -59,6 +59,15 @@ function pushClear(x, y, world, height = 0) {
       moved = true;
     };
     for (const wall of world.carWalls) away(wall);
+    if (!world.inner) { // other people, outdoors: pushed clear of each, or two can never walk through one another
+      for (const other of world.solidPeople?.() ?? []) {
+        const ox = x - other.x, oy = y - other.y, d = Math.hypot(ox, oy);
+        if (d >= RADIUS * 2 || d < 1e-6) continue;
+        x += (ox / d) * (RADIUS * 2 - d + 1e-4);
+        y += (oy / d) * (RADIUS * 2 - d + 1e-4);
+        moved = true;
+      }
+    }
     for (const wall of world.inner?.walls || []) away(wall);
     const cell = world.place.cellAt(x, y);
     for (const building of cell.buildings) {

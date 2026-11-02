@@ -101,12 +101,17 @@ function ball(part, c, r, squash = 1, from = 0) {
 }
 
 // One frame as parts of one colour each.
-export function personParts(frame) {
+// A look's colour as numbers. Anything else keeps the colour it was going to have.
+const colourOf = (hex, otherwise) => (typeof hex === 'string' && /^#[0-9a-f]{6}$/i.test(hex) ? [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255) : otherwise);
+
+// look: { figure, colours: { skin, jacket, jeans, shoes, hair } } for someone's own, or nothing for the usual person. Female is the same body with longer hair, for now.
+export function personParts(frame, look) {
   const gait = frame === SIT_FRAME ? 'sit' : frame === 0 ? 'stand' : frame <= CYCLE_FRAMES ? 'walk' : 'run';
   const phase = frame === 0 || frame === SIT_FRAME ? 0 : ((frame - 1) % CYCLE_FRAMES) / CYCLE_FRAMES;
   const j = poseAt(gait, phase);
   const part = (colour) => ({ pos: [], nor: [], colour });
-  const skin = part(SKIN), jacket = part(JACKET), jeans = part(JEANS), shoes = part(SHOES), hair = part(HAIR);
+  const colours = look?.colours ?? {};
+  const skin = part(colourOf(colours.skin, SKIN)), jacket = part(colourOf(colours.jacket, JACKET)), jeans = part(colourOf(colours.jeans, JEANS)), shoes = part(colourOf(colours.shoes, SHOES)), hair = part(colourOf(colours.hair, HAIR));
   tube(jacket, [0, 0, j.hip[2] - 0.02], j.chest, 0.17, 0.2, 10, 0.68);
   ball(jacket, j.chest, 0.2, 0.55);
   ball(jeans, j.hip, 0.16, 0.7);
@@ -114,6 +119,7 @@ export function personParts(frame) {
   tube(skin, j.chest, neck, 0.05, 0.05, 6);
   ball(skin, head, 0.105, 1.15);
   ball(hair, [head[0], head[1] - 0.012, head[2] + 0.018], 0.112, 1.1, 0);
+  if (look?.figure === 'female') tube(hair, [0, head[1] - 0.06, head[2] + 0.04], [0, neck[1] - 0.085, neck[2] - 0.13], 0.095, 0.05, 8, 0.6);
   for (const l of j.legs) {
     tube(jeans, l.hip, l.knee, 0.09, 0.062);
     tube(jeans, l.knee, l.ankle, 0.062, 0.04);
@@ -131,9 +137,9 @@ export function personParts(frame) {
 }
 
 // The same as one flat list for the room's renderer: x, y, z, nx, ny, nz, r, g, b per vertex.
-export function personFloats(frame) {
+export function personFloats(frame, look) {
   const data = [];
-  for (const { pos, nor, colour } of personParts(frame)) {
+  for (const { pos, nor, colour } of personParts(frame, look)) {
     for (let i = 0; i < pos.length; i += 3) data.push(pos[i], pos[i + 1], pos[i + 2], nor[i], nor[i + 1], nor[i + 2], ...colour);
   }
   return new Float32Array(data);

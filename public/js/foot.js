@@ -31,7 +31,7 @@ const NEAR = 2, FAR = 400;   // m from the camera
 const INDOOR_RANGE = 0.45;   // of the camera's distance outdoors, as furniture is small from there
 export const PERSON_SIZE = 1.1; // times real size, which is hard to follow from the driving camera
 
-let gl = null, shared = null; // one context for the visit, and the meshes that never change
+let gl = null, shared = null, ownLook = null; // one context for the visit, the meshes that never change, and how this person looks
 let furniture = null, furnitureLoading = false, furnitureFailed = -Infinity; // the models, once fetched
 const GROUND_FLOOR = 1;
 const PICK_REPEAT = 0.16;    // s between floors while W or S is held in a lift
@@ -45,13 +45,14 @@ const overture = new Overture();
 
 function personMesh(frame) {
   shared ||= [];
-  return shared[frame] ||= gl.mesh(personFloats(frame));
+  return shared[frame] ||= gl.mesh(personFloats(frame, ownLook));
 }
 
 export class Foot {
   // cars: those that can be walked up to, { x, y, heading, halfWidth, halfLength } in metres from the origin. tiles: the RoadTiles that fetches the same map tiles for driving. view: the camera to match.
-  constructor({ canvas, origin, heading, cars, buildings, tiles, view, onLocked, onLoadCar, onFound, onSlept, drops, onDropsChanged, hasKey, hasHammer, onSay, onGetIn, onOpenBag, onUsed, onSound }) {
+  constructor({ canvas, origin, heading, cars, buildings, look, others, tiles, view, onLocked, onLoadCar, onFound, onSlept, roughChoices, drops, onDropsChanged, hasKey, hasHammer, onSay, onGetIn, onOpenBag, onUsed, onSound }) {
     this.saved = buildings; // the store of buildings entered, from the world
+    ownLook = look ?? null;
     this.hasKey = hasKey;
     this.hasHammer = hasHammer;
     this.onSay = onSay;
@@ -68,6 +69,7 @@ export class Foot {
     this.onLoadCar = onLoadCar; // F at the car, answered yes
     this.onFound = onFound;   // given a thing for the bag, returns false if there's no room
     this.onSlept = onSlept;
+    this.roughChoices = roughChoices; // sleeping or going where there's nothing for it, when they need to
     this.pose = null;         // sitting or lying on something
     this.light = null;        // a flashlight or phone light that's on
     this.origin = origin;
@@ -83,7 +85,8 @@ export class Foot {
     this.alive = true;
     this.level = GROUND_FLOOR; // which floor the person is on
     this.picking = null;       // the floor being chosen in a lift
-    this.world = { place: this.place, height: (x, y) => this.height(x, y), floor: (b) => this.floorOf(b) + this.rise(b) };
+    // Who else is solid here. others: () => [{ lat, lng }], or nothing in a world with only one person in it.
+    this.world = { solidPeople: others ? () => others().map(({ lat, lng }) => toLocal(origin, lat, lng)) : null, place: this.place, height: (x, y) => this.height(x, y), floor: (b) => this.floorOf(b) + this.rise(b) };
     this.setCars(cars);
     this.loadTilesAt(0, 0);
     const [beside] = cars;
@@ -346,6 +349,7 @@ export class Foot {
     if (this.pose || this.busy) return [];
     const building = this.walker.inside, record = this.room?.furnishing?.record;
     const list = this.dropsInReach().map((drop) => ({ label: `Pick up the ${drop.name.toLowerCase()}?`, run: () => this.pickUpDrop(drop) }));
+    if (!this.waiting) list.push(...(this.roughChoices?.() || []));
     if (this.canGetIn()) {
       list.unshift({ label: 'Get in the car?', run: () => { this.onGetIn?.(); return ''; } },
         { label: 'Load into car?', html: '<u>L</u>oad into car?', key: 'l', run: () => this.onLoadCar?.() },
@@ -821,6 +825,13 @@ export class Foot {
     if (near) return near.building.plan && isLocked(near.building.plan) ? `${typeName(near.building.plan) || 'This building'} · locked` : this.waiting ? 'Checking this building…' : 'Press L to go inside';
     const way = this.carWay();
     return way ? `Car ${way.metres} m ${way.direction}` : '';
+  }
+
+  // Where this person is in the building they're in, for others on the same floor, or nothing outdoors.
+  frameOfBuilding() {
+    const building = this.walker.inside, axis = this.room?.furnishing?.record?.axis;
+    if (!building?.pieces || axis === undefined) return {};
+    return buildingFrame(building.pieces, axis).toFrame(this.walker.x, this.walker.y);
   }
 
   // The way to the first car, or null with none.

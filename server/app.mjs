@@ -79,8 +79,9 @@ export function startServer({ dir, port = 0, host = '127.0.0.1', origins = [], n
         madeToday.set(address, { day: today, count: made?.day === today ? made.count + 1 : 1 });
         const found = roomFor(id);
         enter(id, found);
+        connection.send({ t: 'made', world: id, id: memberId, secret }); // first, so the id and secret are known by the time they're signed in
         found.hello(connection, { player: memberId, secret });
-        return connection.send({ t: 'made', world: id, id: memberId, secret });
+        return undefined;
       }
       const found = roomFor(message.world);
       if (!found) return refuse('no-world');

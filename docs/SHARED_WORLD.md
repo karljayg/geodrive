@@ -1,6 +1,6 @@
 # Shared worlds: plan
 
-Status: stage 0 built and measured on the owner's machine. Stage 1's world server is built and installed on the live server (2026-11-02), and the game's side isn't built yet, so nothing shared is playable. Written 2026-11-02. Numbers marked "measured" were tested on the code and server as they stood that day.
+Status: stage 0 built and measured on the owner's machine. Stage 1 is built and live (2026-11-02), apart from what's listed under it. Written 2026-11-02. Numbers marked "measured" were tested on the code and server as they stood that day.
 
 ## The idea
 Today every browser is its own world. This adds worlds that several people play in together, reached by invite. The invite replaces the Share button (`J`) and its link.
@@ -435,6 +435,8 @@ No freeze. Sets of 17 cost no more than sets of 5 when added, so the number of f
 3. Player data on the server, presence, drawing people in their colours, the world clock, name tags.
 4. People solid to each other. The People app, Map and compass badges.
 5. Chat: the Enter line, `/w`, previews, the phone's threads.
+
+Stage 1 done so far: all of the above, tried in a browser against 3 bots (`scripts/bots.mjs`). Not done yet: people drawn indoors on the same floor (it comes with shared buildings in stage 3, as `u`, `v` and the floor are already sent), F climbing over someone blocking a doorway, and moving badges on the nav screen, which only matter once there are cars. Not yet tried with two real people on real connections.
 
 **Stage 2. Cars.** A world's ready for friends from here.
 1. Planted cars, getting in and out, one driver, each car's fuel and storage, sledgehammers.

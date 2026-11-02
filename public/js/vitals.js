@@ -55,6 +55,7 @@ export class Vitals {
     const { stats, health } = this.config, rates = {};
     for (const [name, stat] of Object.entries(stats)) {
       let rate = stat.perHour.all ?? stat.perHour[doing.activity] ?? 0;
+      if (name === 'energy' && rate > 0 && doing.energyShare !== undefined) rate *= doing.energyShare;
       if (name === 'phone') {
         if (doing.screen) rate += stat.using.screen;
         if (doing.light === 'phone') rate += stat.using.light;
@@ -180,6 +181,27 @@ export class Vitals {
   sleep(hours) {
     this.state.totals.sleeps++;
     return this.pass(hours, { activity: 'sleeping' });
+  }
+
+  // A night with no bed: its own length, for less energy. Returns the hours and what happened.
+  sleepRough() {
+    const { sleepHours, energyShare } = this.config.rough;
+    this.state.totals.sleeps++;
+    return { hours: sleepHours, events: this.pass(sleepHours, { activity: 'sleeping', energyShare }) };
+  }
+
+  // Going with no toilet: this share of what's needed to feel fine.
+  relieveRough() {
+    const peed = this.levelOf('bladder') !== 'good', pooped = this.levelOf('bowels') !== 'good';
+    for (const name of ['bladder', 'bowels']) this.stats[name] = clamp(this.stats[name] + (100 - this.stats[name]) * this.config.rough.reliefShare);
+    this.state.totals.restroom++;
+    this.save();
+    return peed && pooped ? 'peed and pooped' : pooped ? 'pooped' : 'peed';
+  }
+
+  // Which of these a person could do with, by their first warning.
+  roughNeeds() {
+    return { sleep: this.levelOf('energy') !== 'good', relief: this.levelOf('bladder') !== 'good' || this.levelOf('bowels') !== 'good' };
   }
 
   // They've dropped: time passes asleep, and they come round at no less than the config says.

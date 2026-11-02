@@ -40,3 +40,12 @@ createServer(async (req, res) => {
     res.end('Not found');
   }
 }).listen(PORT, '127.0.0.1', () => console.log(`GeoDrive: http://localhost:${PORT}/`));
+
+// A world server of its own, so local play never touches the real worlds. Their files are in logs/worlds, so they don't get committed.
+try {
+  const { startServer } = await import('../server/app.mjs');
+  await startServer({ dir: `${LOGS}worlds`, port: 5175 });
+  console.log('World server: ws://127.0.0.1:5175');
+} catch (err) {
+  console.warn(`No local world server (${err.message}). Run: npm --prefix server ci`);
+}

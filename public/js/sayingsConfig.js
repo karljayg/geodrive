@@ -108,6 +108,8 @@ export const SAYINGS = {
   noUse: ['There\'s no use for {name} right now.', 'You can\'t think what to do with {name} here.', 'Not sure {name} helps here.'],
 
   // Using things in rooms
+  sleptRough: ['You sleep on the ground for {hours} hours, and wake up stiff.', '{hours} hours on the ground. You\'ve had better nights.', 'You wake after {hours} hours with a sore neck. It helped, a bit.'],
+  reliefRough: ['Not ideal, but better.', 'You find a spot. It only half helps.', 'Better than nothing. You hope nobody saw.'],
   relief: ['That\'s better.', 'Much better.', 'A weight off your mind.', 'Crisis averted.', 'You feel like a new person.'],
   washHands: ['You wash your hands.', 'Clean hands, at least.'],
   drinkTap: ['You drink from the tap.', 'Tap water. Tastes of pipes.', 'You drink from the tap. Vintage: this morning.', 'Cold, wet and free.'],

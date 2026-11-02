@@ -267,3 +267,39 @@ test('walks are saved with the vitals and older saves get a blank tally', () => 
   vitals.save();
   assert.equal(new Vitals(store).state.walked.meters, 42);
 });
+
+test('with no bed or toilet: half the energy for 7 hours, half the relief, offered only when needed', () => {
+  const bed = fresh(), rough = fresh();
+  assert.deepEqual(rough.roughNeeds(), { sleep: false, relief: false });
+  bed.stats.energy = rough.stats.energy = 0;
+  assert.equal(rough.roughNeeds().sleep, true);
+  bed.sleep(GAME.rough.sleepHours);
+  const { hours } = rough.sleepRough();
+  assert.equal(hours, 7);
+  assert.equal(rough.stats.energy, bed.stats.energy / 2);
+  rough.stats.bladder = 20;
+  rough.stats.bowels = 60;
+  assert.equal(rough.roughNeeds().relief, true);
+  const went = rough.state.totals.restroom;
+  rough.relieveRough();
+  assert.equal(rough.stats.bladder, 60);
+  assert.equal(rough.stats.bowels, 80);
+  assert.equal(rough.state.totals.restroom, went + 1);
+});
+
+test('going says what was done, and the label stays where it happened', async () => {
+  const { Marks } = await import('../public/js/drops.js');
+  const v = fresh();
+  v.stats.bladder = 10;
+  assert.equal(v.relieveRough(), 'peed');
+  v.stats.bladder = 90; v.stats.bowels = 5;
+  assert.equal(v.relieveRough(), 'pooped');
+  v.stats.bladder = 5; v.stats.bowels = 5;
+  assert.equal(v.relieveRough(), 'peed and pooped');
+  const storage = memory(), marks = new Marks(storage, 2);
+  marks.add('peed', 39, -77);
+  assert.equal(new Marks(storage).around(39, -77, 100, 20)[0].what, 'peed');
+  assert.equal(marks.around(39.01, -77, 100, 20).length, 0, 'not seen from far off');
+  marks.add('peed', 39, -77); marks.add('pooped', 39, -77);
+  assert.equal(marks.list.length, 2, 'only the newest are kept');
+});

@@ -68,6 +68,8 @@ export const GAME = {
   // When energy or health reaches 0 you drop where you stand, and come round later, in the same state of need but alive. There's no game over.
   collapse: { hours: 6, reviveHealth: 25, reviveEnergyAtLeast: 30, say: 'collapsed' },
   sleep: { wakeHour: 7, mostHours: 10, leastHours: 1 }, // a bed sleeps until wakeHour, within these
+  // With no bed or toilet: offered by F once the need has given its first warning. A night on the ground is a fixed length and gives back this share of the energy; going anywhere gives this share of the relief.
+  rough: { sleepHours: 7, energyShare: 0.5, reliefShare: 0.5, marksShownWithin: 100, marksShown: 20, marksKept: 500 }, // going outdoors also leaves a label on the map, for as long as it's among the newest marksKept
   tiredRunShare: 0.5,         // with energy at caution, how much of the gap between walking and running speed is left; at critical there's no running
 
   // Things found: stat changes from using one from the bag, so nothing is edible unless it's listed.

@@ -2,9 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { CELL, Place, clipRing, fromLocal, inRings, parseTile, polygonsOf, signedArea, toLocal, triangulate } from '../public/js/footData.js';
-import { GET_IN_REACH, buildingWithin, enterBuilding, leaveBuilding, RUN_SPEED, WALK_SPEED, carWalls, distanceToCar, newWalker, frameOf, placeCamera, spawnSpot, stepWalker, wayToCar } from '../public/js/footWalker.js';
+import { RADIUS, GET_IN_REACH, buildingWithin, enterBuilding, leaveBuilding, RUN_SPEED, WALK_SPEED, carWalls, distanceToCar, newWalker, frameOf, placeCamera, spawnSpot, stepWalker, wayToCar } from '../public/js/footWalker.js';
 import { Mesh, roomMesh } from '../public/js/footScene.js';
-import { CYCLE_FRAMES, FRAME_COUNT, cadenceOf, personParts, poseAt } from '../public/js/footPerson.js';
+import { CYCLE_FRAMES, FRAME_COUNT, cadenceOf, personFloats, personParts, poseAt } from '../public/js/footPerson.js';
 import { bearing, lookAt, multiply, perspective, swing, translate } from '../public/js/footGl.js';
 import { readLayer } from '../public/js/vector.js';
 import { Terrain } from '../public/js/terrain.js';
@@ -355,4 +355,39 @@ test('a car can stand anywhere, and someone can walk with no car at all', () => 
   assert.equal(distanceToCar(newWalker(0, 0, 0), []), Infinity, 'with no car, nothing is ever in reach');
   assert.deepEqual(wayToCar(newWalker(100, 40, 0), { x: 100, y: 50 }), { metres: 10, direction: 'N' });
   assert.deepEqual(wayToCar(newWalker(0, 10, 0)), { metres: 10, direction: 'S' }, 'and the first car is at the origin as ever');
+});
+
+test('someone can have their own colours, and female is the same person with longer hair', () => {
+  const look = (figure) => ({ figure, colours: { skin: '#ffffff', jacket: '#ff0000', jeans: '#00ff00', shoes: '#0000ff', hair: '#808080' } });
+  for (let frame = 0; frame < 17; frame++) {
+    const usual = personParts(frame), male = personParts(frame, look('male')), female = personParts(frame, look('female'));
+    assert.deepEqual(male[1].colour, [1, 0, 0]);
+    assert.deepEqual(male[4].colour.map((c) => Math.round(c * 100)), [50, 50, 50]);
+    assert.equal(male[0].pos.length, usual[0].pos.length, 'colours change nothing of the shape');
+    for (const i of [0, 1, 2, 3]) assert.equal(female[i].pos.length, male[i].pos.length, 'only the hair differs');
+    assert.ok(female[4].pos.length > male[4].pos.length, 'longer hair');
+    const z = (part) => part.pos.filter((_, i) => i % 3 === 2), y = (part) => part.pos.filter((_, i) => i % 3 === 1);
+    assert.ok(Math.min(...z(female[4])) < Math.min(...z(male[4])), 'further down');
+    assert.ok(Math.max(...z(female[4])) <= Math.max(...z(male[4])) + 1e-6, 'and no higher than the head');
+    assert.ok(Math.min(...y(female[4])) < Math.min(...y(male[4])), 'down the back, not the face');
+    assert.ok(Math.min(...z(female[4])) > Math.max(...z(female[1])) - 0.35, 'and it stays with the head, not down at the waist, on frame ' + frame);
+  }
+  assert.deepEqual(personParts(3, { colours: { hair: 'rubbish' } })[4].colour, personParts(3)[4].colour, 'a bad colour keeps the usual one');
+  assert.equal(personFloats(3, look('female')).length > personFloats(3).length, true, 'indoors too');
+});
+
+test('another person outdoors can\'t be walked through, and two on the same spot don\'t get stuck', () => {
+  const place = new Place({ lat: 38.9, lng: -77 });
+  const world = { place, height: () => 0, floor: () => 0, carWalls: [], solidPeople: () => [{ x: 0, y: 0.1 }] };
+  const walker = newWalker(0, -3, 0);
+  for (let i = 0; i < 120; i++) stepWalker(walker, { forward: 1, walkSpeed: 3 }, 1 / 60, world);
+  assert.ok(Math.hypot(walker.x, walker.y - 0.1) >= RADIUS * 2 - 1e-3, `stopped short, or slid by: ${walker.x}, ${walker.y}`);
+  const onTop = newWalker(0, 0.1, 0);
+  world.solidPeople = () => [{ x: 0, y: 0.1 }];
+  stepWalker(onTop, { strafe: 1, walkSpeed: 3 }, 1 / 60, world);
+  assert.ok(Number.isFinite(onTop.x), 'exactly on top of someone is no trouble');
+  const inside = newWalker(1, 1, 0);
+  world.inner = { walls: [], boxes: [] };
+  stepWalker(inside, {}, 1 / 60, world);
+  assert.equal(inside.x, 1, 'and indoors they don\'t count yet');
 });

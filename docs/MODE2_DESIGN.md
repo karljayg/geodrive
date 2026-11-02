@@ -104,6 +104,7 @@ cars      (id, type, colour, lat, lng, heading, fuel, runs, driver, storage, wre
 buildings (id, plan, outline, seen)
 floors    (building, floor, record, state)
 drops     (id, name, lat, lng, building, floor, axis, u, v, facing)
+marks     (id, what, lat, lng)                       -- "Someone peed here", never who
 ```
 
 - `name_key` is the name in lower case, which is what makes names unique, including for the dead.
@@ -159,7 +160,7 @@ The client sends `{ t: 'op', id, op, ... }`. The server saves it, answers `{ t: 
 | `take`, `open`, `pickUp`, `useItem` | First come, before anything reaches the bag | Says why |
 | `takeFromCar`, `putInCar` | First come | Says why |
 | `getIn`, `getOut` | First come, one driver | Says the car's taken |
-| `push`, `hole`, `lights`, `drop` | In order, shown at once | Put back |
+| `push`, `hole`, `lights`, `drop`, `mark` | In order, shown at once | Put back |
 | `claimPlan`, `claimFloor` | First to arrive is kept | The client uses what's kept |
 | `invite`, `setBackup`, `save`, `load` | Managers only | Says why |
 | `say` | Rate limit, 5 in 5 s, 400 characters | Stays in the chat line |

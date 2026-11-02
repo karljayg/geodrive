@@ -1,5 +1,6 @@
 // Things left behind, which stay where they were put. Outdoors a drop is a place on the map; indoors it's a place in its building's own frame on one floor, as metres from the car change with every parking spot. Pure, tested in node.
 import { MM } from './furniture.js';
+import { GAME } from './gameConfig.js';
 
 const STORE = 'geodrive_drops_v1';
 const METRES_PER_DEGREE = 111320;
@@ -58,6 +59,45 @@ export class Drops {
       .sort((a, b) => a.away - b.away)
       .slice(0, most)
       .map(({ drop }) => drop);
+  }
+}
+
+// Labels left where someone went with no toilet, for all to see. Pure, tested in node.
+const MARKS_STORE = 'geodrive_marks_v1';
+export class Marks {
+  constructor(storage, kept = GAME.rough.marksKept) {
+    this.list = [];
+    this.kept = kept;
+    this.nextId = 1;
+    try {
+      this.storage = storage === undefined ? localStorage : storage;
+      const saved = JSON.parse(this.storage?.getItem(MARKS_STORE) ?? 'null');
+      if (Array.isArray(saved)) this.list = saved;
+      this.nextId = this.list.reduce((most, mark) => Math.max(most, mark.id), 0) + 1;
+    } catch (err) {
+      console.warn('saved marks:', err);
+    }
+  }
+
+  add(what, lat, lng) {
+    this.list.push({ id: this.nextId++, what, lat, lng });
+    this.list.splice(0, Math.max(0, this.list.length - this.kept));
+    try {
+      this.storage?.setItem(MARKS_STORE, JSON.stringify(this.list));
+    } catch (err) {
+      console.warn('saving marks:', err);
+    }
+  }
+
+  // The nearest first, up to a limit.
+  around(lat, lng, within, most) {
+    const east = METRES_PER_DEGREE * Math.cos((lat * Math.PI) / 180);
+    return this.list
+      .map((mark) => ({ mark, away: Math.hypot((mark.lat - lat) * METRES_PER_DEGREE, (mark.lng - lng) * east) }))
+      .filter(({ away }) => away <= within)
+      .sort((a, b) => a.away - b.away)
+      .slice(0, most)
+      .map(({ mark }) => mark);
   }
 }
 

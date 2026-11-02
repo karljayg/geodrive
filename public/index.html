@@ -21,12 +21,14 @@
     <button id="changeStartHeader" title="Choose a new start, which begins a new trip">New start</button>
     <button id="resetButton" title="Put the car back at your start, which begins a new trip">Back to start</button>
     <button id="openSettings">Settings <span class="keyHint">(O)</span></button>
-    <button id="shareButton">Share <span class="keyHint">(J)</span></button>
+    <button id="shareButton">New world <span class="keyHint">(J)</span></button>
     <button id="pauseButton"><u>P</u>ause</button>
     <button id="helpButton"><u>K</u>eys</button>
     <div class="where" id="where"></div>
   </header>
   <div id="notice"></div>
+  <div id="previews" aria-live="polite"></div>
+  <form id="chatLine" autocomplete="off"><input type="text" aria-label="Message" placeholder="Message everyone, or /w name message" spellcheck="true"><span data-chat-hint></span></form>
   <div id="asking"></div>
   <div id="footHint"></div>
   <div id="locked" role="status"><b id="lockedSay"></b><span id="lockedType"></span></div>
@@ -112,17 +114,7 @@
     <button id="resetDefault" type="button">Go back to the original default <span class="keyHint">(Alt+D)</span></button>
   </div>
 </div>
-<div id="shared" role="dialog" aria-label="Shared drive">
-  <div class="startBox">
-    <h1>Someone shared a drive with you</h1>
-    <p>Continuing replaces your current trip and settings in this browser with these:</p>
-    <dl id="sharedStats"></dl>
-    <div class="row">
-      <button class="primary" id="sharedYes" type="button">Start this drive <span class="keyHint">(Enter)</span></button>
-      <button class="quiet" id="sharedNo" type="button">No thanks <span class="keyHint">(Esc)</span></button>
-    </div>
-  </div>
-</div>
+<div id="worldEntry" role="dialog" aria-label="Shared world"></div>
 <div id="pause" role="dialog" aria-label="Paused">
   <div class="startBox">
     <h1 id="pauseTitle">Paused</h1>

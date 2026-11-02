@@ -38,7 +38,7 @@ export const KEY_LIST = {
       { name: 'Game', keys: [
         [['P'], 'Pause'],
         [['O'], 'Settings'],
-        [['J'], 'Share this drive'],
+        [['J'], 'Invite to a shared world, or make one'],
         [['K'], 'This list'],
         [['Esc'], 'Close what\'s open'],
       ] },
@@ -90,7 +90,7 @@ export const KEY_LIST = {
         [['T'], 'Time +1 hour'],
         [['P'], 'Pause'],
         [['O'], 'Settings'],
-        [['J'], 'Share this drive'],
+        [['J'], 'Invite to a shared world, or make one'],
         [['K'], 'This list'],
         [['Esc'], 'Close what\'s open'],
       ] },

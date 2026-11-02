@@ -12,6 +12,7 @@ const CLICK = [noise(3500, 3000, 0, 0.012, 0.5, 2), tone(1800, 1500, 0, 0.012, 0
 export const SOUNDS = {
   // Used for anything without a sound of its own: two short, quiet, rising notes.
   ack: [tone(660, 660, 0, 0.06, 0.16), tone(880, 880, 0.06, 0.09, 0.16)],
+  message: [tone(1046, 1046, 0, 0.09, 0.14), tone(1397, 1397, 0.09, 0.16, 0.14)],
 
   click: CLICK,
   doubleClick: [...CLICK, ...CLICK.map((layer) => ({ ...layer, at: layer.at + 0.16 }))],

@@ -28,6 +28,7 @@ const APPS = [
   { id: 'health', label: 'Health', art: 'health' },
   { id: 'recent', label: 'Recent', art: 'recent' },
 ];
+const at_parked_note = (world) => (world ? '' : '<i class="dot"></i> your car · ');
 const REFRESH = 100;       // ms between updates of the live figures
 const MAP_REFRESH = 333;   // ms, as for the nav screen
 const RING_TIME = 5000;    // ms a call rings before nobody answers
@@ -47,6 +48,7 @@ export class Pocket {
   constructor(root, radio, calls) {
     Object.assign(this, { root, radio, calls });
     this.data = new PocketData(calls.store);
+    this.apps = calls.world ? [{ id: 'people', label: 'People', art: 'people' }, ...APPS] : APPS; // in a shared world, those you're playing with
     this.app = null;       // the open app, or 'home', or null with the phone away
     this.bagOpen = false;
     this.lastUpdate = 0;
@@ -57,7 +59,7 @@ export class Pocket {
     this.recentStation = null;
     this.shown = {};       // what the live figures last said, so nothing is written that hasn't changed
     root.innerHTML = `
-      <div class="footKeys">Walk (W A S D) · Run (Shift) · Jump (Space) · View (Q E) · Use (F) · Mute (M) · Radio (N) · Time (T)</div>
+      <div class="footKeys">Walk (W A S D) · Run (Shift) · Jump (Space) · View (Q E) · Use (F) · Mute (M) · Radio (N)${calls.world ? '' : ' · Time (T)'}</div>
       <div class="tray"><button class="trayClock" data-tray="clock" title="The time here. Click or press T to move it on an hour."><span class="trayDial"><i class="hour"></i><i class="minute"></i></span><span class="trayLabel" data-tray-clock></span></button>${TRAY.map((item) => `<button class="trayItem" data-tray="${item.id}" title="${item.label} (${item.key.toUpperCase()})"><span class="trayArt">${picture(item.art)}</span><span class="trayLabel">${item.html}</span></button>`).join('')}</div>
       <div class="device" hidden>
         <div class="screen">
@@ -255,7 +257,7 @@ export class Pocket {
       this.openApp('home');
       return true;
     }
-    const app = APPS[Number(key) - 1];
+    const app = this.apps[Number(key) - 1];
     if (app && /^[1-9]$/.test(key)) {
       this.openApp(app.id);
       return true;
@@ -301,8 +303,8 @@ export class Pocket {
       return true;
     }
     if (!/^[1-9]$/.test(key)) return false;
-    const contact = CONTACTS[Number(key) - 1];
-    if (contact) this.openThread(contact.id);
+    const thread = this.threadIds()[Number(key) - 1];
+    if (thread) this.openThread(thread);
     return true;
   }
 
@@ -355,6 +357,8 @@ export class Pocket {
     else if ('notesBack' in button.dataset) this.openApp('notes');
     else if ('deleteNote' in button.dataset) this.deleteNote();
     else if (thread) this.openThread(thread);
+    else if (button.dataset.rejoin) this.calls.world.rejoinLink(button.dataset.rejoin);
+    else if (button.dataset.backup) this.calls.world.makeBackup(button.dataset.backup).then(() => this.renderPeople());
     else if ('threadsBack' in button.dataset) { this.contact = null; this.render(); }
     else if ('send' in button.dataset) this.sendText();
     else if (digit) this.dial(digit);
@@ -376,6 +380,7 @@ export class Pocket {
     else if (app === 'notes') this.renderNotes();
     else if (app === 'call') this.renderCall();
     else if (app === 'messages') this.renderMessages();
+    else if (app === 'people') this.renderPeople();
     else if (app === 'map') this.renderMap();
     else if (app === 'health') this.renderHealth();
     else if (app === 'recent') this.renderRecent();
@@ -409,7 +414,7 @@ export class Pocket {
   }
 
   renderHome() {
-    this.area.innerHTML = `<div class="homeGrid">${APPS.map((a, i) => `<button class="appIcon" data-app="${a.id}" title="${a.label} (${i + 1})">${picture(a.art)}<kbd>${i + 1}</kbd><span>${a.label}</span></button>`).join('')}</div>
+    this.area.innerHTML = `<div class="homeGrid">${this.apps.map((a, i) => `<button class="appIcon" data-app="${a.id}" title="${a.label} (${i + 1})">${picture(a.art)}${i < 9 ? `<kbd>${i + 1}</kbd>` : ''}<span>${a.label}</span></button>`).join('')}</div>
       <p class="homeHelp">Click an app, or press its number.<br>Press <kbd>0</kbd> to come back here.</p>`;
   }
 
@@ -439,12 +444,19 @@ export class Pocket {
     this.calls.music(!this.radio.on);
   }
 
+  // Those in this world, as a phone's Find My lists them. Managers also get what only they can do.
+  renderPeople() {
+    const { world } = this.calls, rows = world.peopleRows();
+    this.peopleShown = rows.map((row) => row.line).join();
+    this.area.innerHTML = `${this.title('People')}<div class="list people">${rows.map((row) => `<div class="person"><span class="badge" style="background:${esc(row.colour)}">${esc(row.initials)}</span><div class="personText"><b>${esc(row.name)}${row.role ? ` <small>${esc(row.role)}</small>` : ''}</b><small data-person-line="${esc(row.id)}">${esc(row.line)}</small></div>${row.canRejoin ? `<button class="quiet" data-rejoin="${esc(row.id)}" title="For someone who has lost their browser">Rejoin link</button>` : ''}${row.canBackup ? `<button class="quiet" data-backup="${esc(row.id)}">Make backup</button>` : ''}</div>`).join('') || '<p class="empty">Nobody else yet. Press J for an invite link.</p>'}</div><p class="small">${esc(world.managerLine())}</p>`;
+  }
+
   renderCompass() {
     this.area.innerHTML = `${this.title('Compass')}<div class="compassApp">
-      <div class="bigDial">${picture('compass')}<div class="carMark" data-car-mark><span>${ART.car()}</span></div></div>
+      <div class="bigDial">${picture('compass')}<div class="carMark" data-car-mark><span>${ART.car()}</span></div>${(this.calls.world?.peopleRows() ?? []).filter((row) => row.at).map((row) => `<div class="carMark personMark" data-person-mark="${esc(row.id)}"><span class="badge" style="background:${esc(row.colour)}">${esc(row.initials)}</span></div>`).join('')}</div>
       <div class="heading" data-heading></div>
       <div class="carLine" data-car-line></div>
-      <p class="small">The red needle points north, and the white mark at the top is the way you face. The car on the rim is where you parked: turn until it's at the top and walk.</p></div>`;
+      <p class="small">The red needle points north, and the white mark at the top is the way you face. ${this.calls.world ? 'The badges on the rim are the others: turn until one is at the top and walk.' : 'The car on the rim is where you parked: turn until it\'s at the top and walk.'}</p></div>`;
   }
 
   renderNotes() {
@@ -465,15 +477,47 @@ export class Pocket {
     box.focus();
   }
 
+  // Real people first, the group at the top, then the made-up ones.
+  threadIds() {
+    return [...(this.calls.world?.threads() ?? []).map((thread) => thread.id), ...CONTACTS.map((c) => c.id)];
+  }
+
   renderMessages() {
     if (this.contact) return this.openThread(this.contact);
-    this.area.innerHTML = `${this.title('Messages')}<div class="list">${CONTACTS.map((c, i) => {
+    const key = (i) => (i < 9 ? `<kbd>${i + 1}</kbd> ` : '');
+    const real = this.calls.world?.threads() ?? [];
+    this.area.innerHTML = `${this.title('Messages')}<div class="list">${real.map((thread, i) => `<button class="row" data-thread="${esc(thread.id)}"><b>${key(i)}${esc(thread.title)}</b><small>${thread.last ? esc(thread.last.slice(0, 34)) : 'No messages yet'}</small></button>`).join('')}${CONTACTS.map((c, n) => {
       const last = this.data.thread(c.id).at(-1);
-      return `<button class="row" data-thread="${c.id}"><b><kbd>${i + 1}</kbd> ${esc(c.name)}</b><small>${last ? esc(last.text.slice(0, 34)) : 'No messages yet'}</small></button>`;
+      return `<button class="row" data-thread="${c.id}"><b>${key(real.length + n)}${esc(c.name)}</b><small>${last ? esc(last.text.slice(0, 34)) : 'No messages yet'}</small></button>`;
     }).join('')}</div>`;
   }
 
+  // A thread with real people, kept on the server. Whatever is being typed stays when a new message comes in.
+  openRealThread(thread) {
+    const box = this.area.querySelector('.sendBox input'), typed = this.contact === thread.id ? box?.value ?? '' : '', focused = !!box && document.activeElement === box;
+    this.contact = thread.id;
+    const lines = this.calls.world.messages(thread.id);
+    this.area.innerHTML = `<div class="appTitle"><button class="appBack homeLink" data-threads-back>‹ Messages <kbd>0</kbd></button><h2>${esc(thread.title)}</h2></div>
+      <div class="bubbles">${lines.map((m) => `<div class="bubble ${m.mine ? 'mine' : ''}">${m.from ? `<small>${esc(m.from)}</small>` : ''}${esc(m.text)}</div>`).join('') || '<p class="empty">Say something.</p>'}</div>
+      <form class="sendBox"><input type="text" placeholder="Text message" aria-label="Text message" maxlength="${GAME.world.chatLength}"><button data-send aria-label="Send">↑</button></form>`;
+    const list = this.area.querySelector('.bubbles'), input = this.area.querySelector('.sendBox input');
+    list.scrollTop = list.scrollHeight;
+    input.value = typed;
+    if (focused) input.focus();
+    this.area.querySelector('form').addEventListener('submit', (e) => { e.preventDefault(); this.sendText(); });
+  }
+
+  // A new message, if it belongs on what's showing.
+  chatChanged() {
+    if (this.app !== 'messages') return;
+    const open = this.calls.world?.threads().find((thread) => thread.id === this.contact);
+    if (open) this.openRealThread(open);
+    else if (!this.contact) this.renderMessages();
+  }
+
   openThread(id) {
+    const real = this.calls.world?.threads().find((thread) => thread.id === id);
+    if (real) return this.openRealThread(real);
     const contact = CONTACTS.find((c) => c.id === id);
     this.contact = id;
     this.area.innerHTML = `<div class="appTitle"><button class="appBack homeLink" data-threads-back>‹ Messages <kbd>0</kbd></button><h2>${esc(contact.name)}</h2></div>
@@ -488,6 +532,11 @@ export class Pocket {
     const box = this.area.querySelector('.sendBox input');
     const text = box?.value.trim(), id = this.contact;
     if (!text) return;
+    if (this.calls.world?.threads().some((thread) => thread.id === id)) {
+      box.value = '';
+      this.calls.world.send(id, text).then((why) => { if (why) box.value = text; });
+      return;
+    }
     this.data.addMessage(id, text, true);
     this.openThread(id);
     this.area.querySelector('.sendBox input').focus();
@@ -537,7 +586,7 @@ export class Pocket {
     this.area.innerHTML = `${this.title('Map')}<div class="mapApp"><canvas data-map></canvas>
       <div class="mapZoom"><button data-radius="1" aria-label="Zoom out" title="Zoom out (-)">−</button><button data-radius="-1" aria-label="Zoom in" title="Zoom in (=)">+</button></div></div>
       <div class="carLine" data-car-line></div>
-      <p class="small"><i class="dot"></i> your car · ▲ you · zoom (- =)</p>`;
+      <p class="small">${at_parked_note(this.calls.world)}▲ you · zoom (- =)</p>`;
     this.mapDrawn = 0;
   }
 
@@ -608,6 +657,16 @@ export class Pocket {
       }
       this.write('heading', this.area.querySelector('[data-heading]'), `${String(facing % 360).padStart(3, '0')}° ${compassName(facing)}`);
       this.write('carLine', this.area.querySelector('[data-car-line]'), carLine);
+      for (const row of this.calls.world?.peopleRows() ?? []) {
+        const badge = this.area.querySelector(`[data-person-mark="${CSS.escape(row.id)}"]`);
+        if (!badge || !row.at) continue;
+        const turn = ((row.bearing - facing + 540) % 360 - 180).toFixed(1);
+        badge.style.transform = `rotate(${turn}deg)`;
+        badge.firstElementChild.style.transform = `rotate(${-turn}deg)`;
+      }
+    }
+    if (this.app === 'people') {
+      for (const row of this.calls.world.peopleRows()) this.write(`person${row.id}`, this.area.querySelector(`[data-person-line="${CSS.escape(row.id)}"]`), row.line);
     }
     const stationId = this.radio.current?.id;
     if (stationId !== this.recentStation) {
@@ -624,7 +683,7 @@ export class Pocket {
         if (canvas) {
           const radius = MAP_RADII[this.mapRadius];
           const lines = at.tiles.streetNames(on.where.lat, on.where.lng, radius * MAP_REACH);
-          drawNav(canvas, { roads: at.roads, pos: on.where, heading: on.facing, parked: at.parked, route: null, routeIndex: 0, radius, hour: at.hour, clock: clockText(at.hour), streets: { lines: radius < SERVICE_NAMES_FROM ? lines : lines.filter((line) => line.rank < SERVICE_RANK), avoid: MAP_BUTTONS } });
+          drawNav(canvas, { roads: at.roads, pos: on.where, heading: on.facing, parked: at.parked, route: null, routeIndex: 0, radius, hour: at.hour, clock: clockText(at.hour), badges: this.calls.world?.badges(), streets: { lines: radius < SERVICE_NAMES_FROM ? lines : lines.filter((line) => line.rank < SERVICE_RANK), avoid: MAP_BUTTONS } });
         }
       }
     }

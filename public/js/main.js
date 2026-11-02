@@ -21,9 +21,10 @@ import { frequencyText, Radio } from './radio.js';
 import { chooseMusic, Scenes } from './music.js';
 import { MUSIC } from './musicConfig.js';
 import { Soundtrack } from './musicPlayer.js';
-import { openWorld } from './world.js';
+import { needsEntry, openWorld } from './world.js';
+import { FLAGS } from './protocol.js';
+import { bearingBetween, initialsOf, statusLine } from './people.js';
 import { DEFAULTS, saveSettings, settings } from './settings.js';
-import { decodeShare, encodeShare, packShare, shareSummary } from './share.js';
 import { RoadTiles } from './tiles.js';
 import { Terrain } from './terrain.js';
 import { placeFrom } from './town.js';
@@ -82,7 +83,9 @@ const car = newCar();
 const pos = { lat: ORIGINAL_START.lat, lng: ORIGINAL_START.lng };
 const roads = new RoadNet();
 const tiles = new RoadTiles(roads);
-const world = openWorld({ search: location.search, storage: browserStorage(), settings, saveSettings });
+// A world to go into, if this address or browser has one. All before any map loads, so choosing costs nothing.
+const entry = needsEntry(location, browserStorage()) ? await (await import('./worldEntry.js')).chooseWorld({ storage: browserStorage() }) : null;
+const world = openWorld({ search: location.search, storage: browserStorage(), settings, saveSettings, entry });
 let start = loadStart();
 let map = null, model = null, maps3d = null, camIndex = 0, camHeading = 0, zoom = 1, tilt = CAMERAS[0].tilt, range = CAMERAS[0].range;
 let last = 0, dialogOpen = false, pendingSnap = false, match = null, recentWays = null, onBridge = false, tilesCheckedAt = 0;
@@ -162,6 +165,9 @@ function saveStart(value) {
     console.warn('saving start:', err); // it still applies for this visit
   }
 }
+
+// Settings can speed someone up on their own, but not past the others in a shared world.
+const playerWalk = () => (world.rules.people ? DEFAULTS.walkSpeed : settings.walkSpeed), playerRun = () => (world.rules.people ? DEFAULTS.runSpeed : settings.runSpeed);
 
 function input() {
   const left = keys.has('a') || keys.has('arrowleft'), right = keys.has('d') || keys.has('arrowright');
@@ -601,7 +607,7 @@ function drawDash(t) {
     if (navKey !== navShown || navBehind(roads)) { // parked, nothing on it has changed
       navShown = navKey;
       const navBegan = performance.now();
-      navVertices = drawNav(el('navScreen'), { roads, pos: navPos, heading: navHeading, parked: foot && world.rules.ownCar ? pos : null, route: navRoute, routeIndex, radius: navRadius, hour: world.clock.hour, clock: now });
+      navVertices = drawNav(el('navScreen'), { roads, pos: navPos, heading: navHeading, parked: foot && world.rules.ownCar ? pos : null, route: navRoute, routeIndex, radius: navRadius, hour: world.clock.hour, badges: peopleView?.badges(initialsOf, badgeColour), clock: now });
       perfLog.spend('nav', performance.now() - navBegan);
     }
     show('navRangeValue', `${(navRadius / 1609.344).toFixed(1)} mi`);
@@ -733,6 +739,7 @@ function frame(t) {
   tickClock(t, Math.min((t - last) / 1000 || 0, 1)); // not dt, whose limit would slow the clock whenever the frame rate drops
   last = t;
   if (foot) runFoot(t, dt);
+  peopleView?.update(foot ? foot.where() : pos, performance.now());
   if (map && !foot && !debug.hold && !dialogOpen && !paused) {
     const driveBegan = performance.now();
     const controls = input();
@@ -796,7 +803,7 @@ function footInput(dt) {
   const input = {
     forward: (keys.has('w') || keys.has('arrowup') ? 1 : 0) - (keys.has('s') || keys.has('arrowdown') ? 1 : 0),
     strafe: (keys.has('d') || keys.has('arrowright') ? 1 : 0) - (keys.has('a') || keys.has('arrowleft') ? 1 : 0),
-    jump: keys.has(' ') || jumpPressed, run: keys.has('shift') && vitals.canRun(), walkSpeed: settings.walkSpeed, runSpeed: vitals.runSpeed(settings.walkSpeed, settings.runSpeed), lookX: lookX * LOOK_SENSITIVITY + ((keys.has('e') ? 1 : 0) - (keys.has('q') ? 1 : 0)) * FOOT_TURN * dt,
+    jump: keys.has(' ') || jumpPressed, run: keys.has('shift') && vitals.canRun(), walkSpeed: playerWalk(), runSpeed: vitals.runSpeed(playerWalk(), playerRun()), lookX: lookX * LOOK_SENSITIVITY + ((keys.has('e') ? 1 : 0) - (keys.has('q') ? 1 : 0)) * FOOT_TURN * dt,
   };
   lookX = lookY = 0;
   jumpPressed = false;
@@ -805,12 +812,17 @@ function footInput(dt) {
 
 // The person on the map, one model per frame of the walk and run, as a model can't move its own parts.
 // All stay on the map and only one has any size, because swapping a model's source reloads it.
+const ownLook = () => { // how this person looks in a shared world, and the usual person otherwise
+  const me = world.rules.people ? world.people.member(world.you.id) : null;
+  return me ? { figure: me.figure, colours: me.colours } : null;
+};
+
 async function makePeople() {
   if (people) return;
   const { FRAME_COUNT, personParts } = await import('./footPerson.js');
   people = Array.from({ length: FRAME_COUNT }, (_, frame) => {
     const person = new maps3d.Model3DElement({ position: { ...pos, altitude: 0 }, altitudeMode: 'RELATIVE_TO_GROUND', scale: HIDDEN_PERSON });
-    person.src = glbUrl(buildPersonGlb(personParts(frame)));
+    person.src = glbUrl(buildPersonGlb(personParts(frame, ownLook())));
     return person;
   });
 }
@@ -943,11 +955,11 @@ function footCars() {
 async function startWalking() {
   footLoading = true;
   try {
-    const buildings = await world.openBuildings();
+    const buildings = await world.openBuildings(), look = ownLook();
     const { Foot, PERSON_SIZE: personSize } = await import('./foot.js'); // only those who walk load any of this
     await makePeople();
     (await pocketReady()).close();
-    foot = new Foot({ onGetIn: () => stopFoot(), onOpenBag: () => { if (!pocket.bagOpen) pocket.toggleBag(); }, drops, onDropsChanged: () => { dropsSyncedAt = -Infinity; }, onSound: sfx, onUsed: (effect, count) => { vitals.apply(effect, count); }, hasKey: () => pocket.data.bagHas(BUILDING_KEY), hasHammer: () => pocket.data.bagHas(GAME.hammer.item), onSay: (text) => notice(text, 3000), onLocked: showLocked, onLoadCar: loadCar, onFound: (name) => pocket.collect(name), onSlept: sleepUntilMorning, canvas: el('foot'), origin: { lat: pos.lat, lng: pos.lng }, heading: car.heading, cars: footCars(), buildings, tiles, view: { tilt: CAMERAS[0].tilt, range: CAMERAS[0].range * FOOT_RANGE_SHARE, fov: FOV_Y, below: CAR_BELOW_CENTRE } });
+    foot = new Foot({ onGetIn: () => stopFoot(), onOpenBag: () => { if (!pocket.bagOpen) pocket.toggleBag(); }, drops, onDropsChanged: () => { dropsSyncedAt = -Infinity; }, onSound: sfx, onUsed: (effect, count) => { vitals.apply(effect, count); }, hasKey: () => pocket.data.bagHas(BUILDING_KEY), hasHammer: () => pocket.data.bagHas(GAME.hammer.item), onSay: (text) => notice(text, 3000), onLocked: showLocked, onLoadCar: loadCar, onFound: (name) => pocket.collect(name), onSlept: sleepUntilMorning, roughChoices, canvas: el('foot'), origin: { lat: pos.lat, lng: pos.lng }, heading: car.heading, cars: footCars(), buildings, look, others: world.rules.people ? () => world.people.solidNow(performance.now()) : null, tiles, view: { tilt: CAMERAS[0].tilt, range: CAMERAS[0].range * FOOT_RANGE_SHARE, fov: FOV_Y, below: CAR_BELOW_CENTRE } });
     showPerson(personSize);
   } catch (err) {
     console.warn('getting out:', err);
@@ -1092,6 +1104,7 @@ function pressCarF() {
     { label: 'Get out of the car?', run: () => { getOut(); return ''; } },
     { label: 'Open the storage?', run: () => { openStorage(); return ''; } },
     { label: settings.headlights ? 'Turn off the headlights?' : 'Turn on the headlights?', run: () => { setHeadlights(!settings.headlights); return ''; } },
+    ...roughChoices(),
   ], { car: true });
 }
 
@@ -1158,6 +1171,42 @@ function dropPicture(name) {
 }
 
 // Outdoor things near enough to see, as models on the map. Not every frame, and only when there are any.
+// Labels on the map, by the marker that keeps its size on screen. Text goes in as text.
+const markTags = new Map();
+let marksSyncedAt = -Infinity;
+function markTag(mark) {
+  const text = `Someone ${mark.what} here`, width = 16 + text.length * 7.5;
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('width', width);
+  svg.setAttribute('height', 24);
+  svg.setAttribute('viewBox', `0 0 ${width} 24`);
+  svg.innerHTML = `<rect width="${width}" height="24" rx="5" fill="#5a3a12" fill-opacity=".85"/><text x="${width / 2}" y="16.5" font-family="system-ui,sans-serif" font-size="13" font-weight="600" text-anchor="middle" fill="#fff"></text>`;
+  svg.querySelector('text').textContent = text;
+  const tag = new maps3d.Marker3DElement({ position: { lat: mark.lat, lng: mark.lng, altitude: 1.5 }, altitudeMode: 'RELATIVE_TO_GROUND', extruded: false, sizePreserved: true, drawsWhenOccluded: true });
+  const template = document.createElement('template');
+  template.content.append(svg);
+  tag.append(template);
+  return tag;
+}
+
+function syncMarks(t) {
+  if (!map || !maps3d?.Marker3DElement || t - marksSyncedAt < 1000) return;
+  marksSyncedAt = t;
+  const at = foot ? foot.where() : pos, near = new Set(world.marks.around(at.lat, at.lng, GAME.rough.marksShownWithin, GAME.rough.marksShown));
+  const ids = new Set([...near].map((mark) => mark.id));
+  for (const [id, tag] of markTags) {
+    if (ids.has(id)) continue;
+    tag.remove();
+    markTags.delete(id);
+  }
+  for (const mark of near) {
+    if (markTags.has(mark.id)) continue;
+    const tag = markTag(mark);
+    map.append(tag);
+    markTags.set(mark.id, tag);
+  }
+}
+
 function syncDrops(t) {
   if (!map || !maps3d || t - dropsSyncedAt < 1000) return;
   dropsSyncedAt = t;
@@ -1184,6 +1233,7 @@ async function pocketReady() {
   const { Pocket } = await import('./pocket.js');
   pocket ||= new Pocket(el('pockets'), radio, {
     store: world.store,
+    world: world.rules.people ? peopleCalls() : null,
     music: (on) => {
       engine.start();
       applySound();
@@ -1262,6 +1312,36 @@ function sleepUntilMorning() {
   return say('slept', { hours: Math.round(hours) });
 }
 
+// No bed or toilet needed, once they need one, for less good.
+function roughChoices() {
+  const needs = vitals.roughNeeds(), list = [];
+  if (needs.sleep) list.push({ label: 'Sleep here?', run: sleepRough });
+  if (needs.relief) list.push({ label: 'Go here?', run: goHere });
+  return list;
+}
+
+// Outdoors everyone can see where it happened, so it pays to find somewhere quiet. Indoors there's no map to label.
+function goHere() {
+  const what = vitals.relieveRough();
+  perfLog.event('vital', { used: 'rough' });
+  if (!foot?.walker.inside) {
+    const at = foot ? foot.where() : pos;
+    world.marks.add(what, at.lat, at.lng);
+    marksSyncedAt = -Infinity;
+  }
+  return say('reliefRough');
+}
+
+function sleepRough() {
+  const { hours, events } = vitals.sleepRough();
+  sayEvents(events);
+  world.clock.skip(hours);
+  applyDaylight();
+  world.clock.save();
+  perfLog.event('vital', { sleep: hours, rough: true });
+  return say('sleptRough', { hours });
+}
+
 // --- The clock and the person's needs -------------------------------------------------------------------------
 
 const vitals = world.vitals;
@@ -1281,6 +1361,7 @@ function passNeeds(t, hours) {
   if (!map) return;
   sayEvents(vitals.pass(hours, doingNow()));
   syncDrops(t);
+  syncMarks(t);
   if (!foot) checkAsking();
   if (t - vitalsDrawnAt > 500) {
     vitalsDrawnAt = t;
@@ -1473,74 +1554,33 @@ async function restoreTrip(saved) {
   ground = groundTarget;
 }
 
-// Copies a link to this drive and these settings. Everything is in the link's # part, which browsers don't send to servers.
-async function shareDrive() {
-  if (!map || !world.rules.share) return;
-  const code = await encodeShare(packShare({ settings, defaults: DEFAULTS, session: tripState(), start, defaultStart: ORIGINAL_START }));
-  const link = `${location.origin}${location.pathname}#d=${code}`;
-  debug.lastShare = link;
+// J: an invite link in a shared world, or a new world from the sandbox.
+async function pressJ() {
+  if (world.rules.createWorld) {
+    if (dialogOpen || foot?.busy) return;
+    dialogOpen = true;
+    keys.clear();
+    releaseMouse();
+    const { createWorld } = await import('./worldEntry.js');
+    const going = await createWorld(browserStorage());
+    if (!going) dialogOpen = false;
+    return;
+  }
+  if (!world.rules.invites) return;
+  if (!world.isManager) return notice(`Only ${world.managerNames.join(' and ') || 'the world\'s managers'} can make invites.`, 4000);
+  copyInvite(await world.link.ask({ t: 'invite' }), 'Invite link copied. It works once, for one person, and lasts a day.');
+}
+
+async function copyInvite({ code, why }, done) {
+  if (!code) return notice(why === 'offline' ? 'The world can\'t be reached right now.' : 'That didn\'t work.', 4000);
+  const link = `${location.origin}${location.pathname}#w=${world.id}.${code}`;
+  debug.lastInvite = link;
   try {
     await navigator.clipboard.writeText(link);
-    notice('Link copied. Whoever opens it gets this drive and these settings.', 4000);
+    notice(done, 5000);
   } catch (err) {
     window.prompt('Copy this link:', link);
   }
-}
-
-// Says what a link will load and waits for an answer. Nothing changes unless they accept.
-let answerShared = null;
-function askAboutShare(shared) {
-  const rows = shareSummary(shared, DEFAULTS, { carName: (id) => CAR_PROFILES[id]?.name || id, clock: clockText });
-  el('sharedStats').replaceChildren(...rows.map(([label, value]) => {
-    const row = document.createElement('div'), dt = document.createElement('dt'), dd = document.createElement('dd');
-    dt.textContent = label;
-    dd.textContent = value;
-    row.append(dt, dd);
-    return row;
-  }));
-  dialogOpen = true;
-  el('shared').classList.add('open');
-  el('sharedYes').focus();
-  return new Promise((resolve) => {
-    answerShared = (yes) => {
-      answerShared = null;
-      el('shared').classList.remove('open');
-      dialogOpen = false;
-      document.activeElement?.blur();
-      resolve(yes);
-    };
-  });
-}
-el('sharedYes').addEventListener('click', () => answerShared?.(true));
-el('sharedNo').addEventListener('click', () => answerShared?.(false));
-el('shared').addEventListener('click', (e) => { if (e.target === el('shared')) answerShared?.(false); });
-
-// An accepted link replaces this browser's settings and trip. The link is taken out of the address bar either way,
-// so a refresh carries on from the saved copy rather than asking again.
-async function openSharedLink() {
-  if (!world.rules.share) return false;
-  const code = location.hash.match(/^#d=([\w-]+)/)?.[1];
-  if (!code) return false;
-  history.replaceState(null, '', location.pathname + location.search);
-  radioResume = false; // the answer below decides what plays
-  const shared = await decodeShare(code);
-  if (!shared) {
-    radioResume = settings.radioOn;
-    notice('That share link is damaged, so it was ignored.', 5000);
-    return false;
-  }
-  if (!(await askAboutShare(shared))) {
-    radioResume = settings.radioOn;
-    return false;
-  }
-  Object.assign(settings, DEFAULTS, shared.settings);
-  saveSettings();
-  if (shared.start) saveStart(shared.start);
-  world.trips.save(shared.session);
-  radio.restore(settings.radioStation);
-  applySound();
-  renderRadio();
-  return true;
 }
 
 function reset() {
@@ -2204,7 +2244,7 @@ onClick('fsdButton', () => setFsd(!fsd));
 onClick('muteButton', toggleMute);
 onClick('timeButton', addHour);
 onClick('camButton', switchCamera);
-el('shareButton').addEventListener('click', shareDrive);
+el('shareButton').addEventListener('click', pressJ);
 el('sendLog').addEventListener('click', sendLog);
 // A link opened in a tab already on the game changes only the # part, which wouldn't otherwise reload the page.
 window.addEventListener('hashchange', () => { if (location.hash.startsWith('#d=')) location.reload(); });
@@ -2315,7 +2355,7 @@ document.addEventListener('keydown', (e) => {
     if (['ArrowUp', 'ArrowDown', 'Enter'].includes(e.key)) return;
     e.target.blur();
   }
-  if (e.target.matches?.('#pockets textarea, #pockets input[type=text]')) { // typing a note or a message
+  if (e.target.matches?.('#pockets textarea, #pockets input[type=text], #chatLine input')) { // typing a note or a message
     if (e.key === 'Escape') e.target.blur();
     return;
   }
@@ -2344,6 +2384,11 @@ document.addEventListener('keydown', (e) => {
   // A question with its own letter takes that key first, so L means Load while it's asked, and getting in otherwise.
   const lettered = asking && !e.repeat ? asking.choices.findIndex((choice) => choice.key === k) : -1;
   if (lettered >= 0) { e.preventDefault(); return answer(lettered); }
+  if (k === 'enter' && !e.repeat && chatView && !asking && pocket?.app !== 'call') {
+    e.preventDefault();
+    if (!chatView.open()) notice('Your phone\'s dead. Charge it to talk to anyone.', 3000);
+    return;
+  }
   if (k === 'l' && !e.repeat) { e.preventDefault(); return pressL(); }
   if (asking && /^[1-9]$/.test(k)) { e.preventDefault(); if (!e.repeat) answer(Number(k) - 1); return; }
   if (pocket?.bagOpen && e.shiftKey && !e.repeat && /^Digit\d$/.test(e.code)) { e.preventDefault(); return pocket.dropNumber(e.code.slice(5)); }
@@ -2362,7 +2407,7 @@ document.addEventListener('keydown', (e) => {
   if (k === 'h') setHeadlights(!settings.headlights);
   if (k === 'b') hornDown();
   if (k === 't') addHour();
-  if (k === 'j') shareDrive();
+  if (k === 'j') pressJ();
   if (k === 'v') nextNavRange();
   if (k === '/') { e.preventDefault(); nextBand(); }
   if (k === '\\') openStations();
@@ -2433,6 +2478,110 @@ function loadGoogle(key, channel) {
   });
 }
 
+// --- Other people, in a shared world ------------------------------------------------------------------------------
+
+let peopleView = null, chatView = null;
+const badgeColour = (member) => member.colours?.jacket ?? '#5a6470';
+
+// What's sent about this person. A timer asks, as the game loop stops in a hidden tab.
+function whereIAm() {
+  if (!map) return null;
+  const away = document.hidden || paused;
+  if (!foot) return { ...pos, heading: car.heading, speed: car.speed, onFoot: false, away, flags: (away ? FLAGS.away : 0) | (settings.headlights ? FLAGS.headlights : 0) | (braking ? FLAGS.brake : 0) | (onBridge ? FLAGS.bridge : 0) };
+  const at = foot.where(), posture = foot.posture(), running = posture.frame > 8, moving = posture.frame !== 0, frame = foot.frameOfBuilding();
+  const speed = moving ? (running ? playerRun() : playerWalk()) : 0;
+  return {
+    ...at, heading: posture.facing, speed, onFoot: true, away, gait: posture.frame, floor: foot.level, ...frame,
+    flags: FLAGS.onFoot | (away ? FLAGS.away : 0) | (foot.walker.inside ? FLAGS.indoors : 0) | (running ? FLAGS.running : 0) | (foot.pose?.kind === 'sleep' ? FLAGS.asleep : 0),
+  };
+}
+
+// What the phone asks about those in this world.
+function peopleCalls() {
+  const here = () => (foot ? foot.where() : pos), now = () => Date.now();
+  const titled = (id) => (id ? world.chat.threadWith(id) : world.chat.threadWith(null));
+  const threadsNow = () => [{ id: 'group', member: null }, ...world.people.others.filter((member) => member.lives > 0).map((member) => ({ id: member.id, member }))].map(({ id, member }) => {
+    const lines = world.chat.messages(titled(member?.id));
+    return { id, title: member ? member.name : chatView?.titleOf(world.chat.threadWith(null)) ?? 'Group chat', last: lines.at(-1)?.text };
+  });
+  const roleOf = (id) => (id === world.owner ? 'Owner' : id === world.backup ? 'Backup' : '');
+  return {
+    badges: () => peopleView?.badges(initialsOf, badgeColour) ?? [],
+    peopleRows: () => {
+      const me = here();
+      return [world.people.member(world.you.id), ...world.people.others].filter(Boolean).map((member) => {
+        const mine = member.id === world.you.id, place = mine ? null : world.people.lastKnown(member.id);
+        return {
+          id: member.id, name: member.name, initials: initialsOf(member.name), colour: badgeColour(member), role: roleOf(member.id), at: !!place && member.online,
+          line: mine ? 'You' : statusLine(member, place, me, now()), bearing: place ? bearingBetween(me, place) : 0,
+          canRejoin: world.isManager && !mine && member.lives > 0, canBackup: world.isManager && !mine && member.lives > 0 && member.id !== world.backup && member.id !== world.owner,
+        };
+      });
+    },
+    managerLine: () => `${world.managerNames.join(' and ')} can make invites.`,
+    threads: threadsNow,
+    messages: (id) => world.chat.messages(titled(id === 'group' ? null : id)).map((line) => ({ text: line.text, mine: line.sender === world.you.id, from: line.thread === 'group' && line.sender !== world.you.id ? world.nameOf(line.sender) : null })),
+    send: async (id, text) => {
+      const answer = await world.link.ask({ t: 'say', text, ...(id === 'group' ? {} : { to: id }) });
+      if (answer.why) notice(answer.why === 'offline' ? 'The world can\'t be reached right now.' : 'That didn\'t send.', 3000);
+      return answer.why;
+    },
+    rejoinLink: async (id) => copyInvite(await world.link.ask({ t: 'invite', rejoinOf: id }), `Rejoin link copied, for ${world.nameOf(id)} on a new browser. It works once and lasts a day.`),
+    makeBackup: (id) => world.link.ask({ t: 'setBackup', member: id }),
+  };
+}
+
+// Others on the map, chat, and hearing about each other. Once the map's up.
+async function startPeople() {
+  const [{ PeopleView }, { ChatView }] = await Promise.all([import('./peopleView.js'), import('./chatView.js')]);
+  peopleView = new PeopleView({ maps3d, map, people: world.people, glbUrl });
+  chatView = new ChatView({
+    world, line: el('chatLine'), previews: el('previews'), sound: () => sfx('message'), phoneDead: () => vitals.stats.phone <= 0,
+    opened: (on) => { if (on) { keys.clear(); jumpPressed = false; releaseMouse(); } },
+    canShow: (thread) => !(pocket?.app === 'messages' && world.chat.threadWith(pocket.contact === 'group' ? null : pocket.contact) === thread),
+  });
+  world.whereAmI = whereIAm;
+  world.on.said = (line) => {
+    pocket?.chatChanged();
+    chatView.said(line);
+    world.markChatSeen();
+  };
+  world.on.missed = (count) => { chatView.missed(count); world.markChatSeen(); };
+  world.on.member = (member, known) => {
+    if (member.id === world.you.id) return;
+    if (!known) notice(`${member.name} has joined this world.`, 4000);
+    else if (member.online && !known.online) notice(`${member.name} is here.`, 3000);
+    else if (!member.online && known.online) notice(`${member.name} has gone.`, 3000);
+    navShown = '';
+  };
+  world.on.managers = () => {
+    if (world.backup === world.you.id) notice('You\'re this world\'s backup: you can invite people too, with J.', 6000);
+    else if (world.you.id === world.owner && world.nameOf(world.backup)) notice(`${world.nameOf(world.backup)} is now this world's backup, and can invite people too.`, 5000);
+  };
+  world.on.link = (state, why) => {
+    if (state === 'lost') notice('Lost touch with the world. Trying to get back…', 4000);
+    else if (state === 'open') notice('Back in touch with the world.', 2500);
+    else if (why === 'replaced') notice('This world is open in another tab, so this one has stopped.', 0);
+    else if (why) notice('This browser can\'t get back into the world. Refresh to see why.', 0);
+  };
+  window.addEventListener('pagehide', () => world.flush());
+  if (world.missed) world.on.missed(world.missed);
+}
+
+// With no trip of its own here: the usual dialog, or in a shared world, where the server says.
+async function beginHere() {
+  const begin = world.rules.people ? world.beginning() : { choose: true };
+  if (begin.restore) {
+    const { lat, lng, trip: figures } = begin.restore;
+    return restoreTrip({ pos: { lat, lng }, heading: 0, zoom: 1, camIndex: 0, destination: null, fsd: false, fsdBoost: 0, trip: figures ?? {}, lane: 0, navRadius: NAV_RANGES[1], label: world.name });
+  }
+  if (begin.near) {
+    const turn = Math.random() * 360, within = GAME.world.appearWithin * Math.sqrt(Math.random()), { lat, lng } = move(begin.near.lat, begin.near.lng, turn, within);
+    return placeCar({ lat, lng, heading: turn, label: world.name });
+  }
+  return openDialog('start');
+}
+
 async function boot() {
   let key = null;
   try {
@@ -2447,12 +2596,13 @@ async function boot() {
     maps3d = await google.maps.importLibrary('maps3d');
     geocoder = new (await google.maps.importLibrary('geocoding')).Geocoder();
     routesLib = await google.maps.importLibrary('routes');
-    const fromLink = await openSharedLink();
+    if (/^#d=/.test(location.hash)) { // a link from when sharing copied a drive
+      history.replaceState(null, '', location.pathname + location.search);
+      notice('Share links have been replaced by shared worlds. Press J to make one.', 8000);
+    }
     const saved = world.trips.load();
     if (saved) await restoreTrip(saved);
-    else await openDialog('start'); // the map itself loads only once the start is chosen
-    // Accepting was the click browsers require, so a shared drive's radio can start straight away.
-    if (fromLink && settings.radioOn) setRadioPower(true);
+    else await beginHere(); // the map itself loads only once the start is chosen
     map = new maps3d.Map3DElement({ center: { ...pos, altitude: ground }, heading: car.heading, tilt, range, fov: FOV_Y, mode: 'HYBRID', defaultUIHidden: true });
     applyGraphics();
     el('map').replaceChildren(map);
@@ -2465,7 +2615,7 @@ async function boot() {
     applyDaylight();
     if (saved) {
       if (destination && !resumeRoute()) requestRoute(true);
-      notice(`${fromLink ? 'Shared drive loaded' : 'Trip restored'}${destination ? `, heading to ${destination.label}` : ''}. Use New start in the header to begin again.`, 6000);
+      notice(`${'Trip restored'}${destination ? `, heading to ${destination.label}` : ''}. Use New start in the header to begin again.`, 6000);
     }
     if (saved && trip.meters) markDriveTipSeen();
     if (!driveTipSeen() && world.rules.ownCar) notice(say('driveTip'), 9000);
@@ -2475,6 +2625,7 @@ async function boot() {
       crowdTest: async (options) => (await import('./crowdTest.js')).runCrowdTest({ maps3d, map, at: foot ? foot.where() : pos, glbUrl, log: perfLog, ...options }),
     });
     if (world.rules.startsOnFoot) await startWalking();
+    if (world.rules.people) await startPeople();
   } catch (err) {
     notice('Could not load the map: ' + err.message);
   }
@@ -2484,7 +2635,8 @@ async function boot() {
 function applyRules() {
   const { rules } = world, hide = (...elements) => { for (const element of elements) if (element) element.style.display = 'none'; };
   if (!rules.changeStart) hide(el('changeStartHeader'), el('resetButton'), el('changeStart'));
-  if (!rules.share) hide(el('shareButton'));
+  if (!rules.createWorld && !rules.invites) hide(el('shareButton'));
+  if (rules.invites) el('shareButton').innerHTML = 'Invite <span class="keyHint">(J)</span>';
   if (!rules.skipTime) hide(el('timeButton'), el('hour'), document.querySelector('label[for="hour"]'));
   if (!rules.forgetBuildings) hide(el('forgetBuildings'));
 }

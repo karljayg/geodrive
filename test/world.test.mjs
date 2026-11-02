@@ -26,7 +26,7 @@ test('the sandbox is what opens by default, and allows what it always has', () =
   assert.equal(world.mode, 'sandbox');
   assert.equal(world.store, undefined, 'its classes keep their own default, so today\'s saves are untouched');
   assert.deepEqual(world.rules, RULES.sandbox);
-  assert.ok(world.rules.ownCar && !world.rules.startsOnFoot && world.rules.skipTime && world.rules.changeStart && world.rules.share && world.rules.forgetBuildings);
+  assert.ok(world.rules.ownCar && !world.rules.startsOnFoot && world.rules.skipTime && world.rules.changeStart && world.rules.createWorld && world.rules.forgetBuildings);
   done();
 });
 
@@ -101,7 +101,7 @@ test('a practice world keeps everything apart from the sandbox', async () => {
 test('a practice world starts on foot with no car, and starts its clock from the sandbox\'s', () => {
   const world = openWorld({ search: `?world=${TRIAL}`, storage: memory(), settings: { hour: 7 }, saveSettings() {} });
   assert.ok(world.rules.startsOnFoot && !world.rules.ownCar);
-  assert.ok(!world.rules.skipTime && !world.rules.changeStart && !world.rules.share && !world.rules.forgetBuildings);
+  assert.ok(!world.rules.skipTime && !world.rules.changeStart && !world.rules.createWorld && !world.rules.forgetBuildings);
   assert.equal(world.clock.hour, 7);
   world.clock.advance(60, true, GAME.clock.onFootHoursPerMinute);
   assert.equal(world.clock.hour, 8);

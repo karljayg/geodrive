@@ -101,10 +101,9 @@ export class Room {
       });
       if (taken) return { why: 'name-taken' };
       member = this.store.member(id);
-      this.tellAll({ t: 'member', member: publicMember(member, false) });
-      this.tellManagers();
     }
     this.admit(connection, member, secret);
+    this.tellManagers(); // after they're known to everyone, so the name can be said
     return { id: member.id, secret };
   }
 

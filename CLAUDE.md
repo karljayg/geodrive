@@ -8,7 +8,7 @@ See `docs/FEATURES.md` for what the game does and `docs/TECH_STACK.md` for how i
 Deploy with `npm run deploy` when a change is done, without being asked, so the owner can test it on the live URL.
 
 ## Run, test, deploy
-- Local: `npm start`, then http://localhost:8765/ (the `geodrive` entry in `.claude/launch.json`). Don't open it from `file://`; it has to fetch `config.json`.
+- Local: `npm start`, then http://localhost:8765/ (the `geodrive` entry in `.claude/launch.json`). It runs its own world server, with worlds in `logs/worlds`. Don't open it from `file://`; it has to fetch `config.json`.
 - Tests: `npm test` (physics, camera helpers and roads, no browser).
 - Deploy: `npm run deploy` rsyncs `public/` to the server. Needs no service and no Apache change.
 - Logs: `npm run logs` copies what players sent with the Send log button into `logs/` (gitignored).
@@ -97,6 +97,7 @@ The header, nav screen and tab title show the current town (`refreshTown`: a bil
 - `public/js/physics.js`: bicycle-model car. Pure, tested. Tune `CAR` here.
 - `public/js/camera.js`: geo and camera maths. Pure, tested.
 - `public/js/protocol.js`: what the browser and world server say to each other, used by both: places in 24 bytes, name and look rules, the clock, reading a chat line. Pure, tested. `server/`: the world server. `room.mjs` is one open world and `store.mjs` its SQLite file, and it has the only npm packages in the project (`ws`, `better-sqlite3`). Tested with real connections in `test/server.test.mjs`.
+- `public/js/worldEntry.js`: invites, the join and new-world dialogs and the picker, all before any map loads. `public/js/net.js`: the line to the server, reconnecting by itself and never reloading. `public/js/people.js`: where others are and what a phone says about them, pure, tested. `public/js/peopleView.js`: their models and name tags; only one person's models go on at a time, as the map froze when they all did. `public/js/chat.js` (pure, tested) and `chatView.js`: threads, the Enter line and iPhone-style previews. None of the network code loads for a browser that's never seen a world (`needsEntry`). `scripts/bots.mjs` makes a world of walking bots and prints an invite.
 - `public/js/world.js`: which world this page is in, where its saves live and what it allows (`world.rules`). Nothing else reads saved game data or asks which mode it's in. The sandbox uses the old keys; `?world=walktest` is a practice world with its own, starting on foot with no car. Pure apart from loading the buildings, tested.
 - `public/js/crowdTest.js`: a full world's worth of other players on the real map, from the console with `__geodrive.crowdTest()`. Loaded only when run.
 - `public/js/session.js`: `TripStore`, the trip and route saved for a refresh, one per world. Pure, tested.
