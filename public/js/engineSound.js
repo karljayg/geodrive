@@ -115,7 +115,8 @@ export class EngineAudio {
   }
 
   // { rpm, load (0..1), speedMph, car (profile), running }
-  update({ rpm, load, speedMph, car, running }) {
+  // reach: how much of the engine is heard, 0..1, for standing away from the car. outside: no road or wind noise, which are heard from the cabin.
+  update({ rpm, load, speedMph, car, running, reach = 1, outside = false }) {
     if (!this.ctx || !this.settings) return;
     const now = this.ctx.currentTime;
     if (now - this.lastUpdate < UPDATE_EVERY) return;
@@ -125,7 +126,7 @@ export class EngineAudio {
     if (wantRecorded && this.set !== car.sound) this.loadSet(car.sound);
 
     const recorded = wantRecorded && this.status === 'recorded';
-    const level = running ? engineIntensity(rpm, load, car.idle, car.redline, preset) : 0;
+    const level = running ? engineIntensity(rpm, load, car.idle, car.redline, preset) * reach : 0;
     this.synth.update({ rpm, load, car, volume: recorded ? 0 : level, pitch: s.enginePitch, running: running && !recorded && !(wantRecorded && this.status === 'loading') });
     const target = recorded ? level * ENGINE_TRIM : 0;
     this.intensity.gain.setTargetAtTime(target, now, target > this.intensity.gain.value ? ATTACK : RELEASE);
@@ -137,8 +138,8 @@ export class EngineAudio {
       }
       this.body.frequency.setTargetAtTime(engineCutoff(load, preset), now, BLEND_GLIDE);
     }
-    this.road.gain.setTargetAtTime(running ? roadLevel(speedMph) : 0, now, 0.15);
-    this.wind.gain.setTargetAtTime(running ? windLevel(speedMph) : 0, now, 0.2);
+    this.road.gain.setTargetAtTime(running && !outside ? roadLevel(speedMph) : 0, now, 0.15);
+    this.wind.gain.setTargetAtTime(running && !outside ? windLevel(speedMph) : 0, now, 0.2);
   }
 
   // The horn: two reedy notes through the effects bus, on until hornOff.

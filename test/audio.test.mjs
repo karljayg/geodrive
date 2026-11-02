@@ -1,3 +1,4 @@
+import { ENGINE_GONE, ENGINE_NEAR, engineFadeAt } from '../public/js/engineMix.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -136,4 +137,12 @@ test('brake lights: on while slowing, through the stop and while reversing, off 
   assert.equal(brakeLit(20, held({})), false, 'coasting');
   assert.equal(brakeLit(0, held({})), false, 'parked');
   assert.equal(brakeLit(-8, held({})), false, 'rolling back with nothing held');
+});
+
+test('the engine fades with distance from the car, to nothing', () => {
+  assert.equal(engineFadeAt(0), 1);
+  assert.equal(engineFadeAt(ENGINE_NEAR), 1);
+  assert.ok(engineFadeAt(10) > engineFadeAt(20) && engineFadeAt(20) > 0);
+  assert.equal(engineFadeAt(ENGINE_GONE), 0);
+  assert.equal(engineFadeAt(500), 0);
 });

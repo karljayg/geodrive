@@ -56,3 +56,10 @@ export const engineCutoff = (load, preset = AUDIO_PRESETS.balanced) => (900 + 90
 // Road and wind, 0..1 before their volume settings. They level off so 500 mph isn't deafening.
 export const roadLevel = (mph) => 0.5 * Math.pow(clamp(mph / 90, 0, 1), 1.4);
 export const windLevel = (mph) => 0.7 * Math.pow(clamp((mph - 25) / 150, 0, 1), 1.6);
+
+// How much of the engine reaches someone standing this many metres from the car: all of it close by, then falling away to nothing.
+export const ENGINE_NEAR = 3, ENGINE_GONE = 40;
+export function engineFadeAt(metres) {
+  const t = Math.max(0, Math.min(1, (metres - ENGINE_NEAR) / (ENGINE_GONE - ENGINE_NEAR)));
+  return (1 - t) ** 2;
+}
