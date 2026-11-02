@@ -150,6 +150,47 @@ export function stepClearOfThings(walker, world) {
   return false;
 }
 
+const CLIMB_REACH = 0.7;   // m from a thing's edge that F offers to climb it
+const CLIMB_BEYOND = 3;   // m past its far side to look for somewhere to land, as shelves stand back to back
+const CLIMB_STEP = 0.25;  // m
+const CLIMB_FACING = 0.25;// how nearly they must face it: the cosine of the angle
+const LANDING_SLIP = 0.03; // m a landing spot can be nudged by a wall and still count as clear
+
+const crosses = (ax, ay, bx, by, wall) => {
+  const side = (px, py, qx, qy, rx, ry) => (qx - px) * (ry - py) - (qy - py) * (rx - px);
+  return side(ax, ay, bx, by, wall.ax, wall.ay) * side(ax, ay, bx, by, wall.bx, wall.by) < 0 && side(wall.ax, wall.ay, wall.bx, wall.by, ax, ay) * side(wall.ax, wall.ay, wall.bx, wall.by, bx, by) < 0;
+};
+
+// The thing they're facing and up against, and clear floor on its far side with no wall between: { box, x, y }, or null.
+// skip(box): things not to offer. The nearest first, so it's the one they mean.
+export function climbOver(walker, world, skip) {
+  const sin = Math.sin(walker.facing), cos = Math.cos(walker.facing), boxes = world.inner?.boxes || [], near = [];
+  for (const box of boxes) {
+    const dx = walker.x - box.x, dy = walker.y - box.y;
+    const lx = dx * box.c - dy * box.s, ly = dx * box.s + dy * box.c, gapX = Math.abs(lx) - box.hw, gapY = Math.abs(ly) - box.hd;
+    const gap = Math.hypot(Math.max(gapX, 0), Math.max(gapY, 0));
+    if (gap > CLIMB_REACH) continue;
+    const nx = clamp(lx, -box.hw, box.hw) - lx, ny = clamp(ly, -box.hd, box.hd) - ly, length = Math.hypot(nx, ny) || 1; // towards its nearest point
+    const toward = ((nx * box.c + ny * box.s) * sin + (-nx * box.s + ny * box.c) * cos) / length;
+    if (toward >= CLIMB_FACING && !skip?.(box)) near.push({ box, gap, lx, ly, gapX, gapY });
+  }
+  const full = (world.inner?.walls || []).filter((wall) => wall.top === undefined);
+  const clearAt = (x, y) => world.place.footprintAt(x, y) === walker.inside && !boxes.some((other) => inBox(other, x, y, RADIUS));
+  for (const { box, lx, ly, gapX, gapY } of near.sort((a, b) => a.gap - b.gap)) {
+    const alongX = gapX >= gapY, half = (alongX ? box.hw : box.hd) + RADIUS + 0.05, sign = (alongX ? lx : ly) > 0 ? -1 : 1;
+    const across = alongX ? clamp(ly, -box.hd, box.hd) : clamp(lx, -box.hw, box.hw);
+    for (let extra = 0; extra <= CLIMB_BEYOND; extra += CLIMB_STEP) {
+      const along = sign * (half + extra), mx = alongX ? along : across, my = alongX ? across : along;
+      const x = box.x + mx * box.c + my * box.s, y = box.y - mx * box.s + my * box.c;
+      if (full.some((wall) => crosses(walker.x, walker.y, x, y, wall))) break; // and so will anything further
+      if (!clearAt(x, y)) continue;
+      const to = pushClear(x, y, world);
+      if (Math.hypot(to.x - x, to.y - y) < LANDING_SLIP) return { box, x, y };
+    }
+  }
+  return null;
+}
+
 // In the air, the person holds one stride of the run, whatever they were doing.
 export const frameOf = (walker) => (walker.height > 0.05 && walker.rise !== 0 ? frameFor(RUN_SPEED, true, 0.25) : frameFor(walker.speed, walker.running, walker.phase));
 

@@ -128,6 +128,6 @@ test('things saved under an old name take the new one, and join any already ther
   const memory = new Map([['geodrive_pocket_v1', JSON.stringify({ notes: [], messages: {}, bag: [{ id: 'Plasters', name: 'Plasters', count: 2 }, { id: 'Band-Aids', name: 'Band-Aids', count: 1 }], car: [{ id: 'Trainers', name: 'Trainers', count: 1 }] })]]);
   const data = new PocketData({ getItem: (k) => memory.get(k) ?? null, setItem: (k, v) => memory.set(k, v) });
   assert.deepEqual(data.bag.map((i) => [i.id, i.count]), [['Band-Aids', 3]]);
-  assert.deepEqual(data.car.map((i) => [i.id, i.name]), [['Sneakers', 'Sneakers']]);
+  assert.deepEqual(data.car.filter((i) => i.id !== GAME.hammer.item).map((i) => [i.id, i.name]), [['Sneakers', 'Sneakers']]);
   assert.ok(GAME.consumables['Band-Aids'] && hasItemIcon('Sneakers') && hasItemIcon('Can of beans') && hasItemIcon('Silverware'));
 });

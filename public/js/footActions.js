@@ -13,6 +13,11 @@ const WALL_HALF = 0.06; // m, half a wall's thickness
 const NOT_USED_HERE = new Set(['stairs', 'stairwell', 'lift']); // L does those
 export const SWITCH_REACH = 1.5; // m from a light switch that it can be used
 export const BUILDING_KEY = 'Building key'; // turns on a light switch that needs one
+const STUB = 0.3;       // m of wall too short to leave standing at the end of a hole
+const WIRING = 0.25;    // m a hole keeps from a switch or a power point
+const HOLE_TRIES = [0, 0.5, -0.5, 1, -1, 1.5, -1.5]; // m along the wall from where they're standing
+const SWUNG_AT = 0.2;   // how nearly they must face a wall: the cosine of the angle
+const NEVER_CLIMBED = new Set(['stairs', 'stairwell', 'lift', 'frontDoor', 'pillar']);
 const KEY_CHANCE = 0.25;      // of a large building's switches needing a key
 const LARGE_FOOTPRINT = 500;  // m² on one floor
 const LARGE_TOTAL = 1500;     // m² over all its floors
@@ -44,7 +49,8 @@ const stateOf = (plan, floor) => ((plan.state ||= {})[floor] ||= { taken: [], op
 
 // A floor as the person has left it: without what they've picked up.
 export function withoutTaken(record, plan, floor) {
-  const taken = plan.state?.[floor]?.taken, moved = plan.state?.[floor]?.moved;
+  const taken = plan.state?.[floor]?.taken, moved = plan.state?.[floor]?.moved, holes = plan.state?.[floor]?.holes;
+  if (holes?.length) record = { ...record, walls: holes.reduce((walls, hole) => cutWalls(walls, hole), record.walls), builtWalls: record.walls, holes };
   if (!taken?.length && !moved) return record;
   const items = record.items.filter((entry) => !taken?.includes(key(entry))).map((entry) => {
     const to = moved?.[key(entry)];
@@ -88,6 +94,63 @@ export function pushThing(record, plan, floor, entry, to) {
   return { ...record, items: record.items.map((other) => (other === entry ? moved : other)) };
 }
 
+// Walls with a length taken out of whichever it lies along.
+function cutWalls(walls, [hu0, hv0, hu1, hv1]) {
+  return walls.flatMap((wall) => {
+    const [u0, v0, u1, v1] = wall, du = u1 - u0, dv = v1 - v0, length = Math.hypot(du, dv) || 1, ux = du / length, vx = dv / length;
+    const along = (u, v) => (u - u0) * ux + (v - v0) * vx, off = (u, v) => Math.abs((u - u0) * vx - (v - v0) * ux);
+    if (off(hu0, hv0) > 0.02 || off(hu1, hv1) > 0.02) return [wall];
+    const a = Math.min(along(hu0, hv0), along(hu1, hv1)), b = Math.max(along(hu0, hv0), along(hu1, hv1));
+    if (b <= 0 || a >= length) return [wall];
+    const out = [];
+    if (a > 0) out.push([u0, v0, u0 + ux * a, v0 + vx * a]);
+    if (b < length) out.push([u0 + ux * b, v0 + vx * b, u1, v1]);
+    return out;
+  });
+}
+
+const fromSegment = (u, v, [u0, v0, u1, v1]) => {
+  const du = u1 - u0, dv = v1 - v0, t = Math.max(0, Math.min(1, ((u - u0) * du + (v - v0) * dv) / (du * du + dv * dv || 1)));
+  return Math.hypot(u - (u0 + du * t), v - (v0 + dv * t));
+};
+
+// The inner wall they're facing, in reach, or null. Otherwise { hole }: the length a hammer would take out, slid along clear of switches and power points,
+// or null if there's nowhere clear on this stretch. Only inner walls are in a floor's record, and none stand where the stairs are.
+export function wallAhead(record, core, buildingId, floor, u, v, bearing, config = GAME.hammer) {
+  const sin = Math.sin(bearing), cos = Math.cos(bearing);
+  let best = null, bestAway = config.reach, spots = null;
+  for (const wall of record.walls) {
+    const [u0, v0, u1, v1] = wall, du = u1 - u0, dv = v1 - v0, t = Math.max(0, Math.min(1, ((u - u0) * du + (v - v0) * dv) / (du * du + dv * dv || 1)));
+    const pu = u0 + du * t, pv = v0 + dv * t, away = Math.hypot(pu - u, pv - v);
+    if (away >= bestAway || ((pu - u) * sin + (pv - v) * cos) / (away || 1) < SWUNG_AT) continue;
+    best = { wall, at: t * Math.hypot(du, dv) };
+    bestAway = away;
+  }
+  if (!best) return null;
+  const [u0, v0, u1, v1] = best.wall, length = Math.hypot(u1 - u0, v1 - v0), ux = (u1 - u0) / (length || 1), vx = (v1 - v0) / (length || 1), half = config.width / 2;
+  spots = [...switchSpots(record, core), ...outletSpots(record, core, buildingId, floor)];
+  for (const shift of HOLE_TRIES) {
+    const mid = length <= config.width ? length / 2 : Math.max(half, Math.min(length - half, best.at + shift));
+    let a = mid - half, b = mid + half;
+    if (a < STUB) a = 0;
+    if (b > length - STUB) b = length;
+    const hole = [u0 + ux * a, v0 + vx * a, u0 + ux * b, v0 + vx * b];
+    if (!spots.some((spot) => fromSegment(spot.u, spot.v, hole) < WIRING)) return { hole };
+  }
+  return { hole: null };
+}
+
+// Takes it out, and keeps that with the building. Returns the record as it now is.
+export function breakThrough(record, plan, floor, hole) {
+  const state = stateOf(plan, floor);
+  (state.holes ||= []).push(hole);
+  return { ...record, walls: cutWalls(record.walls, hole), builtWalls: record.builtWalls ?? record.walls, holes: state.holes };
+}
+
+// Whether it's a thing to offer climbing over, by what it is and how high it stands.
+export const canClimb = (item, top, config = GAME.climb) => !NEVER_CLIMBED.has(item) && top >= config.leastHeight;
+export const climbQuestion = (item) => `Climb over the ${nameOf(item)}?`;
+
 // Where a floor's light switches are, in the frame: on the wall beside each front door and each gap left for a door, and for a floor with no front door, by the stairs.
 // post: it stands on its own rather than on a wall.
 export function switchSpots(record, core) {
@@ -97,7 +160,7 @@ export function switchSpots(record, core) {
   const fronts = record.items.filter((entry) => entry[0] === 'frontDoor');
   for (const [, , u, v, , rot] of fronts) (Math.round(rot / 90) % 2 === 0 ? add(u + BESIDE_FRONT_DOOR, v) : add(u, v + BESIDE_FRONT_DOOR));
   const lines = new Map();
-  for (const [u0, v0, u1, v1] of record.walls) {
+  for (const [u0, v0, u1, v1] of record.builtWalls ?? record.walls) { // as built, or a hole would grow a switch
     const alongU = Math.abs(v1 - v0) < 0.01;
     if (!alongU && Math.abs(u1 - u0) >= 0.01) continue;
     const key = `${alongU ? 'v' : 'u'}${(alongU ? v0 : u0).toFixed(2)}`, list = lines.get(key) || [];
@@ -123,7 +186,7 @@ export function outletSpots(record, core, buildingId, floor, config = GAME.outle
   const roll = dice(hashText(`${buildingId}:${floor}:outlets`)), spots = [], add = (u, v) => spots.push({ u, v, works: roll() < config.workingChance });
   const first = switchSpots(record, core)[0];
   if (first) add(first.u + 0.45, first.v + 0.45);
-  for (const [u0, v0, u1, v1] of record.walls) {
+  for (const [u0, v0, u1, v1] of record.builtWalls ?? record.walls) { // as built, or a hole would move them
     if (spots.length >= config.mostPerFloor) break;
     if (Math.hypot(u1 - u0, v1 - v0) < config.leastWall || roll() >= config.wallChance) continue;
     add((u0 + u1) / 2, (v0 + v1) / 2);

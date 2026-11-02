@@ -1,4 +1,6 @@
 // What a person carries, kept in this browser: notes, text messages and the bag. Pure, tested in node.
+import { GAME } from './gameConfig.js';
+
 const STORE = 'geodrive_pocket_v1';
 export const BAG_SLOTS = 12;
 export const CAR_SLOTS = 60;
@@ -13,6 +15,7 @@ export const CONTACTS = [
   { id: 'pizza', name: 'Pizza Place', number: '555-0193', replies: ['Large pepperoni, 30 minutes.', 'Sorry, delivery only.', 'Your order is ready.'] },
 ];
 
+const HAMMER = GAME.hammer.item;
 const blank = () => ({ notes: [], messages: {}, bag: [{ id: FLASHLIGHT, name: FLASHLIGHT, count: 1 }], car: [] });
 
 // Things saved under a name since changed, joined with any of the new name.
@@ -37,6 +40,10 @@ export class PocketData {
       const saved = JSON.parse(this.storage.getItem(STORE));
       this.state = { ...blank(), ...saved };
       for (const list of [this.state.bag, this.state.car]) renameOld(list);
+      if (!this.state.hammerGiven) { // once, to new players and those from before there was one
+        this.state.hammerGiven = true;
+        this.state.car.push({ id: HAMMER, name: HAMMER, count: 1 });
+      }
       if (saved?.bag && !saved.car) this.state.bag.length < BAG_SLOTS ? this.state.bag.push(blank().bag[0]) : this.state.car.push(blank().bag[0]); // saved before there was a flashlight
     } catch (err) {
       console.warn('saved pocket:', err);

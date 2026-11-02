@@ -161,6 +161,8 @@ till: ['Cash', 'Bundle of cash'], produceStand: ['Apple', 'Banana', 'Orange', 'G
 
   // Shoving things around rooms.
   push: { step: 0.8, driveStep: 2 }, // m a push moves a thing, and a go on a forklift
+  climb: { seconds: 0.6, energy: -1, leastHeight: 0.35 }, // over furniture with F: how long, what it takes out of you, and what's too low to bother with (m)
+  hammer: { item: 'Sledgehammer', width: 1.3, reach: 1, swings: 3, swingEvery: 0.7, energy: -10 }, // m wide a hole is, m from a wall it can be swung, and what a hole takes out of you
 
   // Things dropped, which stay where they're left.
   drops: {

@@ -69,7 +69,7 @@ test('everyone starts with a flashlight in the bag, and things move one at a tim
   assert.equal(data.car[0].count, 1);
   assert.equal(data.move(FLASHLIGHT, true), true);
   assert.equal(new PocketData(storage).bagHas(FLASHLIGHT), false, 'and it stays in the car after a reload');
-  assert.equal(new PocketData(storage).car.length, 2);
+  assert.equal(new PocketData(storage).car.length, 3, 'with the sledgehammer');
   assert.equal(data.move(FLASHLIGHT, false), true);
   assert.equal(data.bagHas(FLASHLIGHT), true);
   assert.equal(data.move('nothing', true), false);
@@ -116,7 +116,7 @@ test('dropping leaves one behind from the bag or the car, makes room, and can be
   assert.equal(data.drop('b0'), false, 'none left');
   assert.equal(data.addToBag({ id: 'new', name: 'x' }), true, 'and there is room again');
   assert.equal(new PocketData(storage).bagHas('b0'), false, 'gone after a reload too');
-  data.state.car.push({ id: 'c', name: 'C', count: 1 });
+  data.state.car = [{ id: 'c', name: 'C', count: 1 }];
   assert.equal(data.drop('c', true), true);
   assert.equal(data.car.length, 0);
   data.putBack({ id: 'c', name: 'C' }, true);

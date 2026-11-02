@@ -7,11 +7,11 @@ import { tintAt } from './daylight.js';
 import { FootGl, bearing, lookAt, multiply, perspective, swing, translate } from './footGl.js';
 import { Place, fromLocal, parseTile, toLocal } from './footData.js';
 import { SIT_FRAME, personFloats } from './footPerson.js';
-import { SWITCH_REACH, outletSpots, switchNeedsKey, switchSpots, useSwitch, poseSpot, coreQuestions, modelNamed, inertNear, lookLine, pushFits, pushTarget, pushThing, questionsFor, thingsNear, uniqueChoices, useThing, withoutTaken } from './footActions.js';
+import { SWITCH_REACH, actionsOf, breakThrough, canClimb, climbQuestion, wallAhead, outletSpots, switchNeedsKey, switchSpots, useSwitch, poseSpot, coreQuestions, modelNamed, inertNear, lookLine, pushFits, pushTarget, pushThing, questionsFor, thingsNear, uniqueChoices, useThing, withoutTaken } from './footActions.js';
 import { CORE_SCHEME, roomMesh } from './footScene.js';
 import { FURNISHED, colourFor, coreNear, coreOf, frameOf as buildingFrame, layoutFloor, plainFloor, solidsOf, upgradeFloor, worldBearing } from './furnish.js';
 import { parseFurniture } from './furniture.js';
-import { buildingWithin, byOutsideWall, carWalls, distanceToCar, enterBuilding, GET_IN_REACH, leaveBuilding, newWalker, frameOf, placeCamera, spawnSpot, stepClearOfThings, stepWalker, wayToCar } from './footWalker.js';
+import { buildingWithin, byOutsideWall, carWalls, climbOver, distanceToCar, enterBuilding, GET_IN_REACH, leaveBuilding, newWalker, frameOf, placeCamera, spawnSpot, stepClearOfThings, stepWalker, wayToCar } from './footWalker.js';
 import { parcelParts, thingParts } from './drops.js';
 import { GAME } from './gameConfig.js';
 import { say } from './sayings.js';
@@ -347,7 +347,7 @@ export class Foot {
 
   // What could be done from here, to confirm before anything happens: { label, run }, run saying what happened. The nearest things first.
   choices() {
-    if (this.pose) return [];
+    if (this.pose || this.busy) return [];
     const building = this.walker.inside, record = this.room?.furnishing?.record;
     const list = this.dropsInReach().map((drop) => ({ label: `Pick up the ${drop.name.toLowerCase()}?`, run: () => this.pickUpDrop(drop) }));
     if (this.canGetIn()) {
@@ -367,6 +367,12 @@ export class Foot {
     if (this.outletHere()) list.push({ label: this.charging ? 'Unplug?' : 'Plug in here?', run: () => this.useOutlet() });
     const near = thingsNear(record, buildingFrame(building.pieces, record.axis), furniture.models, this.walker.x, this.walker.y, this.walker.facing);
     for (const entry of near) for (const { label, second } of questionsFor(entry)) list.push({ label, run: () => this.useEntry(entry, second) });
+    const climb = this.climbHere();
+    if (climb) list.push({ label: climbQuestion(climb.box.entry[0]), run: () => this.startClimb(climb) });
+    if (this.hasHammer?.()) {
+      const wall = this.wallHere();
+      if (wall) list.push({ label: 'Break through the wall?', run: () => this.startBreaking(wall) });
+    }
     if (this.level === GROUND_FLOOR && byOutsideWall(this.walker, this.world)) list.push(out);
     return uniqueChoices(list);
   }
@@ -434,8 +440,7 @@ export class Foot {
   pushEntry(entry, result) {
     const building = this.walker.inside, { furnishing } = this.room, record = furnishing.record, frame = buildingFrame(building.pieces, record.axis);
     const { u, v } = frame.toFrame(this.walker.x, this.walker.y), to = pushTarget(entry, u, v, result.push);
-    const inBuilding = (pu, pv) => { const p = frame.toWorld(pu, pv); return this.place.footprintAt(p.x, p.y) === building; };
-    if (!pushFits(record, furniture.models, entry, to, inBuilding, building.plan.core)) {
+    if (!pushFits(record, furniture.models, entry, to, this.insideOf(building, frame), building.plan.core)) {
       this.onSound?.('ack');
       return result.stuck;
     }
@@ -444,6 +449,88 @@ export class Foot {
     this.onSound?.(result.sound);
     saved.saveIndex();
     return result.say;
+  }
+
+  insideOf(building, frame) {
+    return (u, v) => { const p = frame.toWorld(u, v); return this.place.footprintAt(p.x, p.y) === building; };
+  }
+
+  // What they could climb over from here. A thing that a push would shift needn't be climbed.
+  climbHere() {
+    const building = this.walker.inside, record = this.room?.furnishing?.record;
+    if (!building?.plan || !record || !furniture) return null;
+    const frame = buildingFrame(building.pieces, record.axis), { u, v } = frame.toFrame(this.walker.x, this.walker.y), inside = this.insideOf(building, frame);
+    return climbOver(this.walker, this.world, ({ entry, top }) => {
+      if (!canClimb(entry[0], top)) return true;
+      return actionsOf(entry[0]).includes('move') && pushFits(record, furniture.models, entry, pushTarget(entry, u, v, GAME.push.step), inside, building.plan.core);
+    });
+  }
+
+  // The inner wall they're facing, in reach, as wallAhead says, or null.
+  wallHere() {
+    const building = this.walker.inside, record = this.room?.furnishing?.record;
+    if (!building?.plan || !record) return null;
+    const frame = buildingFrame(building.pieces, record.axis), { u, v } = frame.toFrame(this.walker.x, this.walker.y);
+    return wallAhead(record, building.plan.core, building.buildingId, this.level, u, v, this.walker.facing + frame.axis);
+  }
+
+  startClimb({ box, x, y }) {
+    const { walker } = this;
+    this.busy = { kind: 'climb', t: 0, building: walker.inside, level: this.level, fromX: walker.x, fromY: walker.y, x, y, top: box.top };
+    this.onUsed?.({ energy: GAME.climb.energy });
+    this.onSound?.('jump');
+    return '';
+  }
+
+  startBreaking({ hole }) {
+    if (!hole) {
+      this.onSound?.('ack');
+      return say('wallWiring');
+    }
+    this.busy = { kind: 'break', t: 0, building: this.walker.inside, level: this.level, hole, swings: 0 };
+    return say('hammerStart');
+  }
+
+  // A climb or a hole under way. Walking stops swinging, but not a climb, which is over in moments.
+  tickBusy(dt, input) {
+    const { busy, walker } = this;
+    busy.t += dt;
+    if (walker.inside !== busy.building || this.level !== busy.level || !this.room?.furnishing) return this.endBusy();
+    if (busy.kind === 'climb') {
+      const p = Math.min(busy.t / GAME.climb.seconds, 1);
+      walker.x = busy.fromX + (busy.x - busy.fromX) * p;
+      walker.y = busy.fromY + (busy.y - busy.fromY) * p;
+      walker.height = (busy.top + 0.1) * Math.sin(Math.PI * p);
+      walker.rise = 0.01; // holds the stride someone in the air has
+      if (p >= 1) {
+        this.onSound?.('land');
+        this.endBusy();
+      }
+      return;
+    }
+    if (input.forward || input.strafe) return this.endBusy();
+    const { swings, swingEvery, energy } = GAME.hammer;
+    while (busy.swings < swings && busy.t >= busy.swings * swingEvery) {
+      busy.swings++;
+      this.onSound?.('wallHit');
+    }
+    if (busy.t < swings * swingEvery) return;
+    const { furnishing } = this.room;
+    furnishing.record = breakThrough(furnishing.record, busy.building.plan, this.level, busy.hole);
+    this.room.stale = true;
+    this.onUsed?.({ energy });
+    this.onSound?.('wallBreak');
+    saved.saveIndex();
+    this.onSay?.(say('wallBroken'));
+    this.endBusy();
+  }
+
+  endBusy() {
+    if (this.busy?.kind === 'climb') {
+      this.walker.height = 0;
+      this.walker.rise = 0;
+    }
+    this.busy = null;
   }
 
   takePose(entry, result) {
@@ -518,7 +605,9 @@ export class Foot {
       if (input.forward || input.strafe || input.jump) this.standUp();
       else this.walker.yaw += input.lookX || 0;
     }
-    if (!this.pose) {
+    if (this.busy) this.tickBusy(dt, input);
+    if (this.busy) stepWalker(this.walker, { lookX: input.lookX }, 0, this.world);
+    else if (!this.pose) {
       const { phase, rise } = this.walker;
       stepWalker(this.walker, this.picking ? this.pickFloor(dt, input) : input, dt, this.world);
       this.soundOfMoving(phase, rise);

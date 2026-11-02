@@ -2010,14 +2010,14 @@ export function solidsOf(record, frame, models) {
     return { ax: a.x, ay: a.y, bx: b.x, by: b.y };
   });
   const boxes = [];
-  for (const [item, name, u, v, , rot] of record.items) {
-    const model = models[name];
+  for (const entry of record.items) {
+    const [item, name, u, v, , rot] = entry, model = models[name];
     if (!model || !ITEMS[item] || !isSolid(item)) continue;
     const { x, y } = frame.toWorld(u, v), b = worldBearing(rot, frame.axis), c = Math.cos(b), s = Math.sin(b);
     const corner = (mx, my) => ({ x: x + mx * c + my * s, y: y - mx * s + my * c });
     const pts = [corner(-model.w / 2, -model.d / 2), corner(model.w / 2, -model.d / 2), corner(model.w / 2, model.d / 2), corner(-model.w / 2, model.d / 2)];
     pts.forEach((p, i) => walls.push({ ax: p.x, ay: p.y, bx: pts[(i + 1) % 4].x, by: pts[(i + 1) % 4].y, top: model.h }));
-    boxes.push({ x, y, c, s, hw: model.w / 2, hd: model.d / 2, top: model.h });
+    boxes.push({ x, y, c, s, hw: model.w / 2, hd: model.d / 2, top: model.h, entry });
   }
   return { walls, boxes };
 }

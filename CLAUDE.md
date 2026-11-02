@@ -78,6 +78,9 @@ F is the one key for anything within reach: anything a player can do by standing
 ## Needs and the clock
 Tunable numbers belong in server files, the same for every player, never in `localStorage`. All of these are in `public/js/gameConfig.js`, per game hour, each with the real figure it came from; tune there and nowhere else. `vitals.js` (pure, tested) holds the stats, 100 being good, and `pass` returns events for `sayEvents` in `main.js`. `advanceTime` runs the clock, an hour a real minute on foot and real time in the car, while nothing is paused. Stats are saved in `geodrive_vitals_v1` every 20 s. To tune from play: the performance log has a column for each stat and the hour, `vital` events mark accidents, collapses, sleeps and what was used, and the phone's Health app shows rates and totals. `__geodrive.vitals` is there in the console. Outlets (`outletSpots`) and tap and machine results are decided by hash, so they don't change between visits and aren't saved.
 
+## Getting past things
+F climbs what a push can't shift (`climbOver` in `footWalker.js`, `Foot.climbHere`), and the car's sledgehammer (`GAME.hammer`, given once by `PocketData`) cuts holes in inner walls (`wallAhead`, `breakThrough`). Holes are kept in `plan.state[floor].holes`, not the saved layout. `record.builtWalls` is the walls as built, which `switchSpots` and `outletSpots` must keep using, or a hole would read as a doorway and grow a switch. Both are timed actions (`Foot.busy`, `tickBusy`). Outer walls aren't breakable, as the 3D map couldn't show a hole.
+
 ## Start point
 The header, nav screen and tab title show the current town (`refreshTown`: a billed reverse geocode, see API costs). The dialog on load keeps the default or overrides it with an address (Google Geocoding), and an override is saved in the browser's `localStorage`. Every start is put on the nearest road.
 

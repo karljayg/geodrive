@@ -816,16 +816,19 @@ function syncFootScene(dt) {
 // While paused or in a dialog the walk still draws, so a change to the time of day in Settings shows, but nothing moves.
 // The first time someone walks into something they could push, tell them they can.
 const WALK_KEYS = ['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'];
-let pushTipGiven = false, stuckFor = 0;
+const tipsGiven = new Set();
+let stuckFor = 0;
 function tipAboutPushing(fromX, fromY, dt) {
-  if (pushTipGiven || !foot.walker.inside) return;
+  if (!foot.walker.inside || foot.busy) return;
   const trying = WALK_KEYS.some((key) => keys.has(key)), moved = Math.hypot(foot.walker.x - fromX, foot.walker.y - fromY);
   stuckFor = trying && moved < 0.005 ? stuckFor + dt : 0;
   if (stuckFor < 0.4) return;
   stuckFor = 0;
-  if (!foot.choices().some((choice) => choice.label.startsWith('Push'))) return;
-  pushTipGiven = true;
-  notice(say('pushTip'), 5000);
+  const can = (start) => foot.choices().some((choice) => choice.label.startsWith(start));
+  const tip = can('Push') ? 'pushTip' : can('Climb') ? 'climbTip' : foot.wallHere() ? (pocket.data.bagHas(GAME.hammer.item) ? 'breakTip' : 'hammerTip') : null;
+  if (!tip || tipsGiven.has(tip)) return;
+  tipsGiven.add(tip);
+  notice(say(tip), 5000);
 }
 
 function runFoot(t, dt) {
@@ -894,7 +897,7 @@ async function getOut() {
     const { Foot, PERSON_SIZE: personSize } = await import('./foot.js'); // only those who walk load any of this
     await makePeople();
     (await pocketReady()).close();
-    foot = new Foot({ onGetIn: () => stopFoot(), onOpenBag: () => { if (!pocket.bagOpen) pocket.toggleBag(); }, drops, onDropsChanged: () => { dropsSyncedAt = -Infinity; }, onSound: sfx, onUsed: (effect, count) => { vitals.apply(effect, count); }, hasKey: () => pocket.data.bagHas(BUILDING_KEY), onLocked: showLocked, onLoadCar: loadCar, onFound: (name) => pocket.collect(name), onSlept: sleepUntilMorning, canvas: el('foot'), origin: { lat: pos.lat, lng: pos.lng }, heading: car.heading, profile: settings.carProfile, scale: settings.carScale, tiles, view: { tilt: CAMERAS[0].tilt, range: CAMERAS[0].range * FOOT_RANGE_SHARE, fov: FOV_Y, below: CAR_BELOW_CENTRE } });
+    foot = new Foot({ onGetIn: () => stopFoot(), onOpenBag: () => { if (!pocket.bagOpen) pocket.toggleBag(); }, drops, onDropsChanged: () => { dropsSyncedAt = -Infinity; }, onSound: sfx, onUsed: (effect, count) => { vitals.apply(effect, count); }, hasKey: () => pocket.data.bagHas(BUILDING_KEY), hasHammer: () => pocket.data.bagHas(GAME.hammer.item), onSay: (text) => notice(text, 3000), onLocked: showLocked, onLoadCar: loadCar, onFound: (name) => pocket.collect(name), onSlept: sleepUntilMorning, canvas: el('foot'), origin: { lat: pos.lat, lng: pos.lng }, heading: car.heading, profile: settings.carProfile, scale: settings.carScale, tiles, view: { tilt: CAMERAS[0].tilt, range: CAMERAS[0].range * FOOT_RANGE_SHARE, fov: FOV_Y, below: CAR_BELOW_CENTRE } });
     showPerson(personSize);
   } catch (err) {
     console.warn('getting out:', err);

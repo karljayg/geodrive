@@ -60,6 +60,12 @@ export const SAYINGS = {
   // Shoving things in rooms
   pushed: ['You push the {name}.', 'The {name} shifts along.', 'You shove the {name} out of the way.', 'The {name} scrapes across the floor.'],
   pushTip: ['Something in your way? F can push it.', 'If it won\'t let you past, F can push it out of the way.'],
+  climbTip: ['Can\'t get past that? F can climb over it.', 'In your way? F will get you over it.'],
+  hammerTip: ['A wall in your way? There\'s a sledgehammer in your car.', 'If only you had something for this wall. Check the car.'],
+  breakTip: ['A wall in your way? You have a sledgehammer, and F.', 'That sledgehammer in your bag would make short work of this wall. Press F.'],
+  hammerStart: ['You take a good swing.', 'You wind up. Sorry, wall.', 'You heft the sledgehammer.'],
+  wallBroken: ['That\'s a door now.', 'You\'ve made a way through.', 'Renovation complete. Nobody will mind.', 'The wall loses.'],
+  wallWiring: ['Too many pipes and wires in this stretch. Try further along.', 'There\'s wiring all through this bit. Try somewhere else.'],
   pushStuck: ['The {name} won\'t go any further that way.', 'Something\'s in the way of the {name}.', 'The {name} isn\'t going there.'],
   droveIt: ['You get the {name} going, a little, and think better of it.', 'It lurches forward, and you stop while you\'re ahead.'],
   barrierGate: ['The barrier lifts, thinks about it, and drops.', 'Up it goes, and down again.'],

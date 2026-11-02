@@ -13,6 +13,7 @@ const FLOOR_COLOUR = [0.56, 0.47, 0.36];
 const CEILING_COLOUR = [0.86, 0.84, 0.8];
 const ROOM_WALL_COLOUR = [0.8, 0.77, 0.7];
 const INNER_WALL_COLOUR = [0.9, 0.88, 0.83];
+const RUBBLE = [0.05, 0.1, 0.1, 0.2, -0.16, 0.07, 0.8, 0.14, 0.09, 0.95, -0.1, 0.12]; // pieces left by a hole: how far along it, how far to the side and half their size, in m
 const INNER_WALL_HEIGHT = 1.1; // m, waist high, so walls never hide the person from the camera above
 const INNER_WALL_THICK = 0.12; // m
 const ZONE_FLOOR_LIFT = 0.04;  // m
@@ -125,6 +126,9 @@ function addFurnishing(mesh, pieces, record, { models, colours }, core, building
   for (const [u0, v0, u1, v1] of record.walls) {
     const a = frame.toWorld(u0, v0), b = frame.toWorld(u1, v1);
     lowWall(mesh, a.x, a.y, b.x, b.y, inner);
+  }
+  for (const [u0, v0, u1, v1] of record.holes ?? []) {
+    for (let i = 0; i < RUBBLE.length; i += 3) addWallBox(mesh, frame, u0 + (u1 - u0) * RUBBLE[i] + RUBBLE[i + 1], v0 + (v1 - v0) * RUBBLE[i] - RUBBLE[i + 1], RUBBLE[i + 2], 0, RUBBLE[i + 2], inner);
   }
   for (const spot of switchSpots(record, core)) addSwitch(mesh, frame, spot);
   for (const { u, v } of outletSpots(record, core, buildingId, level)) addWallBox(mesh, frame, u, v, OUTLET_HALF, OUTLET_LOW, OUTLET_HIGH, OUTLET_COLOUR);
