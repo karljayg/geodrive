@@ -8,41 +8,41 @@ export const GAME = {
   // still, walking, running, sitting, sleeping, driving
   stats: {
     energy: {
-      label: 'Energy', start: 100,
+      label: 'Energy', tip: 'Find a bed.', start: 100,
       perHour: { still: -6, walking: -7, running: -16, sitting: -4.5, sleeping: 12.5, driving: -6 }, // awake about 16 h; 8 h asleep fills it
       warn: [[25, 'tired'], [10, 'exhausted']],
     },
     hunger: {
-      label: 'Hunger', start: 90,
+      label: 'Food', tip: 'Try fridges, shop shelves and machines.', start: 90,
       perHour: { still: -4, walking: -4.5, running: -7, sitting: -3.8, sleeping: -2, driving: -4 }, // hungry after about 6 h, empty after a day; slower asleep
       warn: [[40, 'peckish'], [20, 'hungry'], [8, 'starving']],
     },
     thirst: {
-      label: 'Thirst', start: 90,
+      label: 'Water', tip: 'Try a tap, fridge or machine.', start: 90,
       perHour: { still: -6, walking: -7, running: -12, sitting: -5.5, sleeping: -2.5, driving: -6 }, // about 2 litres a day: dry in about 16 h awake
       warn: [[40, 'thirsty'], [15, 'parched']],
     },
     bladder: {
-      label: 'Restroom #1', start: 90,
+      label: 'Bladder', tip: 'Find a toilet.', start: 90,
       perHour: { still: -14, walking: -14, running: -14, sitting: -14, sleeping: -6, driving: -14 }, // every 4 h or so by choice, about 7 h at the limit; slower asleep
       warn: [[35, 'needToGo'], [15, 'reallyNeedToGo']],
       accident: { resetTo: 100, health: -1, say: 'accidentOne' },
     },
     bowels: {
-      label: 'Restroom #2', start: 90,
+      label: 'Bowels', tip: 'Find a toilet.', start: 90,
       perHour: { still: -2.8, walking: -3, running: -3, sitting: -2.8, sleeping: -1.5, driving: -2.8 }, // about once a day, and a day and a half at the limit
       warn: [[30, 'needToGoTwo'], [12, 'reallyNeedToGoTwo']],
       accident: { resetTo: 100, health: -3, say: 'accidentTwo' },
     },
     phone: {
-      label: 'Phone', start: 100,
+      label: 'Phone', tip: 'Press F at a blue outlet low on a wall.', start: 100,
       perHour: { all: -2.5 }, // about 40 h on standby
       using: { screen: -10, light: -15, music: -6 }, // added while these are on: 8 h of screen, 5 h of light, 12 h of music
       charging: 50,           // empty to full in 2 h
       warn: [[20, 'phoneLow'], [5, 'phoneVeryLow']],
     },
     flashlight: {
-      label: 'Flashlight', start: 100,
+      label: 'Flashlight', tip: 'Press F at a blue outlet, or use batteries.', start: 100,
       perHour: { all: -0.05 }, // keeps its charge for months when off
       using: { light: -20 },  // 5 h on a charge
       charging: 25,           // empty to full in 4 h
@@ -51,7 +51,7 @@ export const GAME = {
   },
 
   health: {
-    label: 'Health', start: 100,
+    label: 'Health', tip: 'Eat, drink and sleep to recover.', start: 100,
     // Lost per hour while a stat is at 0. A person lasts about 3 days without water and 3 weeks without food; food is much harsher here so it matters in play.
     lossWhenEmpty: { thirst: -1.4, hunger: -1, energy: -1 },
     healWhenWell: 0.5,        // per hour with nothing below wellAbove

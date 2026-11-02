@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { GAME } from '../public/js/gameConfig.js';
 import { Vitals } from '../public/js/vitals.js';
+import { newWalk, updateWalk, walkFigures } from '../public/js/trip.js';
 import { SAYINGS } from '../public/js/sayingsConfig.js';
 import { say } from '../public/js/sayings.js';
 import { outletSpots, useThing } from '../public/js/footActions.js';
@@ -235,4 +236,34 @@ test('food turns up often enough in the places you would expect it', () => {
   assert.ok(finds('walkInFridge') > 0.5);
   assert.ok(finds('barCounter') > 0.3, 'a counter in a restaurant');
   assert.ok(finds('storeShelf') > 0.05 && finds('storeShelf') < 0.25, 'shelves are many, so each is a long shot');
+});
+
+test('the pause screen lists needs, lowest first, with the phone and flashlight after them', () => {
+  const vitals = fresh();
+  Object.assign(vitals.stats, { health: 100, energy: 50, hunger: 80, thirst: 10, bladder: 60, bowels: 70, phone: 1, flashlight: 2 });
+  const rows = vitals.needRows(['health', 'energy', 'hunger', 'thirst', 'bladder', 'bowels', 'phone', 'flashlight'], vitals.rates({ activity: 'still' }));
+  assert.deepEqual(rows.map((r) => r.name), ['thirst', 'energy', 'bladder', 'bowels', 'hunger', 'health', 'phone', 'flashlight']);
+  assert.equal(rows[0].level, 'critical');
+  assert.ok(rows.every((r) => r.tip), 'every need says what to do');
+});
+
+test('a walk adds up, and running is the share of the distance run', () => {
+  const walk = newWalk();
+  updateWalk(walk, 10, 30, false);
+  updateWalk(walk, 10, 90, true);
+  const figures = walkFigures(walk);
+  assert.equal(figures.time, '0:20');
+  assert.equal(figures.running, '75%');
+  assert.equal(figures.distance, '0.07 mi');
+  assert.equal(walkFigures(newWalk()).running, '0%');
+});
+
+test('walks are saved with the vitals and older saves get a blank tally', () => {
+  const store = memory();
+  store.setItem('geodrive_vitals_v1', JSON.stringify({ stats: {}, hours: 5 }));
+  const vitals = new Vitals(store);
+  assert.equal(vitals.state.walked.meters, 0);
+  vitals.state.walked.meters = 42;
+  vitals.save();
+  assert.equal(new Vitals(store).state.walked.meters, 42);
 });

@@ -25,7 +25,7 @@ import { decodeShare, encodeShare, packShare, shareSummary } from './share.js';
 import { RoadTiles } from './tiles.js';
 import { Terrain } from './terrain.js';
 import { placeFrom } from './town.js';
-import { burnFuel, newTrip, tripFigures, updateTrip } from './trip.js';
+import { burnFuel, newTrip, newWalk, tripFigures, updateTrip, updateWalk, walkFigures } from './trip.js';
 
 const ORIGINAL_START = { label: 'Saarinen Circle, Dulles Airport, Virginia', lat: 38.9555, lng: -77.4475, heading: 270 };
 const START_STORE = 'geodrive_start_v1';
@@ -823,6 +823,7 @@ function runFoot(t, dt) {
   if (!previewing()) engine.update({ rpm: profile.idle, load: 0, speedMph: 0, car: profile, running: live, outside: true, reach: engineFadeAt(foot.distanceToCar()) });
   perfLog.spend('drive', performance.now() - began);
   if (!live) return;
+  noteWalk(dt);
   if (radio.on) refreshStations();
   syncLift();
   checkAsking();
@@ -841,6 +842,26 @@ function runFoot(t, dt) {
   const dashBegan = performance.now();
   updateHud(t);
   perfLog.spend('dash', performance.now() - dashBegan);
+}
+
+// What this walk has added up to, kept for this walk and for all of them.
+let walk = newWalk(), walkDist = 0, walkInside = null, walkLevel = 0;
+
+function startWalk() {
+  walk = newWalk();
+  walkDist = foot.walker.dist;
+  walkInside = foot.walker.inside;
+  walkLevel = foot.level;
+}
+
+function noteWalk(dt) {
+  const { walker, level } = foot, meters = walker.dist - walkDist, tallies = [walk, vitals.state.walked];
+  walkDist = walker.dist;
+  for (const tally of tallies) updateWalk(tally, dt, meters, walker.running);
+  if (walker.inside && !walkInside) for (const tally of tallies) tally.buildings++;
+  if (level !== walkLevel) for (const tally of tallies) tally.floors++;
+  walkInside = walker.inside;
+  walkLevel = level;
 }
 
 function releaseMouse() {
@@ -869,6 +890,7 @@ async function getOut() {
   carRadio = radio.snapshot();
   if (radio.on) radio.setPower(false);
   pocket.start();
+  startWalk();
   // Nothing is left running that would drive off on return.
   car.speed = 0;
   setFsd(false);
@@ -1151,7 +1173,7 @@ function passNeeds(t, hours) {
 
 function sayEvents(events) {
   for (const event of events) {
-    if (event.say) notice(event.say, 4000);
+    if (event.say) notice(event.type === 'warn' ? `${event.say} ${tipFor(event.stat)}` : event.say, 4000);
     if (event.type === 'warn') sfx('nudge');
     if (event.type === 'accident') sfx('accident');
     if (event.type === 'full') sfx('charged');
@@ -1174,6 +1196,8 @@ function sayEvents(events) {
     if (event.type === 'collapse') collapseNow();
   }
 }
+
+const tipFor = (name) => (name === 'health' ? GAME.health : GAME.stats[name]).tip;
 
 function collapseNow() {
   const { hours, say, events } = vitals.collapse();
@@ -1204,9 +1228,18 @@ function drawVitals() {
     row.classList.remove('good', 'caution', 'critical');
     row.classList.add(level);
     row.classList.toggle('charging', charging && (name === 'phone' || (name === 'flashlight' && pocket?.data.bagHas('Flashlight'))));
-    row.title = `${value}%`;
+    row.title = `${value}%. ${level === 'good' ? (foot ? 'Click for details.' : '') : tipFor(name)}`;
   }
 }
+
+// A bar clicked: the Health app on foot. The phone stays out of the car, so there it says how that need is doing.
+el('vitals').addEventListener('click', async (e) => {
+  const name = e.target.closest('[data-vital]')?.dataset.vital;
+  if (!name) return;
+  if (foot) return (await pocketReady()).openApp('health');
+  const { label } = name === 'health' ? GAME.health : GAME.stats[name];
+  notice(`${label} ${Math.round(vitals.stats[name])}%. ${vitals.levelOf(name) === 'good' ? 'All good.' : tipFor(name)}`, 4000);
+});
 
 function pressL() {
   if (!foot) return getOut();
@@ -1526,6 +1559,19 @@ function renderTrip() {
   for (const box of document.querySelectorAll('#tripStats [data-stat]')) box.textContent = figures[box.dataset.stat];
 }
 
+const hoursText = (hours) => (hours === null ? '' : hours >= 48 ? `${Math.round(hours / 24)} days left` : `${hours.toFixed(1)} h left`);
+
+// The person rather than the car: their needs, the most urgent first with what to do about them, how far they've walked, and the way back.
+function renderFootPause() {
+  const rows = vitals.needRows(VITAL_ROWS, vitals.rates(doingNow())), now = walkFigures(walk), all = walkFigures(vitals.state.walked), t = vitals.state.totals;
+  const { metres, direction } = foot.carWay();
+  el('pauseTitle').innerHTML = `Paused · On foot <small>Day ${Math.floor(vitals.state.hours / 24) + 1}, ${clockText(settings.hour)}</small>`;
+  el('footStats').innerHTML = `<h2>Needs</h2>${rows.map(({ label, value, level, hoursLeft, tip }) => `<div class="pauseNeed ${level}"><span>${label}</span><i><b style="width:${value}%"></b></i><span>${value}%</span><span>${hoursText(hoursLeft)}</span>${level === 'good' ? '' : `<small>${tip}</small>`}</div>`).join('')}
+    <div class="pauseWalks">${[['This walk', now], ['All walks', all]].map(([name, f]) => `<dl><h2>${name}</h2><div><dt>Distance</dt><dd>${f.distance}</dd></div><div><dt>Time</dt><dd>${f.time}</dd></div><div><dt>Running</dt><dd>${f.running}</dd></div><div><dt>Buildings</dt><dd>${f.buildings}</dd></div><div><dt>Floors</dt><dd>${f.floors}</dd></div></dl>`).join('')}</div>
+    <p class="pauseTotals">Eaten ${t.food}, drinks ${t.drink}, restroom ${t.restroom}, slept ${t.sleeps}, accidents ${t.accidents}, collapsed ${t.collapses}.</p>
+    <p class="pauseWhere"><b>Car</b> ${metres < 3 ? 'right here' : `${metres} m ${direction}`} · <b>Bag</b> ${pocket?.bagText() ?? ''}</p>`;
+}
+
 function setPaused(on) {
   if (!map || dialogOpen) return;
   paused = on;
@@ -1534,7 +1580,12 @@ function setPaused(on) {
   el('pause').classList.toggle('open', on);
   el('pauseButton').innerHTML = on ? 'Resume <span class="keyHint">(P)</span>' : '<u>P</u>ause';
   if (on) {
-    renderTrip();
+    el('pause').classList.toggle('onFootPause', !!foot);
+    if (foot) renderFootPause();
+    else {
+      el('pauseTitle').textContent = 'Paused';
+      renderTrip();
+    }
     // Mute the radio while paused, but remember it so resume can bring it back.
     radioHeld = radio.on;
     if (radioHeld) radio.hold();
@@ -2066,7 +2117,7 @@ document.addEventListener('keydown', (e) => {
   if (e.metaKey || e.ctrlKey || e.altKey) return;
   if (paused) {
     if ((k === 'p' || k === 'r') && !e.repeat) { e.preventDefault(); setPaused(false); }
-    if (k === 't' && !e.repeat) { e.preventDefault(); el('tripReset').click(); }
+    if (k === 't' && !e.repeat && !foot) { e.preventDefault(); el('tripReset').click(); }
     return;
   }
   if (k === 'p' && !e.repeat) { e.preventDefault(); return setPaused(true); }

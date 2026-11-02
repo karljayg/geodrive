@@ -674,6 +674,10 @@ export class Foot {
     return `Car ${metres} m ${direction}`;
   }
 
+  carWay() {
+    return wayToCar(this.walker);
+  }
+
   label() {
     return this.walker.inside ? 'INSIDE' : 'ON FOOT';
   }

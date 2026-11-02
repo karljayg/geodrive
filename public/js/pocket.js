@@ -206,6 +206,10 @@ export class Pocket {
     return added;
   }
 
+  bagText() {
+    return `${this.data.bag.length} of ${BAG_SLOTS}`;
+  }
+
   // A hotkey. True if it was one of these. 1 to 9 open the phone's apps, and 0 goes back to its home screen.
   pressKey(key) {
     if (this.bagOpen && /^[0-9]$/.test(key)) {
@@ -326,8 +330,8 @@ export class Pocket {
     const { vitals, rates, rows } = this.calls.vitals(), { config, stats, state } = vitals, t = state.totals;
     const span = (hours) => (hours === null ? '—' : hours >= 48 ? `${Math.round(hours / 24)} days` : `${hours.toFixed(1)} h`);
     const row = (name) => {
-      const label = name === 'health' ? config.health.label : config.stats[name].label, rate = rates[name];
-      return `<tr class="${vitals.levelOf(name)}"><th>${label}</th><td>${Math.round(stats[name])}%</td><td>${rate > 0 ? '+' : ''}${rate.toFixed(1)}/h</td><td>${span(vitals.hoursLeft(name, rates))}</td></tr>`;
+      const { label, tip } = name === 'health' ? config.health : config.stats[name], rate = rates[name];
+      return `<tr class="${vitals.levelOf(name)}" title="${vitals.levelOf(name) === 'good' ? '' : esc(tip)}"><th>${label}</th><td>${Math.round(stats[name])}%</td><td>${rate > 0 ? '+' : ''}${rate.toFixed(1)}/h</td><td>${span(vitals.hoursLeft(name, rates))}</td></tr>`;
     };
     this.area.innerHTML = `${this.title('Health')}<table class="healthTable"><tr><td></td><td>Now</td><td>Rate</td><td>Left</td></tr>${rows.map(row).join('')}</table>
       <p class="healthTotals">Day ${Math.floor(state.hours / 24) + 1}. Eaten ${t.food}, drinks ${t.drink}, restroom ${t.restroom}, accidents ${t.accidents}, slept ${t.sleeps} times, collapsed ${t.collapses}.</p>

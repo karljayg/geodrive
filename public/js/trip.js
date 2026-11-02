@@ -24,6 +24,25 @@ export function updateTrip(trip, dt, meters, state) {
   trip.onBridge = state.onBridge;
 }
 
+// What walking has added up to, for the pause screen on foot: one for this walk and one for all walks.
+export const newWalk = () => ({ meters: 0, runMeters: 0, seconds: 0, buildings: 0, floors: 0 });
+
+export function updateWalk(walk, dt, meters, running) {
+  walk.seconds += dt;
+  walk.meters += meters;
+  if (running) walk.runMeters += meters;
+}
+
+export function walkFigures(walk) {
+  return {
+    distance: (walk.meters / MILE).toFixed(2) + ' mi',
+    time: formatTime(walk.seconds),
+    running: (walk.meters ? Math.round((walk.runMeters / walk.meters) * 100) : 0) + '%',
+    buildings: String(walk.buildings),
+    floors: String(walk.floors),
+  };
+}
+
 // A made-up tank or battery for now: 4 hours of running from full to empty, with no effect on the car yet.
 const FUEL_HOURS = 4;
 export const burnFuel = (trip, dt) => { trip.fuel = Math.max(0, trip.fuel - (dt * 100) / (FUEL_HOURS * 3600)); };

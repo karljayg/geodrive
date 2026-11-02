@@ -90,6 +90,30 @@ kbd { display: inline-flex; min-width: 24px; justify-content: center; border: 1p
 #sharedStats dd { text-align: right; overflow-wrap: anywhere; }
 #resetDefault { display: none; margin-top: 8px; padding: 0; background: none; color: #82e0c5; font-weight: 400; font-size: 13px; text-decoration: underline; }
 
+#pause .startBox { max-height: calc(100vh - 32px); overflow-y: auto; }
+#footStats, #pause.onFootPause #tripStats, #pause.onFootPause #tripReset { display: none; }
+#pause.onFootPause #footStats { display: block; }
+#pause.onFootPause .startBox { width: min(540px, 100%); }
+#pauseTitle small { margin-left: 6px; font-size: 13px; font-weight: 500; color: #b5c6d2; }
+#footStats h2 { margin: 12px 0 5px; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: #69d9ba; }
+.pauseNeed { display: grid; grid-template-columns: 76px 1fr 40px 70px; gap: 3px 8px; align-items: center; padding: 3px 0; font-size: 13px; }
+.pauseNeed i { display: block; height: 7px; border-radius: 4px; background: #ffffff1f; overflow: hidden; }
+.pauseNeed b { display: block; height: 100%; background: #7fd5a5; }
+.pauseNeed span:nth-of-type(n+2) { text-align: right; font-variant-numeric: tabular-nums; }
+.pauseNeed span:nth-of-type(3) { font-size: 11px; color: #9baebb; }
+.pauseNeed small { grid-column: 2 / -1; font-size: 11.5px; }
+.pauseNeed.caution b { background: #ffd24a; }
+.pauseNeed.caution span:first-child, .pauseNeed.caution small { color: #ffe08a; }
+.pauseNeed.critical b { background: #ff5a4d; }
+.pauseNeed.critical span:first-child, .pauseNeed.critical small { color: #ff9a90; }
+.pauseWalks { display: grid; grid-template-columns: 1fr 1fr; gap: 0 20px; }
+.pauseWalks dl { margin: 0; font-size: 13px; }
+.pauseWalks dl div { display: flex; justify-content: space-between; padding: 3px 0; border-bottom: 1px solid #ffffff14; }
+.pauseWalks dt { color: #b5c6d2; }
+.pauseWalks dd { margin: 0; font-weight: 650; font-variant-numeric: tabular-nums; }
+.startBox p.pauseTotals, .startBox p.pauseWhere { margin: 10px 0 4px; font-size: 12.5px; }
+.startBox p.pauseWhere { color: #ffd27a; }
+.pauseWhere b { color: #ffd27a !important; }
 #tripStats, #sharedStats { margin: 12px 0 8px; font-size: 14px; }
 #tripStats div, #sharedStats div { display: flex; justify-content: space-between; gap: 12px; padding: 5px 0; border-bottom: 1px solid #ffffff14; }
 #tripStats dt, #sharedStats dt { color: #b5c6d2; }
@@ -410,7 +434,7 @@ body.onFoot #pockets { display: block; }
 .carGrid { grid-template-columns: repeat(5, 1fr); }
 
 /* The person's needs: bars in the corner, in the car and on foot. */
-#vitals { position: absolute; right: 10px; bottom: 30px; width: 168px; padding: 7px 9px; border-radius: 12px; background: #0d1621cc; border: 1px solid #ffffff26; color: #d5e0e8; font-size: 10.5px; line-height: 1.1; }
+#vitals { pointer-events: auto; cursor: pointer; position: absolute; right: 10px; bottom: 30px; width: 168px; padding: 7px 9px; border-radius: 12px; background: #0d1621cc; border: 1px solid #ffffff26; color: #d5e0e8; font-size: 10.5px; line-height: 1.1; }
 .vital { display: grid; grid-template-columns: 70px 1fr; align-items: center; gap: 6px; padding: 1.5px 0; }
 .vital i { display: block; height: 6px; border-radius: 3px; background: #ffffff1f; overflow: hidden; }
 .vital b { display: block; height: 100%; width: 100%; background: #7fd5a5; transition: width .4s linear; }

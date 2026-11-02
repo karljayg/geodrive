@@ -1,6 +1,7 @@
 // The person's needs: what's left of each, how fast it's going, and a running record of what's happened. All numbers come from gameConfig.js. Pure, tested in node.
 import { GAME } from './gameConfig.js';
 import { say as line } from './sayings.js';
+import { newWalk } from './trip.js';
 
 const STORE = 'geodrive_vitals_v1';
 const STEP = 0.25;  // game hours at most in one go, so passing a night still crosses each warning in order
@@ -12,6 +13,7 @@ const blank = (config) => ({
   totals: { food: 0, drink: 0, medicine: 0, supply: 0, restroom: 0, accidents: 0, collapses: 0, sleeps: 0, hoursAsleep: 0, charged: 0 },
   warned: {},         // the warning each stat last gave, so it says it once on the way down
   warnedAt: {},
+  walked: newWalk(),  // every walk so far, for the pause screen
 });
 
 export class Vitals {
@@ -76,6 +78,15 @@ export class Vitals {
     const levels = ((name === 'health' ? this.config.health : this.config.stats[name]).warn || []).map(([level]) => level), value = this.stats[name];
     if (!levels.length || value > Math.max(...levels)) return 'good';
     return value <= Math.min(...levels) ? 'critical' : 'caution';
+  }
+
+  // The pause screen's list, the most urgent first: lowest first, with the phone and flashlight after what the person needs to live.
+  needRows(names, rates) {
+    const gear = (name) => (name === 'phone' || name === 'flashlight' ? 1 : 0);
+    return names.map((name) => {
+      const { label, tip } = name === 'health' ? this.config.health : this.config.stats[name];
+      return { name, label, tip, value: Math.round(this.stats[name]), level: this.levelOf(name), hoursLeft: this.hoursLeft(name, rates) };
+    }).sort((a, b) => gear(a.name) - gear(b.name) || a.value - b.value);
   }
 
   // Hours until a stat runs out at this rate, or null if it isn't going down.
