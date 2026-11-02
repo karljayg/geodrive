@@ -93,6 +93,18 @@ Known weak spots, all from what the map holds:
 
 A shop or restaurant POI in a building of 5 or more floors fills the ground floor only, and the floors above follow the land use. A bank in a tower is a bank downstairs and offices upstairs.
 
+## Rules every layout follows
+Reviewed 2026-11-02 against what real buildings are like, with an audit of every type.
+- **A way in.** A door in an outside wall of the entrance room (lobby, hall, foyer, reception), or failing that the first public room, never a bedroom, toilet or kitchen. Pressing L anywhere at a building brings you in there.
+- **Stairs and lifts.** In a corner for garages, warehouses, halls and other big open spaces, in the middle only for towers (offices, hotels, apartments, hospitals, dorms, care homes), and at a wall otherwise. The lobby is the room nearest them with an outside wall, and they're kept out of toilets and stock rooms.
+- **Homes.** Rooms run from the front door in: hall, living room, dining, kitchen, then bathroom and bedrooms furthest. With an upstairs, the bedrooms are all up there.
+- **Banks.** A lobby of their own, the teller hall, little offices, and a vault sealed on every side.
+- **Corridors.** Apartments, hotel and dorm floors, care home floors and schools have rooms off corridors, each with a front door. A hotel room has its own bathroom.
+- **Shape and share.** Rooms stay within about 4.5 times as long as wide where possible, and a room gets a share of what a floor can hold by its size, so no room is left empty.
+
+## Every building looks different
+Each building gets a look when first furnished, saved in its plan: one wood, three fabrics and a wall colour from a continuous range, and a floor for each kind of room, all within what its style allows (modern, traditional, cheap, luxury). Rooms draw on it, so a home holds together and no two match.
+
 ## The queue
 All 45 types have rooms and are open, so only buildings nothing can identify are locked. A type not in `OPEN_TYPES` (`buildings.js`) says "Sorry you can't get in. It's locked." A new type needs a line in `TYPES`, its map clues in `POI_CLASS` or `POI_SUBCLASS`, rooms in `TYPE_ZONES` and `RECIPES` (`furnish.js`), and any new items in `ITEMS` and `BUILT` (`furniture.js`).
 

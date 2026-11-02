@@ -226,7 +226,7 @@ export class Foot {
     let record = furnished ? saved.floor(id, this.level) : null;
     if (record?.v !== FLOOR_VERSION) {
       record = furnished ? layoutFloor(building.pieces, plan, this.level, furniture.models, dice(hashText(`${id}:${this.level}`))) : plainFloor(plan, this.level);
-      if (furnished) saved.saveFloor(id, this.level, record);
+      if (furnished) saved.saveFloor(id, this.level, record); // with the building's look, which it has now if it hadn't
     }
     const furnishing = { record, furniture };
     cache.set(this.level, furnishing);
@@ -237,6 +237,15 @@ export class Foot {
   syncRoom() {
     const building = this.walker.inside, whole = building ? building.pieces?.[0] ?? building : null;
     const furnishing = building ? this.furnishingOf(building) : null;
+    if (this.entering && furnishing) {
+      // In by the building's own door, wherever they walked up to it.
+      this.entering = false;
+      const at = furnishing.record.entry && buildingFrame(building.pieces, furnishing.record.axis).toWorld(...furnishing.record.entry);
+      if (at && this.place.footprintAt(at.x, at.y)) {
+        this.walker.x = at.x;
+        this.walker.y = at.y;
+      }
+    }
     if (this.room?.whole === whole && this.room?.furnishing === furnishing && this.room?.level === this.level) {
       if (this.room) this.room.floor = this.world.floor(building);
       return;
@@ -353,7 +362,10 @@ export class Foot {
       }
       if (this.level > GROUND_FLOOR) return true; // the only way down is the way the hint says
       const left = leaveBuilding(this.walker, this.world);
-      if (left) this.world.inner = null;
+      if (left) {
+        this.world.inner = null;
+        this.entering = false;
+      }
       return left;
     }
     const near = buildingWithin(this.walker, this.world);
@@ -366,7 +378,10 @@ export class Foot {
       if (isLocked(plan)) return { locked: typeName(plan) };
     }
     const entered = enterBuilding(this.walker, this.world);
-    if (entered) stepClearOfThings(this.walker, this.world);
+    if (entered) {
+      this.entering = true;
+      stepClearOfThings(this.walker, this.world);
+    }
     return entered;
   }
 

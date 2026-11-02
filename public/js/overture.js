@@ -6,7 +6,7 @@ import { decodeLines, readLayer } from './vector.js';
 const BASE = 'https://overturemaps-extras-us-west-2.s3.amazonaws.com';
 const ZOOM = 14;
 const HEADER_BYTES = 16384; // holds the header and the first directory
-const TIMEOUT = 8000;       // ms
+const TIMEOUT = 20000;      // ms; a tile of a big city is large
 export const MIN_CONFIDENCE = 0.7;
 
 const groups = {
@@ -151,9 +151,15 @@ async function gunzip(bytes) {
   return new Uint8Array(await new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'))).arrayBuffer());
 }
 
+// A tile as it comes from the file, to its places.
+export async function readPlaces(bytes, x, y) {
+  return parsePlaces(await gunzip(bytes), x, y);
+}
+
 export class Overture {
   constructor(fetcher = (...args) => fetch(...args)) {
     this.fetcher = fetcher;
+    this.calls = new Map();
     this.tiles = new Map(); // key: { places, failed } once settled
     this.loading = new Map();
     this.file = null;       // its address and header, once known
@@ -206,10 +212,34 @@ export class Overture {
     for (let depth = 0; depth < 4; depth++) {
       const entry = findEntry(entries, id);
       if (!entry) return [];
-      if (entry.run > 0) return parsePlaces(await gunzip(await this.range(this.file.tilesAt + entry.offset, entry.length)), x, y);
+      if (entry.run > 0) return this.read(await this.range(this.file.tilesAt + entry.offset, entry.length), x, y);
       entries = await this.directory(entry.offset, entry.length);
     }
     return [];
+  }
+
+  // In a worker if the browser has them, so the game keeps its frame rate; here if not, or if the worker fails.
+  read(bytes, x, y) {
+    if (typeof Worker === 'undefined' || this.noWorker) return readPlaces(bytes, x, y);
+    if (!this.worker) {
+      this.worker = new Worker(new URL('./overtureWorker.js', import.meta.url), { type: 'module' });
+      this.worker.onmessage = ({ data }) => {
+        const call = this.calls.get(data.id);
+        this.calls.delete(data.id);
+        if (data.error) call?.reject(new Error(data.error));
+        else call?.resolve(data.places);
+      };
+      this.worker.onerror = () => {
+        this.noWorker = true;
+        for (const call of this.calls.values()) readPlaces(call.bytes, call.x, call.y).then(call.resolve, call.reject);
+        this.calls.clear();
+      };
+    }
+    const id = (this.nextCall = (this.nextCall || 0) + 1);
+    return new Promise((resolve, reject) => {
+      this.calls.set(id, { resolve, reject, bytes, x, y });
+      this.worker.postMessage({ id, bytes, x, y });
+    });
   }
 
   // Starts fetching a tile if it hasn't been. Afterwards tile() says how it went.

@@ -84,7 +84,7 @@ export function clipToRect(points, { u0, v0, u1, v1 }) {
 
 // Each room's floor, its inner walls and what stands in it. A thing no longer in the catalogue is left out.
 function addFurnishing(mesh, pieces, record, { models, colours }) {
-  const frame = frameOf(pieces, record.axis);
+  const frame = frameOf(pieces, record.axis), inner = record.look?.wall ? hexColour(record.look.wall) : INNER_WALL_COLOUR;
   for (const [zone, u0, v0, u1, v1, scheme] of record.zones) {
     const colour = hexColour(scheme.floor);
     for (const piece of pieces) {
@@ -101,7 +101,7 @@ function addFurnishing(mesh, pieces, record, { models, colours }) {
   }
   for (const [u0, v0, u1, v1] of record.walls) {
     const a = frame.toWorld(u0, v0), b = frame.toWorld(u1, v1);
-    lowWall(mesh, a.x, a.y, b.x, b.y, INNER_WALL_COLOUR);
+    lowWall(mesh, a.x, a.y, b.x, b.y, inner);
   }
   for (const [item, name, u, v, z, rot, zoneIndex, shade] of record.items) {
     const model = models[name];
@@ -113,7 +113,8 @@ function addFurnishing(mesh, pieces, record, { models, colours }) {
 
 // The floor of a building from inside, with all its pieces, as a tile edge can cut a building in two. furnishing: { record, furniture } if it has any.
 export function roomMesh(place, building, floor, furnishing) {
-  const mesh = new Mesh(), top = floor + ROOM_HEIGHT, pieces = building.pieces || [building];
+  const mesh = new Mesh(), top = floor + ROOM_HEIGHT, pieces = building.pieces || [building], look = furnishing?.record.look;
+  const outer = look?.outer ? hexColour(look.outer) : ROOM_WALL_COLOUR;
   for (const piece of pieces) {
     const roof = roofOf(piece);
     for (let i = 0; i < roof.length; i += 3) {
@@ -122,7 +123,7 @@ export function roomMesh(place, building, floor, furnishing) {
       mesh.tri([c.x, c.y, top], [b.x, b.y, top], [a.x, a.y, top], CEILING_COLOUR);
     }
     for (const w of place.walls(piece)) {
-      mesh.quad([w.bx, w.by, floor], [w.ax, w.ay, floor], [w.ax, w.ay, top], [w.bx, w.by, top], ROOM_WALL_COLOUR);
+      mesh.quad([w.bx, w.by, floor], [w.ax, w.ay, floor], [w.ax, w.ay, top], [w.bx, w.by, top], outer);
     }
   }
   if (furnishing) addFurnishing(mesh, pieces, furnishing.record, furnishing.furniture);

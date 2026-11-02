@@ -20,7 +20,9 @@ const MIN_SHARE = 0.5;     // of its target, the least a part of the floor can h
 
 // target: m² it would like, which also decides if there's room for it at all. The first few always get a try, as a home needs them.
 const GROUND_ZONES = [['living', 28], ['kitchen', 15], ['bathroom', 6], ['hall', 6], ['dining', 14], ['study', 10], ['laundry', 6]];
-const SINGLE_ZONES = [['living', 28], ['kitchen', 15], ['bathroom', 6], ['bedroom', BEDROOM], ['bedroom', BEDROOM], ['hall', 6], ['dining', 14], ['study', 10], ['laundry', 6], ['bedroom', BEDROOM]];
+const SINGLE_ZONES = [['living', 28], ['kitchen', 15], ['bathroom', 6], ['bedroom', BEDROOM], ['hall', 6], ['bedroom', BEDROOM], ['dining', 14], ['study', 10], ['laundry', 6], ['bedroom', BEDROOM]];
+// A home's rooms from the front door in: what guests see first, and the bedrooms furthest. Dividing keeps this order, so they end up at opposite ends.
+const HOME_ORDER = { hall: 0, living: 1, dining: 2, kitchen: 3, study: 4, laundry: 5, bathroom: 6, bedroom: 7 };
 const UPPER_ZONES = [['bedroom', BEDROOM], ['bathroom', 6], ['bedroom', BEDROOM], ['study', 10], ['bedroom', BEDROOM], ['bathroom', 6]];
 const TOILETS = ['toilets', 14], STOCK = ['stock', 16], DESKS = ['openPlan', 60], MEETING = ['meeting', 22], OFFICE = ['privateOffice', 14], BREAK = ['breakRoom', 16];
 // For each type: the zones of a ground floor, then of those above, in order of need. first: how many it always tries. then: repeated
@@ -51,7 +53,7 @@ const TYPE_ZONES = {
   apartments: { ground: [['lobby', 30], ['laundry', 12], ['gym', 30]], upper: [['living', 28], ['kitchen', 15], ['bathroom', 6], ['bedroom', BEDROOM]], then: [['living', 24], ['kitchen', 12], ['bathroom', 6], ['bedroom', BEDROOM]] },
   hotel: { ground: [['lobby', 50], ['barRoom', 40], ['restaurantDining', 60], ['restaurantKitchen', 25], TOILETS], upper: [['hotelRoom', 26], ['hotelRoom', 26]], then: [['hotelRoom', 26]] },
   office: { ground: [['lobby', 40], BREAK, TOILETS], upper: [DESKS, TOILETS, MEETING, BREAK], then: [OFFICE, MEETING, DESKS] },
-  bank: { ground: [['bankLobby', 35], ['bankHall', 60], ['vault', 18], OFFICE, TOILETS], upper: [DESKS, MEETING, TOILETS], then: [OFFICE, ['records', 18]] },
+  bank: { ground: [['bankLobby', 35], ['bankHall', 60], ['vault', 18], ['privateOffice', 10], ['privateOffice', 10], TOILETS], upper: [DESKS, MEETING, TOILETS], then: [['privateOffice', 10], ['privateOffice', 10], ['records', 14]] },
   restaurant: { ground: [['restaurantDining', 60], ['restaurantKitchen', 25], TOILETS], upper: [['restaurantDining', 60], STOCK], then: [['restaurantDining', 50]] },
   cafe: { ground: [['cafe', 40], TOILETS, STOCK], upper: [['cafe', 40]] },
   shop: { ground: [['salesFloor', 60], STOCK], upper: [['salesFloor', 60], STOCK], then: [['salesFloor', 80]] },
@@ -72,7 +74,8 @@ const TYPE_ZONES = {
   terminal: { ground: [['checkIn', 300], ['foodCourt', 200], TOILETS], upper: [['gates', 400], ['foodCourt', 200], TOILETS], then: [['gates', 400]] },
 };
 export const FURNISHED = new Set(['home', ...Object.keys(TYPE_ZONES)]); // the types that have rooms
-const MOST_ZONES = 16;     // on a floor; past this it's just bigger rooms
+const MOST_ZONES = 12;     // on a floor; past this it's just bigger rooms
+const ROOM_ITEMS_LEAST = 12; // a small room can always hold this many, even late on a full floor
 const MOST_SOLIDS = 200;   // things on a floor that stop you, which is also what it costs to walk there
 const CHECK_BUDGET = 4e6; // grid cells a floor may look at to check nothing is shut off, which is what bounds how long it takes
 const WINDOW = 45;         // m from the centre that a huge floor is furnished; past that it's an open hall, for now
@@ -86,13 +89,28 @@ const BAY_WIDTH = 2.6, BAY_DEPTH = 5, LANE = 6, CROSS_LANE = 3.5, MOST_BAYS = 13
 const PILLAR_EVERY = 3;    // bays
 const RAMP_BAYS = 4;       // bays a ramp takes the place of
 const CORRIDOR = 2;        // m wide
-const FLAT_WIDTH = 8, FLAT_WIDTH_MIN = 6.5, FLAT_DEPTH_MIN = 5.5, BAND_DEPTH = 22, MOST_FLATS = 9; // m, m, m, m, on a floor
+const FLAT_DEPTH_MIN = 5.5, BAND_DEPTH = 22; // m, m
+// Types with rooms off corridors. unit: a flat of four rooms, a suite of a room and bathroom, or one room. width: of each, in m.
+// most: on a floor. shared: rooms that come first on the ground floor, then upper: on those above. upperOnly: the ground floor is laid out like any other.
+const CORRIDORS = {
+  apartments: { unit: 'flat', width: 8, most: 9, shared: ['lobby', 'mailroom', 'laundry', 'gym'], upper: [] },
+  hotel: { unit: 'suite', room: 'hotelRoom', width: 5, most: 16, upperOnly: true, upper: ['stock'] },
+  dorm: { unit: 'room', room: 'dormRoom', width: 4.5, most: 14, upperOnly: true, upper: ['bathroom'] },
+  nursingHome: { unit: 'room', room: 'careRoom', width: 5, most: 12, upperOnly: true, upper: ['nurseStation', 'toilets'] },
+  school: { unit: 'room', room: 'classroom', width: 8, most: 12, shared: ['lobby', 'cafeteria', 'schoolOffice', 'toilets'], upper: ['toilets'] },
+};
 const LIFT_FROM = 4;       // floors from which a building has a lift as well as stairs, and a lobby to take it from
+const CORE_IN_MIDDLE = new Set(['office', 'hotel', 'apartments', 'hospital', 'dorm', 'nursingHome']);
+const CORE_IN_CORNER = new Set(['parking', 'warehouse', 'factory', 'hangar', 'stadium', 'carGarage', 'fireStation', 'supermarket', 'mall', 'departmentStore', 'terminal', 'station', 'cinema', 'theatre', 'worship', 'museum', 'pool', 'gym']);
+const ASPECT_MOST = 4.5;   // of a room's length to its width
 const LIFT_GAP = 0.3;      // m between the stairs and the lift
 const CORE_CLEAR = 1.4;    // m in front of the stairs and lift kept free on every floor
 const CORE_REACH = 1.2;    // m from them that L uses them
-export const FLOOR_VERSION = 2; // a saved floor from before stairs existed is laid out again
-const ESSENTIAL = { ground: 3, single: 4, upper: 2 };
+export const FLOOR_VERSION = 3; // a saved floor from before entrances, looks and stairs at the walls is laid out again
+const ESSENTIAL = { ground: 4, single: 5, upper: 2 };
+const ENTRANCES = ['lobby', 'bankLobby', 'hall', 'foyer', 'hospitalWaiting', 'clinicWaiting', 'policeFront', 'concourse', 'landing', 'corridor'];
+const SEALED = new Set(['vault']); // no way in for the public
+const BACK_ROOMS = new Set(['vault', 'bedroom', 'bathroom', 'toilets', 'stock', 'restaurantKitchen', 'bakeryKitchen', 'laundry', 'cells']); // nobody comes in this way
 
 // In the order they're placed. must: always tried. name: what later steps call it, and a later step can take the name over.
 // at: wall, across (the far wall from of), front (of of), beside (of), on (top of of), centre, around (of).
@@ -815,8 +833,44 @@ function shuffled(list, roll) {
   return out;
 }
 
-function schemeFor(zone, style, roll) {
-  return { wood: pick(WOODS[style], roll), fabric: pick(FABRICS[style], roll), accent: pick(FABRICS[style], roll), floor: pick(FLOORS[FLOOR_KIND[zone] || 'room'], roll) };
+const toHex = (n) => Math.round(Math.max(0, Math.min(1, n)) * 255).toString(16).padStart(2, '0');
+
+function hsl(h, s, l) {
+  const k = (n) => (n + h / 30) % 12, a = s * Math.min(l, 1 - l), f = (n) => l - a * Math.max(-1, Math.min(k(n) - 3, 9 - k(n), 1));
+  return toHex(f(0)) + toHex(f(8)) + toHex(f(4));
+}
+
+const between = ([lo, hi], roll) => lo + (hi - lo) * roll();
+const nudged = (hex, roll, by = 0.1) => {
+  const shift = 1 + (roll() - 0.5) * by * 2;
+  return toHex((parseInt(hex.slice(0, 2), 16) / 255) * shift) + toHex((parseInt(hex.slice(2, 4), 16) / 255) * shift) + toHex((parseInt(hex.slice(4, 6), 16) / 255) * shift);
+};
+
+// Colours by style. fabric: saturation and lightness. hues: where its colours come from, or any.
+const LOOKS = {
+  modern: { fabric: [[0.12, 0.4], [0.34, 0.6]], wall: [[0.02, 0.12], [0.82, 0.94]] },
+  traditional: { fabric: [[0.25, 0.5], [0.3, 0.5]], wall: [[0.15, 0.35], [0.75, 0.88]], hues: [10, 55] },
+  cheap: { fabric: [[0.1, 0.3], [0.4, 0.58]], wall: [[0.05, 0.2], [0.72, 0.86]] },
+  luxury: { fabric: [[0.3, 0.6], [0.2, 0.38]], wall: [[0.05, 0.2], [0.68, 0.9]] },
+};
+
+// How one building looks, chosen once and saved with it, so no two are alike and it stays as it was found. Rooms draw on this, so a home holds together.
+export function makeLook(style, roll) {
+  const spec = LOOKS[style] || LOOKS.modern, hue = () => (spec.hues ? between(spec.hues, roll) : roll() * 360), wallHue = hue();
+  const fabric = () => hsl(hue(), between(spec.fabric[0], roll), between(spec.fabric[1], roll));
+  const wallS = between(spec.wall[0], roll), wallL = between(spec.wall[1], roll), floors = {};
+  for (const [kind, list] of Object.entries(FLOORS)) floors[kind] = nudged(pick(list, roll), roll);
+  return {
+    wood: nudged(pick(WOODS[style] || WOODS.modern, roll), roll, 0.14),
+    fabrics: [fabric(), fabric(), fabric()],
+    wall: hsl(wallHue, wallS, wallL),
+    outer: hsl(wallHue, wallS, Math.max(0.5, wallL - 0.1)),
+    floors,
+  };
+}
+
+function schemeFor(zone, look, roll) {
+  return { wood: look.wood, fabric: pick(look.fabrics, roll), accent: pick(look.fabrics, roll), floor: nudged(look.floors[FLOOR_KIND[zone] || 'room'], roll, 0.04) };
 }
 
 export const hexColour = (hex) => [parseInt(hex.slice(0, 2), 16) / 255, parseInt(hex.slice(2, 4), 16) / 255, parseInt(hex.slice(4, 6), 16) / 255];
@@ -867,6 +921,8 @@ export const worldBearing = (degrees, axis) => (degrees * Math.PI) / 180 - axis;
 
 // --- Rooms -----------------------------------------------------------------------------------------------------
 
+const CELL_OF = (grid) => grid.cell;
+
 function makeGrid(pieces, frame, cell) {
   const rings = pieces.map((p) => p.rings.map((r) => r.pts));
   const isIn = (u, v) => {
@@ -910,6 +966,7 @@ function divide(grid, rect, zones, cuts, rooms, roll) {
   if (zones.length === 1) {
     const narrowest = Math.min(r.i1 - r.i0 + 1, r.j1 - r.j0 + 1) * grid.cell;
     if (narrowest < (ROOM_WIDTH[zones[0][0]] ?? MIN_ROOM)) return false;
+    if (grid.shapely && (Math.max(r.i1 - r.i0, r.j1 - r.j0) + 1) * CELL_OF(grid) > narrowest * ASPECT_MOST && zones[0][1] < 200) return false;
     rooms.push({ zone: zones[0][0], rect: r });
     return true;
   }
@@ -1003,7 +1060,8 @@ function addDoors(grid, cuts, doors, roll) {
 }
 
 // A cut can leave a piece of a bent building shut off. Each such piece gets a doorway too.
-function joinUp(grid, cuts, doors) {
+function joinUp(grid, cuts, doors, sealed = []) {
+  const inSealed = (i, j) => sealed.some((r) => i >= r.i0 && i <= r.i1 && j >= r.j0 && j <= r.j1);
   for (let tries = 0; tries < 50; tries++) {
     const { group, sizes } = flood(grid);
     if (sizes.length < 2) return;
@@ -1017,7 +1075,8 @@ function joinUp(grid, cuts, doors) {
       const wall = alongU ? grid.wallEast : grid.wallNorth;
       const at = edges.findIndex((edge) => {
         const [a, b] = across(edge);
-        return wall[edge.index] && a !== b && (a === main || b === main);
+        const i = edge.index % grid.nu, j = Math.floor(edge.index / grid.nu), [ni, nj] = alongU ? [i + 1, j] : [i, j + 1];
+        return wall[edge.index] && a !== b && (a === main || b === main) && !inSealed(i, j) && !inSealed(ni, nj);
       });
       if (at < 0) continue;
       const next = edges[at + 1]?.k === edges[at].k + 1 ? at + 1 : edges[at - 1]?.k === edges[at].k - 1 ? at - 1 : at;
@@ -1149,7 +1208,7 @@ class Furnisher {
     const box = boxAt(u, v, reach(model, rot)), solid = isSolid(step.item), flat = ITEMS[step.item].flat;
     if (!z && !this.inside(box, room)) return null;
     if (solid) {
-      if (this.solids.length >= MOST_SOLIDS) return null;
+      if (this.solids.length >= Math.min(MOST_SOLIDS * 1.2, this.quota ?? MOST_SOLIDS)) return null;
       if (this.solids.some((other) => overlaps(box, other)) || this.doors.some((door) => overlaps(box, door))) return null;
       const blocked = this.blockFor(box);
       if (!blocked) return null;
@@ -1311,8 +1370,10 @@ class Furnisher {
     if (step.also) named[step.also] = placed;
   }
 
-  fill(zone, room, zoneIndex) {
+  // floorShare: how much of the floor this room is, so it takes its share of what a floor can hold and leaves some for the others.
+  fill(zone, room, zoneIndex, floorShare = 1) {
     const named = {}, fullness = 0.5 + this.roll() * 0.5;
+    this.quota = this.solids.length + Math.max(ROOM_ITEMS_LEAST, Math.ceil(MOST_SOLIDS * floorShare));
     for (const step of RECIPES[zone]) {
       if (!step.must && this.roll() > (step.chance ?? fullness)) continue;
       this.doStep(step, named, room, zoneIndex);
@@ -1358,21 +1419,41 @@ export function coreOf(pieces, plan, models, roll) {
   };
   const corners = pieces.flatMap((p) => p.rings[0].pts.map((q) => frame.toFrame(q.x, q.y)));
   const far = Math.max(...corners.map((q) => Math.hypot(q.u, q.v))), withLift = plan.floors >= LIFT_FROM;
+  const coreAt = (u, v, rot) => {
+    const [fu, fv] = FRONT[rot], stair = reach(models.stairs, rot), lift = withLift ? reach(models.lift, rot) : null;
+    const parts = [{ item: 'stairs', model: 'stairs', u: round(u), v: round(v), rot }];
+    if (withLift) {
+      const out = (fu ? stair.hv + lift.hv : stair.hu + lift.hu) + LIFT_GAP;
+      parts.push({ item: 'lift', model: 'lift', u: round(u + (fu ? 0 : out)), v: round(v + (fu ? out : 0)), rot });
+    }
+    const boxes = parts.map((part) => boxAt(part.u, part.v, reach(models[part.model], rot)));
+    const whole = { u0: Math.min(...boxes.map((b) => b.u0)), u1: Math.max(...boxes.map((b) => b.u1)), v0: Math.min(...boxes.map((b) => b.v0)), v1: Math.max(...boxes.map((b) => b.v1)) };
+    const clear = { u0: whole.u0 + Math.min(0, fu) * CORE_CLEAR, u1: whole.u1 + Math.max(0, fu) * CORE_CLEAR, v0: whole.v0 + Math.min(0, fv) * CORE_CLEAR, v1: whole.v1 + Math.max(0, fv) * CORE_CLEAR };
+    return filled(clear) ? { axis, parts, clear: [round(clear.u0), round(clear.v0), round(clear.u1), round(clear.v1)] } : null;
+  };
+  // Most buildings have them at a wall, a garage or warehouse in a corner out of the way, and only towers in the middle.
+  if (!CORE_IN_MIDDLE.has(plan.type)) {
+    const minU = Math.min(...corners.map((q) => q.u)), maxU = Math.max(...corners.map((q) => q.u)), minV = Math.min(...corners.map((q) => q.v)), maxV = Math.max(...corners.map((q) => q.v));
+    const stops = [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1], order = CORE_IN_CORNER.has(plan.type) ? stops.slice().sort((a, b) => Math.abs(b - 0.5) - Math.abs(a - 0.5)) : shuffled(stops, roll);
+    for (const inset of [0.15, 1, 2.5, 5]) {
+      for (const side of shuffled(SIDES, roll)) {
+        const { hu, hv } = reach(models.stairs, side.rot), alongV = side.axis === 'u';
+        const across = alongV ? (side.low ? minU + inset + hu : maxU - inset - hu) : (side.low ? minV + inset + hv : maxV - inset - hv);
+        const lo = (alongV ? minV + hv : minU + hu) + 0.2, hi = (alongV ? maxV - hv : maxU - hu) - 0.2;
+        for (const f of order) {
+          const along = lo + (hi - lo) * f, found = alongV ? coreAt(across, along, side.rot) : coreAt(along, across, side.rot);
+          if (found) return found;
+        }
+      }
+    }
+  }
   for (let distance = 0; distance <= far; distance += 1) {
     const start = roll();
     for (let k = 0; k < (distance ? 12 : 1); k++) {
       const a = ((k + start) / 12) * Math.PI * 2, u = Math.cos(a) * distance, v = Math.sin(a) * distance;
       for (const rot of shuffled([0, 90, 180, 270], roll)) {
-        const [fu, fv] = FRONT[rot], stair = reach(models.stairs, rot), lift = withLift ? reach(models.lift, rot) : null;
-        const parts = [{ item: 'stairs', model: 'stairs', u: round(u), v: round(v), rot }];
-        if (withLift) {
-          const out = (fu ? stair.hv + lift.hv : stair.hu + lift.hu) + LIFT_GAP;
-          parts.push({ item: 'lift', model: 'lift', u: round(u + (fu ? 0 : out)), v: round(v + (fu ? out : 0)), rot });
-        }
-        const boxes = parts.map((part) => boxAt(part.u, part.v, reach(models[part.model], rot)));
-        const whole = { u0: Math.min(...boxes.map((b) => b.u0)), u1: Math.max(...boxes.map((b) => b.u1)), v0: Math.min(...boxes.map((b) => b.v0)), v1: Math.max(...boxes.map((b) => b.v1)) };
-        const clear = { u0: whole.u0 + Math.min(0, fu) * CORE_CLEAR, u1: whole.u1 + Math.max(0, fu) * CORE_CLEAR, v0: whole.v0 + Math.min(0, fv) * CORE_CLEAR, v1: whole.v1 + Math.max(0, fv) * CORE_CLEAR };
-        if (filled(clear)) return { axis, parts, clear: [round(clear.u0), round(clear.v0), round(clear.u1), round(clear.v1)] };
+        const found = coreAt(u, v, rot);
+        if (found) return found;
       }
     }
   }
@@ -1404,7 +1485,8 @@ export function plainFloor(plan, floor) {
 // An apartment building's floor: a corridor down each band of the building, a landing across them where the stairs are,
 // and either side separate flats, each with a front door and its own kitchen, bathroom, living room and bedroom.
 // Null if the building is too small for that, and it's then divided like any other. a runs along the building and b across it.
-function apartmentFloor(grid, plan, floor, roll, doors) {
+function corridorFloor(grid, plan, floor, roll, doors, spec) {
+  const FLAT_WIDTH = spec.width, FLAT_WIDTH_MIN = spec.width * 0.8, MOST_FLATS = spec.most;
   const whole = trim(grid, { i0: 0, i1: grid.nu - 1, j0: 0, j1: grid.nv - 1 });
   if (!whole) return null;
   const { cell } = grid, along = whole.i1 - whole.i0 >= whole.j1 - whole.j0, cells = (metres) => Math.round(metres / cell);
@@ -1478,13 +1560,34 @@ function apartmentFloor(grid, plan, floor, roll, doors) {
     }
   }
   units.sort((x, y) => x.far - y.far);
-  const shared = floor === 1 ? ['lobby', 'mailroom', 'laundry', 'gym'] : [];
+  const shared = [...(floor === 1 ? spec.shared || [] : spec.upper || [])];
+  const addFrontDoor = (front, line, towards) => {
+    if (!front.length) return;
+    const k = (front[0].k + front.at(-1).k + 1) / 2, aAt = (along ? grid.minU : grid.minV) + k * cell, bAt = (along ? grid.minV : grid.minU) + line * cell;
+    // Facing the corridor, which is towards +b or -b of the wall.
+    frontDoors.push({ u: along ? aAt : bAt, v: along ? bAt : aAt, rot: along ? (towards > 0 ? 0 : 180) : (towards > 0 ? 90 : 270) });
+  };
   for (const unit of units) {
     const { a0, a1, b0, b1, near, towards } = unit, line = near;
     const entry = wall(false, line, a0, a1), wide = (a1 - a0 + 1) * cell, deep = (b1 - b0 + 1) * cell, special = shared.shift();
     if (special || wide < FLAT_WIDTH_MIN || deep < FLAT_DEPTH_MIN) {
       door(entry);
       room(special || 'stock', a0, a1, b0, b1);
+      continue;
+    }
+    if (spec.unit === 'room') {
+      addFrontDoor(door(entry), line, towards);
+      room(spec.room, a0, a1, b0, b1);
+      continue;
+    }
+    if (spec.unit === 'suite') {
+      // In from the corridor to the room, with its bathroom at the far end.
+      const parting = towards > 0 ? b0 + cells(2.5) : b1 - cells(2.5) + 1, [roomB0, roomB1, bathB0, bathB1] = towards > 0 ? [parting, near - 1, b0, parting - 1] : [near, parting - 1, parting, b1];
+      addFrontDoor(door(entry), line, towards);
+      const backWall = wall(false, parting, a0, a1);
+      door(backWall);
+      room(spec.room, a0, a1, roomB0, roomB1);
+      room('bathroom', a0, a1, bathB0, bathB1);
       continue;
     }
     // The kitchen and bathroom on the corridor side, and the living room and bedroom past them.
@@ -1507,11 +1610,7 @@ function apartmentFloor(grid, plan, floor, roll, doors) {
     door(part(between, mainA0, mainA1));  // kitchen to living room
     door(part(across, nearB0, nearB1));   // kitchen to bathroom
     door(part(across, farB0, farB1));     // living room to bedroom
-    if (front.length) {
-      const k = (front[0].k + front.at(-1).k + 1) / 2, aAt = (along ? grid.minU : grid.minV) + k * cell, bAt = (along ? grid.minV : grid.minU) + line * cell;
-      // Facing the corridor, which is towards +b or -b of the wall.
-      frontDoors.push({ u: along ? aAt : bAt, v: along ? bAt : aAt, rot: along ? (towards > 0 ? 0 : 180) : (towards > 0 ? 90 : 270) });
-    }
+    addFrontDoor(front, line, towards);
   }
   return { cuts, rooms, frontDoors };
 }
@@ -1543,7 +1642,7 @@ function parkingFloor(furnisher, grid, plan, floor, zones, roll) {
   let rampDone = false;
   decks.forEach((deck, index) => {
     const zoneIndex = zones.length, [zu0, zv0] = uv(aLo, deck.b0), [zu1, zv1] = uv(aHi, deck.b0 + (deck.rows.length > 1 ? double : single));
-    zones.push(['parkingDeck', round(Math.min(zu0, zu1)), round(Math.min(zv0, zv1)), round(Math.max(zu0, zu1)), round(Math.max(zv0, zv1)), schemeFor('parkingDeck', plan.style, roll)]);
+    zones.push(['parkingDeck', round(Math.min(zu0, zu1)), round(Math.min(zv0, zv1)), round(Math.max(zu0, zu1)), round(Math.max(zv0, zv1)), schemeFor('parkingDeck', plan.look, roll)]);
     // Arrows down the lane, the way the traffic goes.
     for (let a = aLo + CROSS_LANE + 2; a < aHi - CROSS_LANE; a += 12) {
       const [u, v] = uv(a, deck.lane + LANE / 2), box = boxAt(u, v, reach(furnisher.models.laneArrow, running));
@@ -1575,6 +1674,8 @@ function parkingFloor(furnisher, grid, plan, floor, zones, roll) {
   });
   // The way in, at the end of the first lane, on the ground floor. Ticket machines on every floor, for the way back to the car.
   const laneB = decks[0].lane + LANE / 2;
+  const [eu, ev] = uv(aLo + 3.2, laneB);
+  furnisher.entry = [round(eu), round(ev)];
   const [mu, mv] = uv(aLo + 1.2, decks[0].lane + 0.5);
   furnisher.place('ticketMachine', 'ticketMachine', mu, mv, facing(true), 0);
   if (floor === 1) {
@@ -1586,8 +1687,74 @@ function parkingFloor(furnisher, grid, plan, floor, zones, roll) {
   return true;
 }
 
+const roomBox = (grid, { i0, i1, j0, j1 }) => ({ u0: grid.minU + i0 * grid.cell, u1: grid.minU + (i1 + 1) * grid.cell, v0: grid.minV + j0 * grid.cell, v1: grid.minV + (j1 + 1) * grid.cell });
+
+// The lobby is where the stairs and lift are, so the rooms swap names if they aren't, with one of about its size.
+function putEntranceAtCore(rooms, plan, grid) {
+  const part = plan.core?.parts[0], lobby = rooms.find((r) => ENTRANCES.includes(r.zone));
+  if (!part || !lobby || lobby.zone === 'landing' || lobby.zone === 'corridor') return;
+  const areaOf = (r) => { const b = roomBox(grid, r.rect); return (b.u1 - b.u0) * (b.v1 - b.v0); }, size = areaOf(lobby);
+  let best = lobby, bestDistance = Infinity;
+  for (const r of rooms) {
+    if (SEALED.has(r.zone) || areaOf(r) < size * 0.4 || areaOf(r) > size * 2.5 || !hasOutsideWall(grid, r)) continue; // people come in through it
+    const b = roomBox(grid, r.rect), distance = Math.hypot(Math.max(b.u0 - part.u, 0, part.u - b.u1), Math.max(b.v0 - part.v, 0, part.v - b.v1));
+    if (distance < bestDistance) { bestDistance = distance; best = r; }
+  }
+  [lobby.zone, best.zone] = [best.zone, lobby.zone];
+}
+
+// Nobody takes the stairs through the toilets: that room swaps names with the nearest one that isn't a back room.
+function keepCoreOutOfBackRooms(rooms, plan, grid) {
+  const part = plan.core?.parts[0];
+  if (!part) return;
+  const distanceTo = (r) => { const b = roomBox(grid, r.rect); return Math.hypot(Math.max(b.u0 - part.u, 0, part.u - b.u1), Math.max(b.v0 - part.v, 0, part.v - b.v1)); };
+  const nearest = rooms.reduce((best, r) => (distanceTo(r) < distanceTo(best) ? r : best), rooms[0]);
+  if (!nearest || !BACK_ROOMS.has(nearest.zone) || SEALED.has(nearest.zone)) return;
+  const other = rooms.filter((r) => !BACK_ROOMS.has(r.zone) && !ENTRANCES.includes(r.zone)).sort((a, b) => distanceTo(a) - distanceTo(b))[0];
+  if (other) [nearest.zone, other.zone] = [other.zone, nearest.zone];
+}
+
+function hasOutsideWall(grid, room) {
+  const b = roomBox(grid, room.rect), mid = (x, y) => [(x + y) / 2];
+  return [[mid(b.u0, b.u1)[0], b.v0 - 1], [mid(b.u0, b.u1)[0], b.v1 + 1], [b.u0 - 1, mid(b.v0, b.v1)[0]], [b.u1 + 1, mid(b.v0, b.v1)[0]]].some(([u, v]) => !grid.isIn(u, v));
+}
+
+// Closes every side of a room.
+function sealRoom(grid, { i0, i1, j0, j1 }) {
+  for (let j = j0; j <= j1; j++) {
+    if (grid.has(i0 - 1, j) && grid.has(i0, j)) grid.wallEast[grid.at(i0 - 1, j)] = 1;
+    if (grid.has(i1, j) && grid.has(i1 + 1, j)) grid.wallEast[grid.at(i1, j)] = 1;
+  }
+  for (let i = i0; i <= i1; i++) {
+    if (grid.has(i, j0 - 1) && grid.has(i, j0)) grid.wallNorth[grid.at(i, j0 - 1)] = 1;
+    if (grid.has(i, j1) && grid.has(i, j1 + 1)) grid.wallNorth[grid.at(i, j1)] = 1;
+  }
+}
+
+// The way in: a door in an outside wall of the entrance room, or the next room that has one. Rooms are tried in the order they were wanted.
+function entranceOf(rooms, grid, roll) {
+  const named = ENTRANCES.flatMap((zone) => rooms.filter((r) => r.zone === zone)), order = [...named, ...rooms.filter((r) => !named.includes(r) && !BACK_ROOMS.has(r.zone))];
+  for (const room of order) {
+    const b = roomBox(grid, room.rect);
+    for (const side of shuffled(SIDES, roll)) {
+      const alongU = side.axis === 'v', [lo, hi] = alongU ? [b.u0, b.u1] : [b.v0, b.v1], edge = side.axis === 'v' ? (side.low ? b.v0 : b.v1) : (side.low ? b.u0 : b.u1), inward = side.low ? 1 : -1;
+      for (const f of shuffled([0.5, 0.3, 0.7], roll)) {
+        const along = lo + (hi - lo) * f, point = (depth) => (alongU ? [along, edge + inward * depth] : [edge + inward * depth, along]);
+        if (grid.isIn(...point(-1)) || !grid.isIn(...point(0.9))) continue;
+        const [u, v] = point(1.1), [doorU, doorV] = point(0);
+        return {
+          u, v, doorU, doorV, rot: (side.rot + 180) % 360,
+          clear: alongU ? { u0: along - 0.8, u1: along + 0.8, v0: Math.min(edge, edge + inward * 1.8), v1: Math.max(edge, edge + inward * 1.8) } : { u0: Math.min(edge, edge + inward * 1.8), u1: Math.max(edge, edge + inward * 1.8), v0: along - 0.8, v1: along + 0.8 },
+        };
+      }
+    }
+  }
+  return null;
+}
+
 // One floor, as plain data for saving. models: what parseFurniture read. roll: the building's dice for this floor.
 export function layoutFloor(pieces, plan, floor, models, roll) {
+  plan.look ||= makeLook(plan.style, roll);
   const axis = plan.core?.axis ?? axisOf(pieces), frame = frameOf(pieces, axis);
   const area = pieces.reduce((sum, p) => sum + p.rings.reduce((inner, ring) => inner + signedArea(ring.pts), 0), 0);
   // The zones are in order of need, so when they don't all fit, the last one goes and the whole floor is tried again.
@@ -1596,19 +1763,25 @@ export function layoutFloor(pieces, plan, floor, models, roll) {
   const whole = () => ({ i0: 0, i1: grid.nu - 1, j0: 0, j1: grid.nv - 1 });
   let fitted = false, frontDoors = [];
   const garage = (floor === 1 && plan.ground ? plan.ground : plan.type) === 'parking';
-  if ((floor === 1 && plan.ground ? plan.ground : plan.type) === 'apartments') {
+  const corridors = CORRIDORS[floor === 1 && plan.ground ? plan.ground : plan.type];
+  if (corridors && !(corridors.upperOnly && floor === 1)) {
     grid = makeGrid(pieces, frame, cell);
-    const flats = apartmentFloor(grid, plan, floor, roll, doors);
+    const flats = corridorFloor(grid, plan, floor, roll, doors, corridors);
     if (flats) {
       ({ cuts, rooms, frontDoors } = flats);
       fitted = true;
     }
   }
-  for (let count = wanted.length; count > 0 && !fitted; count--) {
+  // First for well-shaped rooms, giving up some of the rooms if it must, then for any shape rather than lose the ones that matter.
+  const attempts = [...Array.from({ length: Math.max(0, wanted.length - 2) }, (_, i) => [wanted.length - i, true]), ...wanted.map((_, i) => [wanted.length - i, false])];
+  for (const [count, shapely] of attempts) {
+    if (fitted) break;
     grid = makeGrid(pieces, frame, cell);
+    grid.shapely = shapely;
     cuts = [];
     rooms = [];
-    fitted = divide(grid, whole(), wanted.slice(0, count), cuts, rooms, roll);
+    const list = wanted.slice(0, count);
+    fitted = divide(grid, whole(), TYPE_ZONES[plan.type] ? list : list.sort((a, b) => (HOME_ORDER[a[0]] ?? 5) - (HOME_ORDER[b[0]] ?? 5)), cuts, rooms, roll);
   }
   if (!fitted) { // somewhere narrower than any room: one space, whatever its shape
     grid = makeGrid(pieces, frame, cell);
@@ -1622,20 +1795,37 @@ export function layoutFloor(pieces, plan, floor, models, roll) {
     doors.push({ u0, v0, u1, v1 });
     clearWalls(grid, { u0, v0, u1, v1 });
   }
+  if (floor === 1) putEntranceAtCore(rooms, plan, grid);
+  keepCoreOutOfBackRooms(rooms, plan, grid);
   joinUp(grid, cuts, doors);
+  const sealed = rooms.filter((r) => SEALED.has(r.zone)).map((r) => r.rect);
+  if (sealed.length) {
+    for (const rect of sealed) sealRoom(grid, rect);
+    joinUp(grid, cuts, doors, sealed);
+  }
   const furnisher = new Furnisher(grid, doors, models, roll), zones = [];
   furnisher.addCore(coreOnFloor(plan, floor));
   if (garage && parkingFloor(furnisher, grid, plan, floor, zones, roll)) rooms = [];
+  let entry = furnisher.entry || null;
+  if (floor === 1 && rooms.length) {
+    const found = entranceOf(rooms, grid, roll);
+    if (found) {
+      entry = [round(found.u), round(found.v)];
+      doors.push(found.clear);
+      furnisher.items.push(['frontDoor', 'frontDoor', round(found.doorU), round(found.doorV), 0, found.rot, -1, 1]);
+    }
+  }
   for (const { u, v, rot } of frontDoors) furnisher.items.push(['frontDoor', 'frontDoor', round(u), round(v), 0, rot, -1, 1]);
   rooms.forEach(({ zone, rect }, index) => {
     const room = {
       u0: grid.minU + rect.i0 * grid.cell, u1: grid.minU + (rect.i1 + 1) * grid.cell,
       v0: grid.minV + rect.j0 * grid.cell, v1: grid.minV + (rect.j1 + 1) * grid.cell,
     };
-    zones.push([zone, round(room.u0), round(room.v0), round(room.u1), round(room.v1), schemeFor(zone, plan.style, roll)]);
-    furnisher.fill(zone, room, index);
+    zones.push([zone, round(room.u0), round(room.v0), round(room.u1), round(room.v1), schemeFor(zone, plan.look, roll)]);
+    const share = (room.u1 - room.u0) * (room.v1 - room.v0) / Math.max(1, grid.nu * grid.nv * grid.cell * grid.cell);
+    furnisher.fill(zone, room, index, share);
   });
-  return { v: FLOOR_VERSION, axis, zones, walls: wallLengths(grid), items: furnisher.items };
+  return { v: FLOOR_VERSION, axis, zones, walls: wallLengths(grid), items: furnisher.items, look: { wall: plan.look.wall, outer: plan.look.outer }, ...(entry ? { entry } : {}) };
 }
 
 // What stops a person on this floor, in metres from the car: wall lengths, and each solid thing's outline and box. A thing has
