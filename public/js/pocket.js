@@ -3,6 +3,7 @@
 import { clockText } from './daylight.js';
 import { say } from './sayings.js';
 import { drawNav } from './dash.js';
+import { GAME } from './gameConfig.js';
 import { itemIcon } from './itemArt.js';
 import { ART } from './pocketArt.js';
 import { BAG_SLOTS, CAR_SLOTS, CONTACTS, PocketData, addRecent, bearingToCar, compassName, distanceText, noteTitle, songParts, turnToCar } from './pocketData.js';
@@ -149,13 +150,18 @@ export class Pocket {
     if (item.id === 'Flashlight' && this.calls.onFoot()) {
       this.calls.flashlight();
       this.close();
-    } else if (!this.useItem(item.id)) this.pressSlot(item.id, 'bag');
+    } else if (item.id === GAME.hammer.item && this.calls.onFoot() && this.calls.swingHammer()) this.close();
+    else if (!this.useItem(item.id)) this.pressSlot(item.id, 'bag');
   }
 
   pressSlot(id, side) {
     if (!this.calls.nearCar()) {
       if (id === 'Flashlight') this.calls.flashlight();
-      else if (!this.useItem(id)) {
+      else if (id === GAME.hammer.item) {
+        if (this.calls.swingHammer()) return this.close();
+        this.calls.sound('ack');
+        this.bagPanel.querySelector('.empty').textContent = say('hammerNoWall');
+      } else if (!this.useItem(id)) {
         this.calls.sound('ack');
         this.bagPanel.querySelector('.empty').textContent = say('noUse', { name: id.toLowerCase() });
       }

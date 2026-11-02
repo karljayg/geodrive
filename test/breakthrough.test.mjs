@@ -108,3 +108,14 @@ test('the car gets one sledgehammer, once, and old saves get it too', () => {
   old.setItem('geodrive_pocket_v1', JSON.stringify({ notes: [], messages: {}, bag: [], car: [{ id: 'Milk', name: 'Milk', count: 1 }] }));
   assert.equal(new PocketData(old).car.length, 2);
 });
+
+test('what the game hands the walking code is all kept, as a name left out is silently dropped', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const main = await readFile(new URL('../public/js/main.js', import.meta.url), 'utf8'), foot = await readFile(new URL('../public/js/foot.js', import.meta.url), 'utf8');
+  const given = main.match(/new Foot\(\{(.*)\}\);/)[1], taken = foot.match(/constructor\(\{([^}]*)\}\)/)[1].split(',').map((name) => name.trim());
+  for (const name of ['hasKey', 'hasHammer', 'onSay', 'onUsed', 'onSound']) {
+    assert.ok(given.includes(`${name}:`), `main.js gives ${name}`);
+    assert.ok(taken.includes(name), `Foot takes ${name}`);
+    assert.ok(foot.includes(`this.${name} = ${name};`), `Foot keeps ${name}`);
+  }
+});

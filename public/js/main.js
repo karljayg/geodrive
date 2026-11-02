@@ -1164,6 +1164,14 @@ async function pocketReady() {
     sound: sfx,
     vitals: () => ({ vitals, rates: vitals.rates(doingNow()), rows: VITAL_ROWS }),
     flashlight: () => carryLight('flash'),
+    // The hammer at the wall they're facing. False if there isn't one.
+    swingHammer: () => {
+      const wall = foot && !foot.busy && !foot.pose ? foot.wallHere() : null;
+      if (!wall) return false;
+      const said = foot.startBreaking(wall);
+      if (said) notice(said, 2500);
+      return true;
+    },
     phoneLight: () => carryLight('phone'),
     stowed: () => { if (foot?.light === 'flash') carryLight('flash'); }, // it can't stay on in the car
     flashlightOn: () => foot?.light === 'flash',

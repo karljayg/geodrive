@@ -56,8 +56,10 @@ function personMesh(frame) {
 
 export class Foot {
   // tiles: the RoadTiles that fetches the same map tiles for driving. view: the camera to match.
-  constructor({ canvas, origin, heading, profile, scale, tiles, view, onLocked, onLoadCar, onFound, onSlept, drops, onDropsChanged, hasKey, onGetIn, onOpenBag, onUsed, onSound }) {
+  constructor({ canvas, origin, heading, profile, scale, tiles, view, onLocked, onLoadCar, onFound, onSlept, drops, onDropsChanged, hasKey, hasHammer, onSay, onGetIn, onOpenBag, onUsed, onSound }) {
     this.hasKey = hasKey;
+    this.hasHammer = hasHammer;
+    this.onSay = onSay;
     this.onGetIn = onGetIn;
     this.onOpenBag = onOpenBag;
     this.drops = drops;

@@ -63,6 +63,7 @@ export const SAYINGS = {
   climbTip: ['Can\'t get past that? F can climb over it.', 'In your way? F will get you over it.'],
   hammerTip: ['A wall in your way? There\'s a sledgehammer in your car.', 'If only you had something for this wall. Check the car.'],
   breakTip: ['A wall in your way? You have a sledgehammer, and F.', 'That sledgehammer in your bag would make short work of this wall. Press F.'],
+  hammerNoWall: ['Face an inside wall, close up, and try again.', 'Nothing to swing at here. It works on inside walls, from up close.'],
   hammerStart: ['You take a good swing.', 'You wind up. Sorry, wall.', 'You heft the sledgehammer.'],
   wallBroken: ['That\'s a door now.', 'You\'ve made a way through.', 'Renovation complete. Nobody will mind.', 'The wall loses.'],
   wallWiring: ['Too many pipes and wires in this stretch. Try further along.', 'There\'s wiring all through this bit. Try somewhere else.'],
