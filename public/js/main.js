@@ -578,7 +578,7 @@ function gauge(id, key, options) {
 function drawDash(t) {
   if (t - gaugesDrawnAt < 40) return; // 25 times a second is plenty for needles
   gaugesDrawnAt = t;
-  const profile = profileFor(settings.carProfile);
+  const profile = profileFor(carType());
   const mph = Math.abs(car.speed) * MPS_TO_MPH;
   speedMax = speedRange(mph, speedMax);
   gauge('speedGauge', `${Math.round(mph * 2)}|${speedMax}`, { value: mph, max: speedMax, step: speedStep(speedMax), big: String(Math.round(mph)), small: 'MPH' });
@@ -607,7 +607,7 @@ function drawDash(t) {
     if (navKey !== navShown || navBehind(roads)) { // parked, nothing on it has changed
       navShown = navKey;
       const navBegan = performance.now();
-      navVertices = drawNav(el('navScreen'), { roads, pos: navPos, heading: navHeading, parked: foot && world.rules.ownCar ? pos : null, route: navRoute, routeIndex, radius: navRadius, hour: world.clock.hour, badges: peopleView?.badges(initialsOf, badgeColour), clock: now });
+      navVertices = drawNav(el('navScreen'), { roads, pos: navPos, heading: navHeading, parked: foot && (world.rules.ownCar || myCar) ? pos : null, route: navRoute, routeIndex, radius: navRadius, hour: world.clock.hour, badges: peopleView?.badges(initialsOf, badgeColour), clock: now });
       perfLog.spend('nav', performance.now() - navBegan);
     }
     show('navRangeValue', `${(navRadius / 1609.344).toFixed(1)} mi`);
@@ -762,7 +762,7 @@ function frame(t) {
     if (meters) Object.assign(pos, move(pos.lat, pos.lng, car.heading, meters));
     updateTrip(trip, dt, meters, { speed: car.speed, fsd, onRoad: !!match, onBridge });
     burnFuel(trip, dt);
-    const profile = profileFor(settings.carProfile);
+    const profile = profileFor(carType());
     soundThrottle = controls.throttle > soundThrottle
       ? Math.min(controls.throttle, soundThrottle + dt / SOUND_THROTTLE_RISE)
       : Math.max(controls.throttle, soundThrottle - dt * 6);
@@ -790,7 +790,7 @@ function frame(t) {
     perfLog.spend('dash', performance.now() - dashBegan);
   } else if (map && !foot) {
     // Paused or in a dialog: the engine goes quiet. Pause also holds the radio and soundtrack (see updateMusic).
-    const profile = profileFor(settings.carProfile);
+    const profile = profileFor(carType());
     if (!previewing()) engine.update({ rpm: gearbox.rpm, load: 0, speedMph: 0, car: profile, running: false });
   }
   perfLog.frame(t, performance.now() - began);
@@ -883,7 +883,7 @@ function runFoot(t, dt) {
   if (live) tipAboutPushing(fromX, fromY, dt);
   syncFootScene(dt);
   // The radio, road and wind stay in the car, though the phone can play music. The engine idles on, fading with distance.
-  const profile = profileFor(settings.carProfile);
+  const profile = profileFor(carType());
   if (!previewing()) engine.update({ rpm: profile.idle, load: 0, speedMph: 0, car: profile, running: live, outside: true, reach: engineFadeAt(foot.distanceToCar()) });
   perfLog.spend('drive', performance.now() - began);
   if (!live) return;
@@ -901,7 +901,7 @@ function runFoot(t, dt) {
     notice(say('lightsAreOff'), 5000);
   }
   const walker = foot.walker;
-  pocket.update(t, { x: walker.x, y: walker.y, facing: foot.compass(), where: foot.where() }, { roads, tiles, parked: world.rules.ownCar ? pos : null, hour: world.clock.hour });
+  pocket.update(t, { x: walker.x, y: walker.y, facing: foot.compass(), where: foot.where() }, { roads, tiles, parked: world.rules.ownCar || myCar ? pos : null, hour: world.clock.hour });
   if (t - tilesCheckedAt > 1000) {
     tilesCheckedAt = t;
     const at = foot.where();
@@ -941,14 +941,95 @@ async function getOut() {
   if (!map || foot || footLoading) return;
   if (Math.abs(car.speed) * MPS_TO_MPH >= STOPPED_MPH) return notice(say('stopFirst'), 2500);
   if (onBridge) return notice('There is nothing to stand on here. Get off the bridge first.', 3000);
+  if (!world.rules.ownCar && myCar) {
+    const answer = await world.cars.getOut(myCar, { lat: pos.lat, lng: pos.lng, heading: car.heading, fuel: trip.fuel });
+    if (answer.why === 'offline') return notice('The world can\'t be reached right now, so you can\'t leave the car yet.', 3000);
+    if (answer.car) myCar = answer.car;
+    model?.remove();
+  }
   await startWalking();
+}
+
+// The car being driven, or last driven, in a shared world. Its look and size are its own, not Settings'.
+let myCar = null;
+const carType = () => (world.rules.ownCar ? settings.carProfile : myCar?.type ?? 'sport');
+const carColour = () => (world.rules.ownCar ? settings.carColor : myCar?.colour ?? '#c9ccd1');
+const carSize = () => (world.rules.ownCar ? settings.carScale : DEFAULTS.carScale);
+
+// Parked cars close enough to walk up to, in metres from the origin of the walk, or from here before there is one.
+const CARS_WITHIN = 60; // m
+function worldCarsNear(from) {
+  const local = (lat, lng) => (foot ? foot.localOf(lat, lng) : { x: (lng - from.lng) * 111320 * Math.cos(rad(from.lat)), y: (lat - from.lat) * 111320 });
+  return world.cars.around(foot ? foot.where() : from, CARS_WITHIN, 10).map((record) => {
+    const shape = BODY_SHAPES[record.type] || BODY_SHAPES.sport, { x, y } = local(record.lat, record.lng);
+    return { x, y, heading: record.heading, halfWidth: shape.w * DEFAULTS.carScale, halfLength: shape.l * DEFAULTS.carScale, record };
+  });
+}
+
+// Puts this person at the wheel of a world car.
+function takeSeat(record) {
+  myCar = record;
+  Object.assign(pos, { lat: record.lat, lng: record.lng });
+  Object.assign(car, newCar(), { heading: record.heading });
+  camHeading = car.heading;
+  match = null;
+  recentWays = null;
+  onBridge = false;
+  sampledAt = null;
+  trip.fuel = record.fuel ?? trip.fuel;
+  stopFoot();
+  if (!model) model = new maps3d.Model3DElement({ position: { ...pos, altitude: 0 }, altitudeMode: 'RELATIVE_TO_GROUND', orientation: { heading: car.heading, tilt: 0, roll: 0 }, scale: carSize() });
+  else {
+    model.position = { ...pos, altitude: 0 };
+    model.orientation = { heading: car.heading, tilt: 0, roll: 0 };
+  }
+  map.append(model);
+  applyCarLook();
+  tiles.ensure(pos.lat, pos.lng, car.heading, 0);
+  sampleGround();
+  syncCarStorage();
+}
+
+let gettingIn = false;
+async function getInWorldCar(chosen) {
+  if (gettingIn || !chosen) return;
+  gettingIn = true;
+  const answer = await world.cars.getIn(chosen);
+  gettingIn = false;
+  if (answer.why) return notice(answer.why === 'offline' ? 'The world can\'t be reached right now.' : answer.why === 'bad' ? say('carBroken') : say(answer.why), 3000);
+  takeSeat(answer.car);
+}
+
+// What's in the car being driven or stood next to is what the bag's other side shows.
+let storageCar = null, storageVersion = -1;
+function syncCarStorage() {
+  if (world.rules.ownCar || !pocket) return;
+  const target = foot ? foot.carHere()?.record ?? null : myCar, known = target ? world.cars.get(target.id) ?? target : null;
+  if (storageCar?.id === known?.id && storageVersion === (known?.version ?? 0)) return;
+  storageCar = known;
+  storageVersion = known?.version ?? 0;
+  pocket.data.state.car = known ? JSON.parse(JSON.stringify(known.storage ?? [])) : [];
+  if (pocket.bagOpen) pocket.renderBag();
+}
+async function carStorageChanged() {
+  if (world.rules.ownCar || !storageCar) return;
+  const answer = await world.cars.setStorage(storageCar, pocket.data.state.car);
+  if (answer.car) {
+    storageCar = answer.car;
+    storageVersion = answer.car.version;
+  }
+  if (answer.why === 'stale') {
+    storageCar = null; // someone else changed it first: show what's there now
+    syncCarStorage();
+    notice('Someone else had been in that car. Look again.', 3000);
+  }
 }
 
 // The cars someone on foot can walk up to, in metres from where they began. A world without an own car has none yet.
 function footCars() {
-  if (!world.rules.ownCar) return [];
-  const shape = BODY_SHAPES[settings.carProfile] || BODY_SHAPES.sport;
-  return [{ x: 0, y: 0, heading: car.heading, halfWidth: shape.w * settings.carScale, halfLength: shape.l * settings.carScale }];
+  if (!world.rules.ownCar) return worldCarsNear(pos);
+  const shape = BODY_SHAPES[carType()] || BODY_SHAPES.sport;
+  return [{ x: 0, y: 0, heading: car.heading, halfWidth: shape.w * carSize(), halfLength: shape.l * carSize() }];
 }
 
 // On foot from wherever the car is, or from the start in a world where nobody has a car.
@@ -959,7 +1040,7 @@ async function startWalking() {
     const { Foot, PERSON_SIZE: personSize } = await import('./foot.js'); // only those who walk load any of this
     await makePeople();
     (await pocketReady()).close();
-    foot = new Foot({ onGetIn: () => stopFoot(), onOpenBag: () => { if (!pocket.bagOpen) pocket.toggleBag(); }, drops, onDropsChanged: () => { dropsSyncedAt = -Infinity; }, onSound: sfx, onUsed: (effect, count) => { vitals.apply(effect, count); }, hasKey: () => pocket.data.bagHas(BUILDING_KEY), hasHammer: () => pocket.data.bagHas(GAME.hammer.item), onSay: (text) => notice(text, 3000), onLocked: showLocked, onLoadCar: loadCar, onFound: (name) => pocket.collect(name), onSlept: sleepUntilMorning, roughChoices, canvas: el('foot'), origin: { lat: pos.lat, lng: pos.lng }, heading: car.heading, cars: footCars(), buildings, look, others: world.rules.people ? () => world.people.solidNow(performance.now()) : null, roomPeople: world.rules.people ? (building, floor) => world.peopleOnFloor(building, floor, performance.now()) : null, tiles, view: { tilt: CAMERAS[0].tilt, range: CAMERAS[0].range * FOOT_RANGE_SHARE, fov: FOV_Y, below: CAR_BELOW_CENTRE } });
+    foot = new Foot({ onGetIn: () => (world.rules.ownCar ? stopFoot() : getInWorldCar(foot.carHere()?.record)), onOpenBag: () => { if (!pocket.bagOpen) pocket.toggleBag(); }, drops, onDropsChanged: () => { dropsSyncedAt = -Infinity; }, onSound: sfx, onUsed: (effect, count) => { vitals.apply(effect, count); }, hasKey: () => pocket.data.bagHas(BUILDING_KEY), hasHammer: () => pocket.data.bagHas(GAME.hammer.item), onSay: (text) => notice(text, 3000), onLocked: showLocked, onLoadCar: loadCar, onFound: (name) => pocket.collect(name), onSlept: sleepUntilMorning, roughChoices, canvas: el('foot'), origin: { lat: pos.lat, lng: pos.lng }, heading: car.heading, cars: footCars(), buildings, look, others: world.rules.people ? () => world.people.solidNow(performance.now()) : null, roomPeople: world.rules.people ? (building, floor) => world.peopleOnFloor(building, floor, performance.now()) : null, tiles, view: { tilt: CAMERAS[0].tilt, range: CAMERAS[0].range * FOOT_RANGE_SHARE, fov: FOV_Y, below: CAR_BELOW_CENTRE } });
     showPerson(personSize);
   } catch (err) {
     console.warn('getting out:', err);
@@ -982,7 +1063,7 @@ async function startWalking() {
   lightKey = '';
   document.body.classList.add('onFoot');
   el('help').classList.remove('open');
-  if (world.rules.ownCar) sfx('carDoor');
+  if (world.rules.ownCar || myCar) sfx('carDoor');
   applySound();
   mapBox = null;
   navDrawnAt = 0;
@@ -1234,6 +1315,7 @@ async function pocketReady() {
   pocket ||= new Pocket(el('pockets'), radio, {
     store: world.store,
     world: world.rules.people ? peopleCalls() : null,
+    carChanged: carStorageChanged,
     music: (on) => {
       engine.start();
       applySound();
@@ -1445,7 +1527,7 @@ el('vitals').addEventListener('click', async (e) => {
 
 function pressL() {
   if (!foot) return getOut();
-  if (foot.canGetIn()) return stopFoot();
+  if (foot.canGetIn()) return world.rules.ownCar ? stopFoot() : getInWorldCar(foot.carHere()?.record);
   const done = foot.pressBuilding(keys.has('shift'));
   if (done?.locked !== undefined) return showLocked(done.locked);
   if (done) return; // a building still being looked up goes in by itself, or says it's locked
@@ -1780,11 +1862,11 @@ let carLookKey = '', carLookTimer = null;
 function applyCarLook() {
   if (!model) return;
   clearTimeout(carLookTimer);
-  const key = settings.carProfile + settings.carColor;
+  const key = carType() + carColour();
   if (key === carLookKey) return;
   carLookTimer = setTimeout(() => {
     carLookKey = key;
-    model.src = glbUrl(buildCarGlb(settings.carProfile, settings.carColor));
+    model.src = glbUrl(buildCarGlb(carType(), carColour()));
   }, carLookKey ? 150 : 0);
 }
 
@@ -1816,13 +1898,13 @@ function applyDaylight() {
   const carAngle = ((car.heading - camHeading + 540) % 360) - 180;
   const perMetre = height / (2 * Math.tan(rad(FOV_Y / 2)) * Math.max(range, 1)), foreshorten = Math.cos(rad(tilt));
   // The car's lights stay on when someone gets out, and on foot the car is wherever it was left, which is the middle of the walker's own map.
-  const carView = foot && !indoors ? (world.rules.ownCar ? parkedCarView(foot.walker, width, height, carAngle) : null) : { x: width / 2, y: height * (0.5 + CAR_BELOW_CENTRE / 2), perMetre, foreshorten, angle: carAngle };
+  const carView = foot && !indoors ? (world.rules.ownCar || myCar ? parkedCarView(foot.walker, width, height, carAngle) : null) : { x: width / 2, y: height * (0.5 + CAR_BELOW_CENTRE / 2), perMetre, foreshorten, angle: carAngle };
   const lit = settings.headlights && !indoors && !!carView;
   const shownBraking = braking && !foot;
   const personAngle = carried ? ((foot.posture().facing - camHeading + 540) % 360) - 180 : 0;
   // Only the headlights and brake lights depend on the view, so with neither on nothing redraws while driving.
   const moving = lit || shownBraking || carried ? `${Math.round(range / 2)}|${Math.round(tilt)}|${Math.round(carAngle * 2)}|${Math.round(personAngle * 2)}|${Math.round(carView?.x ?? 0)}|${Math.round(carView?.y ?? 0)}` : '';
-  const key = `${indoors}|${carried}|${clockText(world.clock.hour)}|${lit}|${shownBraking}|${settings.carScale}|${settings.carProfile}|${width}x${height}|${moving}`;
+  const key = `${indoors}|${carried}|${clockText(world.clock.hour)}|${lit}|${shownBraking}|${carSize()}|${carType()}|${width}x${height}|${moving}`;
   if (key === lightKey) return;
   lightKey = key;
   el('lightsButton').setAttribute('aria-pressed', String(settings.headlights));
@@ -1833,8 +1915,8 @@ function applyDaylight() {
   night.style.display = dark > 0.005 && !indoors ? 'block' : 'none';
   beam.style.display = lit || carried ? 'block' : 'none';
   document.body.classList.toggle('beamsOn', lit || !!carried);
-  const shape = BODY_SHAPES[settings.carProfile] || BODY_SHAPES.sport;
-  const length = shape.l * 2 * settings.carScale, carWidth = shape.w * 2 * settings.carScale;
+  const shape = BODY_SHAPES[carType()] || BODY_SHAPES.sport;
+  const length = shape.l * 2 * carSize(), carWidth = shape.w * 2 * carSize();
   const personView = carried ? footSpot(0, 0, width, height, personAngle) : null;
   const pools = beamPools(length, carWidth, !!foot);
   const tint = night.getContext('2d');
@@ -1996,7 +2078,7 @@ function setHeadlights(on) {
 function hornDown(button = el('hornButton')) {
   engine.start();
   applySound();
-  engine.hornOn(hornFor(settings.carProfile));
+  engine.hornOn(hornFor(carType()));
   button.classList.add('on');
 }
 
@@ -2032,7 +2114,7 @@ function showSettings() {
   applyDaylight();
   applyGraphics();
   el('settingsStart').textContent = startLabel || start.label;
-  if (model) model.scale = settings.carScale; // fixed in world units, so the car shrinks with the map when zooming out
+  if (model) model.scale = carSize(); // fixed in world units, so the car shrinks with the map when zooming out
   foot?.setCars(footCars());
   applySound();
   showMusicNow();
@@ -2060,7 +2142,7 @@ const previewing = () => performance.now() < previewUntil;
 function previewEngine() {
   engine.start();
   previewUntil = performance.now() + 900;
-  const profile = profileFor(settings.carProfile);
+  const profile = profileFor(carType());
   const blip = () => {
     const left = previewUntil - performance.now();
     if (left <= 0 || !dialogOpen) return;
@@ -2482,7 +2564,7 @@ function loadGoogle(key, channel) {
 
 // --- Other people, in a shared world ------------------------------------------------------------------------------
 
-let peopleView = null, chatView = null;
+let peopleView = null, chatView = null, firstAppearance = false;
 const SIT_GAIT = 17; // SIT_FRAME in footPerson.js, which only those who walk load
 const badgeColour = (member) => member.colours?.jacket ?? '#5a6470';
 
@@ -2538,13 +2620,29 @@ function peopleCalls() {
 // Others on the map, chat, and hearing about each other. Once the map's up.
 async function startPeople() {
   const [{ PeopleView }, { ChatView }] = await Promise.all([import('./peopleView.js'), import('./chatView.js')]);
-  peopleView = new PeopleView({ maps3d, map, people: world.people, glbUrl });
+  peopleView = new PeopleView({ maps3d, map, people: world.people, glbUrl, cars: world.cars, mine: () => (foot ? null : myCar?.id) });
   chatView = new ChatView({
     world, line: el('chatLine'), previews: el('previews'), sound: () => sfx('message'), phoneDead: () => vitals.stats.phone <= 0,
     opened: (on) => { if (on) { keys.clear(); jumpPressed = false; releaseMouse(); } },
     canShow: (thread) => !(pocket?.app === 'messages' && world.chat.threadWith(pocket.contact === 'group' ? null : pocket.contact) === thread),
   });
   world.whereAmI = whereIAm;
+  setInterval(() => {
+    world.cars.plantFrom(tiles.waysOf);
+    if (foot) foot.setCars(worldCarsNear(pos));
+    syncCarStorage();
+  }, 1000);
+  if (firstAppearance) {
+    setTimeout(async () => {
+      world.cars.plantFrom(tiles.waysOf);
+      const at = foot ? foot.where() : pos, road = roads.nearest(at.lat, at.lng, 0, GAME.world.appearWithin);
+      if (road) world.cars.makeSureOfOne(at, { lat: road.lat, lng: road.lng, heading: road.heading });
+    }, 4000);
+  }
+  world.cars.onChange = () => {
+    peopleView.carsChanged();
+    syncCarStorage();
+  };
   world.drops.onChange = () => { dropsSyncedAt = -Infinity; foot?.dropsChanged(); };
   world.drops.onLost = (drop) => { // someone else picked it up in the same moment
     pocket?.data.takeFromBag(drop.name);
@@ -2591,6 +2689,7 @@ async function beginHere() {
     const { lat, lng, trip: figures } = begin.restore;
     return restoreTrip({ pos: { lat, lng }, heading: 0, zoom: 1, camIndex: 0, destination: null, fsd: false, fsdBoost: 0, trip: figures ?? {}, lane: 0, navRadius: NAV_RANGES[1], label: world.name });
   }
+  firstAppearance = true;
   if (begin.near) {
     const turn = Math.random() * 360, within = GAME.world.appearWithin * Math.sqrt(Math.random()), { lat, lng } = move(begin.near.lat, begin.near.lng, turn, within);
     return placeCar({ lat, lng, heading: turn, label: world.name });
@@ -2623,7 +2722,7 @@ async function boot() {
     applyGraphics();
     el('map').replaceChildren(map);
     if (maps3d.Model3DElement && world.rules.ownCar) {
-      model = new maps3d.Model3DElement({ position: { ...pos, altitude: 0 }, altitudeMode: 'RELATIVE_TO_GROUND', orientation: { heading: car.heading, tilt: 0, roll: 0 }, scale: settings.carScale });
+      model = new maps3d.Model3DElement({ position: { ...pos, altitude: 0 }, altitudeMode: 'RELATIVE_TO_GROUND', orientation: { heading: car.heading, tilt: 0, roll: 0 }, scale: carSize() });
       map.append(model);
     }
     applyCarLook();
@@ -2640,7 +2739,8 @@ async function boot() {
       vitals, GAME, world, trip: () => trip, paused: () => paused, nav: () => ({ fsd, destination, route, routeIndex, signal, lane, laneNow }),
       crowdTest: async (options) => (await import('./crowdTest.js')).runCrowdTest({ maps3d, map, at: foot ? foot.where() : pos, glbUrl, log: perfLog, ...options }),
     });
-    if (world.rules.startsOnFoot) await startWalking();
+    if (world.rules.people && world.cars.mine()) takeSeat(world.cars.mine()); // they refreshed at the wheel
+    else if (world.rules.startsOnFoot) await startWalking();
     if (world.rules.people) await startPeople();
   } catch (err) {
     notice('Could not load the map: ' + err.message);
@@ -2655,6 +2755,7 @@ function applyRules() {
   if (rules.invites) el('shareButton').innerHTML = 'Invite <span class="keyHint">(J)</span>';
   if (!rules.skipTime) hide(el('timeButton'), el('hour'), document.querySelector('label[for="hour"]'));
   if (!rules.forgetBuildings) hide(el('forgetBuildings'));
+  if (!rules.ownCar) hide(el('carProfile').closest('section')); // the car is the world's
 }
 applyRules();
 

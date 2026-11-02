@@ -108,7 +108,7 @@ export class Foot {
     this.world = { solidPeople: others ? () => (this.walker?.inside ? this.othersInRoom().filter(({ place }) => !(place.flags & FLAGS.away)).map(({ at }) => at) : others().map(({ lat, lng }) => toLocal(origin, lat, lng))) : null, place: this.place, height: (x, y) => this.height(x, y), floor: (b) => this.floorOf(b) + this.rise(b) };
     this.setCars(cars);
     this.loadTilesAt(0, 0);
-    const [beside] = cars;
+    const beside = cars.find((car) => Math.hypot(car.x, car.y) < 1); // the car they've just got out of, not one that happens to be near
     const spot = beside ? spawnSpot(beside.heading, beside.halfWidth, beside.halfLength, (x, y) => !this.place.footprintAt(x, y) && !this.place.inWater(x, y)) : { x: 0, y: 0 };
     this.walker = newWalker(spot.x, spot.y, (heading * Math.PI) / 180);
     gl.clearAway();
@@ -928,9 +928,28 @@ export class Foot {
     return buildingFrame(building.pieces, axis).toFrame(this.walker.x, this.walker.y);
   }
 
-  // The way to the first car, or null with none.
+  localOf(lat, lng) {
+    return toLocal(this.origin, lat, lng);
+  }
+
+  // The nearest car within reach, or null.
+  carHere() {
+    if (this.walker.inside) return null;
+    let best = null, bestAway = GET_IN_REACH;
+    for (const car of this.cars) {
+      const away = distanceToCar(this.walker, carWalls(car.heading, car.halfWidth, car.halfLength, car.x, car.y));
+      if (away <= bestAway) {
+        best = car;
+        bestAway = away;
+      }
+    }
+    return best;
+  }
+
+  // The way to the nearest car, or null with none about.
   carWay() {
-    return this.cars.length ? wayToCar(this.walker, this.cars[0]) : null;
+    const nearest = this.cars.reduce((best, car) => (!best || Math.hypot(car.x - this.walker.x, car.y - this.walker.y) < Math.hypot(best.x - this.walker.x, best.y - this.walker.y) ? car : best), null);
+    return nearest ? wayToCar(this.walker, nearest) : null;
   }
 
   label() {

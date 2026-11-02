@@ -7,7 +7,7 @@ import { TripStore } from './session.js';
 import { Vitals } from './vitals.js';
 import { GAME } from './gameConfig.js';
 import { People, presenceRate } from './people.js';
-import { SharedBuildings, SharedDrops } from './sharedWorld.js';
+import { SharedBuildings, SharedCars, SharedDrops } from './sharedWorld.js';
 import { PROTOCOL, clockHour, packPresence, unpackPresence } from './protocol.js';
 
 const CLOCK_STORE = 'geodrive_clock_v1';
@@ -204,6 +204,7 @@ export class PrivateWorld extends World {
     this.me = savedMe(storage, id);
     this.buildings = new SharedBuildings(link);
     this.drops = new SharedDrops(link, welcome.you.id, welcome.drops ?? []);
+    this.cars = new SharedCars(link, welcome.you.id, welcome.cars ?? []);
     this.accept(welcome);
     link.onMessage = (message) => this.heard(message);
     link.onBytes = (bytes) => {
@@ -233,6 +234,7 @@ export class PrivateWorld extends World {
     if (message.t === 'welcome') { // back after losing the line
       this.accept(message);
       this.drops.setAll(message.drops ?? []);
+      this.cars.setAll(message.cars ?? []);
       this.inBuilding = undefined; // the server has forgotten, so it's said again
       this.buildings.rejoined();
       this.on.link?.('open');
@@ -263,6 +265,8 @@ export class PrivateWorld extends World {
       this.buildings.heardSwitchesOn(message);
     } else if (message.t === 'dropAdded') {
       this.drops.heardAdded(message.drop);
+    } else if (message.t === 'car') {
+      this.cars.heard(message.car);
     } else if (message.t === 'dropTaken') {
       this.drops.heardTaken(message.id);
     }

@@ -14,6 +14,8 @@ const MIGRATIONS = [`
   CREATE INDEX buildings_tile ON buildings (tile);
   CREATE TABLE floors (building TEXT NOT NULL, floor INTEGER NOT NULL, record TEXT, state TEXT NOT NULL, PRIMARY KEY (building, floor));
   CREATE TABLE drops (id TEXT PRIMARY KEY, data TEXT NOT NULL);
+`, `
+  CREATE TABLE cars (id TEXT PRIMARY KEY, data TEXT NOT NULL);
 `];
 
 const memberFrom = (row) => row && { id: row.id, name: row.name, secretHash: row.secret_hash, order: row.invite_order, lives: row.lives, figure: row.figure, colours: JSON.parse(row.colours), lastSeen: row.last_seen, lat: row.lat ?? null, lng: row.lng ?? null };
@@ -168,6 +170,20 @@ export class WorldStore {
   // True if it was there to take: exactly one person gets it.
   takeDrop(id) {
     return this.db.prepare('DELETE FROM drops WHERE id = ?').run(id).changes > 0;
+  }
+
+  // --- Cars: only those someone has touched ----------------------------------------------------------------------
+
+  cars() {
+    return this.db.prepare('SELECT data FROM cars').all().map((row) => JSON.parse(row.data));
+  }
+
+  car(id) {
+    return parsed(this.db.prepare('SELECT data FROM cars WHERE id = ?').get(id)?.data);
+  }
+
+  saveCar(car) {
+    this.db.prepare('INSERT INTO cars (id, data) VALUES (?, ?) ON CONFLICT (id) DO UPDATE SET data = excluded.data').run(car.id, JSON.stringify(car));
   }
 
   // --- Chat -----------------------------------------------------------------------------------------------------

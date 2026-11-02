@@ -1,6 +1,13 @@
 // What the game says, several ways, so the common ones don't get repetitive. Each key's lines take turns. Add, change or remove lines freely; deployed with the site, so it's the same for everyone.
 // {name}, {found} and {hours} are filled in where a line uses them.
 export const SAYINGS = {
+  // A car that won't go, in a shared world
+  carNoKey: ['No key. Whoever left this took it with them.', 'It needs a key, and there isn\'t one.'],
+  carFlatBattery: ['Click. Click. Flat battery.', 'The dash doesn\'t even light up. Dead battery.'],
+  carNoFuel: ['It cranks and cranks. Bone dry.', 'The gauge is on empty, and it means it.'],
+  carBroken: ['It turns over, coughs and dies. Something\'s broken.', 'A horrible grinding noise, then nothing.'],
+  carTaken: ['Someone\'s already in it.', 'That one\'s taken.'],
+  carWrecked: ['It\'s burnt out. Nothing here will ever run again.'],
   // F with nothing in reach
   nothingHere: [
     'There is nothing here to use.',

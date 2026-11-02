@@ -170,6 +170,7 @@ export class Pocket {
       return;
     }
     const moved = this.data.move(id, side === 'bag');
+    if (moved) this.calls.carChanged?.();
     this.calls.sound(moved ? 'rustle' : 'ack');
     if (moved && id === 'Flashlight' && side === 'bag') this.calls.stowed();
     if (!moved) this.bagPanel.querySelector('.empty').textContent = say(side === 'bag' ? 'carFull' : 'bagFull');
@@ -180,6 +181,7 @@ export class Pocket {
   dropItem(id, side) {
     const item = (side === 'car' ? this.data.car : this.data.bag).find((i) => i.id === id);
     if (!item || !this.data.drop(id, side === 'car')) return;
+    if (side === 'car') this.calls.carChanged?.();
     this.calls.sound('drop');
     this.dropped = { id: item.id, name: item.name, side, world: this.calls.dropped(item.name) };
     if (id === 'Flashlight' && !this.data.bagHas(id)) this.calls.stowed();
@@ -190,6 +192,7 @@ export class Pocket {
   undoDrop() {
     if (this.dropped) {
       this.data.putBack(this.dropped, this.dropped.side === 'car');
+      if (this.dropped.side === 'car') this.calls.carChanged?.();
       this.calls.undropped(this.dropped.world);
     }
     this.dropped = null;

@@ -1,6 +1,6 @@
 // Other people on the map: a model for each frame of their walk, in their colours, and a name tag. Measured on 2026-11-02 (docs/SHARED_WORLD.md): moving them costs
 // little, but the map froze for 8.8 s when 153 models went on within 5 s, and didn't when people went on about 6 s apart. So only one person's models go on at a time.
-import { buildPersonGlb } from './carModel.js';
+import { buildCarGlb, buildPersonGlb } from './carModel.js';
 import { FLAGS, metresApart } from './protocol.js';
 import { FRAME_COUNT, personParts } from './footPerson.js';
 import { GAME } from './gameConfig.js';
@@ -9,6 +9,8 @@ const MODELS_WITHIN = 300, LET_GO_BEYOND = 600; // m
 const NEXT_PERSON_AFTER = 6000;                 // ms after one person's models are all on
 const TAG_HEIGHT = 2.2, TAG_FONT = 15;          // m, px
 const HIDDEN = 0.001, SHOWN = 1.1;              // the same size as this player's own person, whom the camera has to find
+const PARKED_LOOK_EVERY = 1000;                 // ms
+const CAR_SIZE = 0.9;
 const TAG_MOVES = 1e-6;                         // degrees, about 10 cm
 
 // A name tag: dark, rounded, white text, the same size on screen wherever it is. The name goes in as text, so it can't be anything else.
@@ -27,8 +29,12 @@ export function nameTag(maps3d, position, name) {
 
 export class PeopleView {
   // people: from world.js. glbUrl: turns a model into an address.
-  constructor({ maps3d, map, people, glbUrl }) {
-    Object.assign(this, { maps3d, map, people, glbUrl });
+  constructor({ maps3d, map, people, glbUrl, cars, mine }) {
+    Object.assign(this, { maps3d, map, people, glbUrl, cars, mine });
+    this.carModels = new Map(); // car id: { element, tag, source key }
+    this.carSources = new Map();
+    this.parkedAt = -Infinity;
+    this.parkedList = [];
     this.shown = new Map();   // member id: { frames: [], wanted, current, tag, lat, lng, heading }
     this.sources = new Map(); // a look: its 17 model addresses, shared by anyone who chose the same
     this.building = null;     // who's getting their models now
@@ -62,11 +68,94 @@ export class PeopleView {
     for (const id of this.shown.keys()) if (!this.people.member(id)?.online) this.remove(id);
     for (const member of this.people.othersOnline) this.updatePerson(member, viewer, now);
     this.addNextModel(now);
+    this.updateCars(viewer, now);
+  }
+
+  carsChanged() {
+    this.parkedAt = -Infinity;
+  }
+
+  carSource(car) {
+    const key = `${car.type}${car.colour}`;
+    if (!this.carSources.has(key)) this.carSources.set(key, this.glbUrl(buildCarGlb(car.type, car.colour)));
+    return this.carSources.get(key);
+  }
+
+  // Parked cars near this person, and those others are driving, at their drivers. One new parked car a frame, as with people.
+  updateCars(viewer, now) {
+    if (now - this.parkedAt > PARKED_LOOK_EVERY) {
+      this.parkedAt = now;
+      const { shownWithin, mostShown } = GAME.worldCars;
+      this.parkedList = this.cars.around(viewer, shownWithin, mostShown).filter((car) => car.id !== this.mine());
+    }
+    const wanted = new Set();
+    let added = false;
+    for (const car of this.parkedList) {
+      wanted.add(car.id);
+      if (this.carModels.has(car.id) || added) continue;
+      added = true;
+      this.placeCarModel(car, car);
+    }
+    for (const member of this.people.othersOnline) {
+      const there = this.people.drawnAt(member.id, now);
+      if (!there || there.flags & (FLAGS.onFoot | FLAGS.indoors)) continue;
+      const car = [...this.cars.records.values()].find((known) => known.driver === member.id);
+      if (!car || metresApart(viewer, there) > GAME.world.peopleShownWithin) continue;
+      wanted.add(car.id);
+      const shown = this.carModels.get(car.id) ?? this.placeCarModel(car, there);
+      this.moveCar(shown, there, viewer, member);
+    }
+    for (const [id, shown] of this.carModels) {
+      if (wanted.has(id)) continue;
+      shown.element.remove();
+      shown.tag?.remove();
+      this.carModels.delete(id);
+    }
+    // A parked car someone has just left stays where it stopped.
+    for (const car of this.parkedList) {
+      const shown = this.carModels.get(car.id);
+      if (shown && (shown.lat !== car.lat || shown.lng !== car.lng)) this.moveCar(shown, car, viewer);
+      if (shown?.tag) {
+        shown.tag.remove();
+        shown.tag = null;
+      }
+    }
+  }
+
+  placeCarModel(car, at) {
+    const element = this.model({ lat: at.lat, lng: at.lng, altitude: 0 }, this.carSource(car), CAR_SIZE);
+    element.orientation = { heading: at.heading, tilt: 0, roll: 0 };
+    const shown = { element, tag: null, lat: at.lat, lng: at.lng, heading: at.heading };
+    this.carModels.set(car.id, shown);
+    return shown;
+  }
+
+  moveCar(shown, at, viewer, driver) {
+    if (Math.abs(at.lat - shown.lat) > 1e-7 || Math.abs(at.lng - shown.lng) > 1e-7) {
+      shown.element.position = { lat: at.lat, lng: at.lng, altitude: 0 };
+      shown.lat = at.lat;
+      shown.lng = at.lng;
+    }
+    if (Math.abs(at.heading - shown.heading) > 0.1) {
+      shown.element.orientation = { heading: at.heading, tilt: 0, roll: 0 };
+      shown.heading = at.heading;
+    }
+    const mode = at.flags & FLAGS.bridge ? 'RELATIVE_TO_MESH' : 'RELATIVE_TO_GROUND';
+    if (shown.element.altitudeMode !== mode) shown.element.altitudeMode = mode;
+    if (!driver) return;
+    const position = { lat: at.lat, lng: at.lng, altitude: TAG_HEIGHT };
+    if (metresApart(viewer, at) > GAME.world.nameTagsWithin) {
+      shown.tag?.remove();
+      shown.tag = null;
+    } else if (!shown.tag) {
+      shown.tag = nameTag(this.maps3d, position, driver.name);
+      this.map.append(shown.tag);
+    } else shown.tag.position = position;
   }
 
   updatePerson(member, viewer, now) {
     const there = this.people.drawnAt(member.id, now), person = this.shown.get(member.id);
-    const indoors = !there || (there.flags & FLAGS.indoors), away = there ? metresApart(viewer, there) : Infinity;
+    const indoors = !there || (there.flags & FLAGS.indoors) || !(there.flags & FLAGS.onFoot), away = there ? metresApart(viewer, there) : Infinity; // driving counts: they're in the car
     if (indoors || away > LET_GO_BEYOND) {
       if (person && (away > LET_GO_BEYOND || !there)) this.remove(member.id);
       else if (person) this.hideAll(person);

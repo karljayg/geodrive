@@ -1,6 +1,9 @@
 // A shared world's buildings and dropped things, standing in for BuildingStore and Drops so that foot.js and main.js needn't care: everything still reads at once,
 // from what's arrived so far. What this player does is shown here straight away and sent, and the server decides anything two people could want. Pure, tested in node.
 import { Drops } from './drops.js';
+import { GAME } from './gameConfig.js';
+import { merged, plantCars, rescueCar } from './worldCars.js';
+import { metresApart } from './protocol.js';
 import { applyFloorOp, emptyFloorState, floorOpsBetween, planToShare, tileOfBuilding, undoFloorOp } from './worldOps.js';
 
 const copy = (value) => JSON.parse(JSON.stringify(value));
@@ -227,5 +230,88 @@ export class SharedDrops extends Drops {
   setAll(list) {
     this.list = list;
     this.onChange?.();
+  }
+}
+
+// The cars around: planted ones from the road tiles this browser has, with whatever the server says about those someone has touched. Reads at once.
+export class SharedCars {
+  constructor(link, me, records = []) {
+    Object.assign(this, { link, me });
+    this.records = new Map(records.map((car) => [car.id, car]));
+    this.plantedTiles = new Map(); // road tile key: its planted cars
+    this.onChange = null;
+  }
+
+  // New road tiles' cars, once each. Tiles let go of aren't missed: their cars are out of sight.
+  plantFrom(waysOf) {
+    for (const [key, ways] of waysOf) if (!this.plantedTiles.has(key)) this.plantedTiles.set(key, plantCars(ways));
+    for (const key of this.plantedTiles.keys()) if (!waysOf.has(key)) this.plantedTiles.delete(key);
+  }
+
+  heard(car) {
+    this.records.set(car.id, car);
+    this.onChange?.(car);
+  }
+
+  setAll(list) {
+    this.records = new Map(list.map((car) => [car.id, car]));
+    this.onChange?.(null);
+  }
+
+  // A car as it now is, planted or touched. A touched one may have been driven far from where it was planted.
+  get(id) {
+    const record = this.records.get(id);
+    if (record) return record;
+    for (const cars of this.plantedTiles.values()) {
+      const found = cars.find((car) => car.id === id);
+      if (found) return found;
+    }
+    return null;
+  }
+
+  // Parked cars within this far, nearest first. Those being driven aren't parked: they're where their drivers are.
+  around(at, within, most = Infinity) {
+    const found = [];
+    const consider = (car) => {
+      const away = metresApart(at, car);
+      if (away <= within) found.push({ car, away });
+    };
+    for (const cars of this.plantedTiles.values()) for (const car of cars) if (!this.records.has(car.id)) consider(car);
+    for (const car of this.records.values()) if (!car.driver) consider(car);
+    return found.sort((a, b) => a.away - b.away).slice(0, most).map(({ car }) => car);
+  }
+
+  // The car this person is driving, if any: they may have refreshed the page.
+  mine() {
+    for (const car of this.records.values()) if (car.driver === this.me) return car;
+    return null;
+  }
+
+  async getIn(car) {
+    const answer = await this.link.ask({ t: 'getIn', car: car.id, planted: car });
+    if (answer.car) this.records.set(answer.car.id, answer.car);
+    return answer;
+  }
+
+  async getOut(car, place) {
+    const answer = await this.link.ask({ t: 'getOut', car: car.id, ...place });
+    if (answer.car) this.records.set(answer.car.id, answer.car);
+    return answer;
+  }
+
+  // What's in a car, sent whole. Refused if someone else changed it first, when what's here is put right.
+  async setStorage(car, storage) {
+    const answer = await this.link.ask({ t: 'carStore', car: car.id, planted: car, storage, version: car.version ?? 0 });
+    if (answer.car) this.records.set(answer.car.id, answer.car);
+    return answer;
+  }
+
+  // Nobody should be stranded: a running car within walking distance of where someone first appears, added if the dice left none. road: the nearest road to them.
+  async makeSureOfOne(at, road, config = GAME.worldCars) {
+    if (this.around(at, config.rescueWithin).some((car) => car.runs && !car.wrecked)) return null;
+    const answer = await this.link.ask({ t: 'plantCar', planted: rescueCar(road.lat, road.lng, road.heading, `${this.me}-${Date.now().toString(36)}`) });
+    if (answer.car) this.records.set(answer.car.id, answer.car);
+    this.onChange?.(answer.car ?? null);
+    return answer.car ?? null;
   }
 }

@@ -3,6 +3,7 @@
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { GAME } from '../public/js/gameConfig.js';
 import { FLAGS, GROUP_THREAD, cleanLook, clockHour, dmThread, metresApart, nameKey, nameProblem, stampPresence, unpackPresence } from '../public/js/protocol.js';
+import { cleanCar, cleanStorage } from '../public/js/worldCars.js';
 import { applyFloorOp, cleanDrop, emptyFloorState, mergePlan, tileOfBuilding } from '../public/js/worldOps.js';
 
 const FAR = 3000;          // m; past this someone is only a dot on a phone
@@ -121,7 +122,7 @@ export class Room {
       old.send({ t: 'replaced' });
       old.close();
     } else if (this.clients.size === 0) this.settleClock(false);
-    const client = { ...connection, id: member.id, order: member.order, at: member.lat === null ? null : { lat: member.lat, lng: member.lng }, said: [], sentAt: new Map(), count: 0, countFrom: this.now(), asleep: false, tiles: new Set(), building: null };
+    const client = { ...connection, id: member.id, order: member.order, at: member.lat === null ? null : { lat: member.lat, lng: member.lng }, said: [], sentAt: new Map(), count: 0, countFrom: this.now(), asleep: false, tiles: new Set(), building: null, car: this.store.cars().find((car) => car.driver === member.id)?.id ?? null };
     connection.client = client;
     this.clients.set(member.id, client);
     this.store.touchMember(member.id, this.now());
@@ -137,7 +138,7 @@ export class Room {
       t: 'welcome', you: { id: member.id, order: member.order, name: member.name, lives: member.lives, ...(secret ? { secret } : {}) },
       world: { id: world.id, name: world.name, mode: world.mode, creator: world.creator, owner: world.owner, backup: world.backup },
       members, clock: this.clock(), player: { pocket: player.pocket, vitals: player.vitals, trip: player.trip, lat: player.lat, lng: player.lng },
-      chat: this.store.chatFor(member.id), near: this.appearNear(member.id), drops: this.store.drops(),
+      chat: this.store.chatFor(member.id), near: this.appearNear(member.id), drops: this.store.drops(), cars: this.store.cars(),
     };
   }
 
@@ -157,6 +158,7 @@ export class Room {
     this.clients.delete(client.id);
     const saved = client.at ? { lat: client.at.lat, lng: client.at.lng } : {};
     this.store.savePlayer(client.id, saved);
+    this.driverLeft(client);
     this.store.touchMember(client.id, this.now());
     this.tellOthers(client.id, { t: 'member', member: publicMember(this.store.member(client.id), false) });
     this.tellClock();
@@ -217,7 +219,7 @@ export class Room {
     const client = connection.client;
     if (!client || !message || typeof message !== 'object') return;
     const answer = (result) => { if (message.id !== undefined) client.send({ t: result.why ? 'no' : 'ok', id: message.id, ...result }); };
-    const handler = { invite: 'makeInvite', setBackup: 'chooseBackup', say: 'say', sleep: 'sleep', save: 'savePlayer', where: 'where', area: 'area', claimPlan: 'claimPlan', claimFloor: 'claimFloor', floorOp: 'floorOp', switchesOn: 'switchesOn', dropAdd: 'dropAdd', dropTake: 'dropTake' }[message.t];
+    const handler = { invite: 'makeInvite', setBackup: 'chooseBackup', say: 'say', sleep: 'sleep', save: 'savePlayer', where: 'where', area: 'area', claimPlan: 'claimPlan', claimFloor: 'claimFloor', floorOp: 'floorOp', switchesOn: 'switchesOn', dropAdd: 'dropAdd', dropTake: 'dropTake', getIn: 'getIn', getOut: 'getOut', carStore: 'carStore', plantCar: 'plantCar' }[message.t];
     if (!handler) return answer({ why: 'unknown' });
     answer(this[handler](client, message) ?? {});
   }
@@ -294,6 +296,83 @@ export class Room {
     if (typeof drop !== 'string' || !this.store.takeDrop(drop)) return { why: 'gone' };
     this.tellOthers(client.id, { t: 'dropTaken', id: drop });
     return {};
+  }
+
+  // --- Cars ----------------------------------------------------------------------------------------------------
+
+  // A car whose driver has gone stays where it stopped, and stays theirs for a few seconds in case the line just dropped.
+  driverLeft(client) {
+    const car = client.car && this.store.car(client.car);
+    if (!car || car.driver !== client.id) return;
+    if (client.at) Object.assign(car, client.at);
+    car.driverLeftAt = this.now();
+    this.store.saveCar(car);
+    this.tellAll({ t: 'car', car });
+  }
+
+  // Why this car can't be got into now, or null. First come, first served: one driver.
+  whyNoSeat(car, id) {
+    if (car.wrecked) return 'carWrecked';
+    if (!car.runs) return car.why ?? 'carBroken';
+    if (!car.driver || car.driver === id) return null;
+    const stillHere = this.clients.has(car.driver), goneLongEnough = this.now() - (car.driverLeftAt ?? 0) > GAME.worldCars.driverFreeAfter * 1000;
+    return stillHere || !goneLongEnough ? 'carTaken' : null;
+  }
+
+  // planted: the car as this browser worked it out, used if nobody has touched it yet.
+  known(id, planted) {
+    if (typeof id === 'string') {
+      const car = this.store.car(id);
+      if (car) return car;
+    }
+    const clean = cleanCar(planted);
+    return clean && clean.id === id ? clean : null;
+  }
+
+  getIn(client, { car: id, planted }) {
+    const car = this.known(id, planted);
+    if (!car) return { why: 'bad' };
+    const why = this.whyNoSeat(car, client.id);
+    if (why) return { why };
+    Object.assign(car, { driver: client.id, driverLeftAt: null });
+    this.store.saveCar(car);
+    client.car = car.id;
+    this.tellOthers(client.id, { t: 'car', car });
+    return { car };
+  }
+
+  getOut(client, { car: id, lat, lng, heading, fuel }) {
+    const car = typeof id === 'string' ? this.store.car(id) : null;
+    if (!car || car.driver !== client.id) return { why: 'not-yours' };
+    if ([lat, lng, heading].every(Number.isFinite) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180) Object.assign(car, { lat, lng, heading });
+    if (Number.isFinite(fuel)) car.fuel = Math.max(0, Math.min(100, fuel));
+    car.driver = null;
+    this.store.saveCar(car);
+    client.car = null;
+    this.tellOthers(client.id, { t: 'car', car });
+    return { car };
+  }
+
+  // A car's storage changes as a whole, only if nobody else has changed it since this browser saw it.
+  carStore(client, { car: id, planted, storage, version }) {
+    const car = this.known(id, planted), clean = cleanStorage(storage);
+    if (!car || !clean) return { why: 'bad' };
+    if (car.wrecked) return { why: 'carWrecked' };
+    if ((car.version ?? 0) !== version) return { why: 'stale', car };
+    Object.assign(car, { storage: clean, version: (car.version ?? 0) + 1 });
+    this.store.saveCar(car);
+    this.tellOthers(client.id, { t: 'car', car });
+    return { car };
+  }
+
+  // A running car for someone who'd otherwise be stranded. Once per person, each time they sign in.
+  plantCar(client, { planted }) {
+    const car = cleanCar(planted);
+    if (!car || !car.id.startsWith('x_') || !car.runs || client.planted) return { why: 'bad' };
+    client.planted = true;
+    this.store.saveCar(car);
+    this.tellOthers(client.id, { t: 'car', car });
+    return { car };
   }
 
   isManager(id) {

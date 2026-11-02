@@ -10,6 +10,7 @@ import { PROTOCOL, FLAGS } from '../public/js/protocol.js';
 import { PrivateWorld, rememberWorld, savedMe } from '../public/js/world.js';
 import { applyFloorOp, cleanDrop, emptyFloorState, floorOpsBetween, mergePlan, planToShare, tileOfBuilding, undoFloorOp } from '../public/js/worldOps.js';
 import { vectorTileAt } from '../public/js/vector.js';
+import { plantCars } from '../public/js/worldCars.js';
 
 const LOOK = { figure: 'male', colours: { skin: '#ddaa88', jacket: '#ff8800', jeans: '#223355', shoes: '#111111', hair: '#221100' } };
 const HANGAR = '1947789_-3872411';
@@ -283,4 +284,66 @@ test('the line back says where someone is again, and everything is caught up', (
   await until(() => theirs.state?.[1]?.lights, 'the light');
   await b.buildings.rejoined();
   assert.equal(b.buildings.get(HANGAR).state[1].lights, true);
+}));
+
+const [A_CAR, ANOTHER] = plantCars([{ f: 0, c: [38.9, -77.4, 38.95, -77.4] }]).filter((car) => car.runs).concat(plantCars([{ f: 0, c: [39.9, -77.4, 39.95, -77.4] }]).filter((car) => car.runs));
+const DEAD_CAR = plantCars([{ f: 0, c: [38.9, -77.4, 38.95, -77.4] }]).find((car) => !car.runs);
+
+test('one driver: two people at one car, exactly one gets in', () => pair(async ({ create, join }) => {
+  const a = await create(), b = await join(a, 'Dana');
+  const [first, second] = await Promise.all([a.cars.getIn(A_CAR), b.cars.getIn(A_CAR)]);
+  assert.equal([first, second].filter((answer) => answer.car).length, 1);
+  assert.equal([first, second].find((answer) => answer.why).why, 'carTaken');
+}));
+
+test('a car that doesn\'t run says why, and can\'t be got into', () => pair(async ({ create }) => {
+  const a = await create(), answer = await a.cars.getIn(DEAD_CAR);
+  assert.equal(answer.why, DEAD_CAR.why);
+  assert.equal(a.cars.records.size, 0, 'and trying doesn\'t record it');
+}));
+
+test('a car left somewhere is there for anyone, with its fuel, and the old driver can\'t move it', () => pair(async ({ create, join }) => {
+  const a = await create(), b = await join(a, 'Dana');
+  const seen = (await a.cars.getIn(A_CAR)).car;
+  await until(() => b.cars.records.get(A_CAR.id)?.driver === a.you.id, 'Dana to hear');
+  assert.equal((await b.cars.getOut(seen, { lat: 1, lng: 2, heading: 0 })).why, 'not-yours');
+  await a.cars.getOut(seen, { lat: 38.5, lng: -77.5, heading: 45, fuel: 12 });
+  const left = await until(() => { const known = b.cars.records.get(A_CAR.id); return known && !known.driver && known; }, 'it to be left');
+  assert.equal(left.lat, 38.5);
+  assert.equal(left.fuel, 12);
+  assert.equal(b.cars.around({ lat: 38.5, lng: -77.5 }, 10)[0].id, A_CAR.id);
+  const now = (await b.cars.getIn(left)).car;
+  assert.equal(now.driver, b.you.id);
+  assert.equal(now.fuel, 12);
+}));
+
+test('a driver who drops off keeps the seat for a few seconds, then anyone can have it', () => pair(async ({ create, join, back }) => {
+  const a = await create(), b = await join(a, 'Dana');
+  await a.cars.getIn(A_CAR);
+  a.link.close();
+  await until(() => !b.people.member(a.you.id).online, 'them to go');
+  assert.equal((await b.cars.getIn(A_CAR)).why, 'carTaken');
+  const again = await back(a);
+  assert.equal(again.cars.mine().id, A_CAR.id, 'and coming back, they\'re still at the wheel');
+  assert.equal((await again.cars.getIn(again.cars.mine())).car.driver, again.you.id);
+}));
+
+test('what\'s in a car is shared, and a change from an old look is refused', () => pair(async ({ create, join }) => {
+  const a = await create(), b = await join(a, 'Dana'), hammer = [{ id: 'Sledgehammer', name: 'Sledgehammer', count: 1 }];
+  const first = await a.cars.setStorage(A_CAR, hammer);
+  assert.deepEqual(first.car.storage, hammer);
+  const theirs = await until(() => b.cars.records.get(A_CAR.id), 'Dana to hear');
+  assert.deepEqual(theirs.storage, hammer);
+  assert.equal((await a.cars.setStorage(A_CAR, [])).why, 'stale', 'A is still looking at the car as it was');
+  assert.equal((await b.cars.setStorage(theirs, [])).car.storage.length, 0);
+}));
+
+test('nobody is stranded: with no running car near, one is added, once', () => pair(async ({ create, join }) => {
+  const a = await create(), b = await join(a, 'Dana'), place = { lat: 10, lng: 10 };
+  const car = await a.cars.makeSureOfOne(place, { lat: 10, lng: 10, heading: 0 });
+  assert.equal(car.runs, true);
+  await until(() => b.cars.records.has(car.id), 'Dana to hear');
+  assert.equal(await b.cars.makeSureOfOne(place, { lat: 10, lng: 10, heading: 0 }), null, 'one\'s here now');
+  assert.equal(await a.cars.makeSureOfOne({ lat: 20, lng: 20 }, { lat: 20, lng: 20, heading: 0 }), null, 'and each person only gets one');
+  assert.equal(ANOTHER.runs, true);
 }));
