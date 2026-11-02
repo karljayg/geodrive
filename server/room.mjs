@@ -219,7 +219,7 @@ export class Room {
     const client = connection.client;
     if (!client || !message || typeof message !== 'object') return;
     const answer = (result) => { if (message.id !== undefined) client.send({ t: result.why ? 'no' : 'ok', id: message.id, ...result }); };
-    const handler = { invite: 'makeInvite', setBackup: 'chooseBackup', say: 'say', sleep: 'sleep', save: 'savePlayer', where: 'where', area: 'area', claimPlan: 'claimPlan', claimFloor: 'claimFloor', floorOp: 'floorOp', switchesOn: 'switchesOn', dropAdd: 'dropAdd', dropTake: 'dropTake', getIn: 'getIn', getOut: 'getOut', carStore: 'carStore', plantCar: 'plantCar' }[message.t];
+    const handler = { invite: 'makeInvite', setBackup: 'chooseBackup', say: 'say', sleep: 'sleep', save: 'savePlayer', where: 'where', area: 'area', claimPlan: 'claimPlan', claimFloor: 'claimFloor', floorOp: 'floorOp', switchesOn: 'switchesOn', dropAdd: 'dropAdd', dropTake: 'dropTake', getIn: 'getIn', getOut: 'getOut', carStore: 'carStore', plantCar: 'plantCar', bump: 'bump' }[message.t];
     if (!handler) return answer({ why: 'unknown' });
     answer(this[handler](client, message) ?? {});
   }
@@ -295,6 +295,14 @@ export class Room {
   dropTake(client, { drop }) {
     if (typeof drop !== 'string' || !this.store.takeDrop(drop)) return { why: 'gone' };
     this.tellOthers(client.id, { t: 'dropTaken', id: drop });
+    return {};
+  }
+
+  // My game saw a hit: the other game hears, so that both agree it happened and both stop.
+  bump(client, { to, closing }) {
+    const other = typeof to === 'string' ? this.clients.get(to) : null;
+    if (!Number.isFinite(closing) || closing < 0 || closing > 1000) return { why: 'bad' };
+    other?.send({ t: 'bumped', by: client.id, closing });
     return {};
   }
 

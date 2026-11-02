@@ -89,6 +89,8 @@ Settings' Diagnostics tab shows FPS, the slowest frame in the last second, and J
 
 Cars in a world belong to the world. They're planted along the roads, the same for everyone: about 1 in 4 runs, and the rest say why not when you try. Walk up to one and press L. One driver at a time, first come first served, and anyone can take a car that's been left. Each car has its own fuel and storage, and about 1 in 4 has a sledgehammer in it. Others see your car move as you drive. If there's no running car near where someone first appears, one is added.
 
+Nothing passes through anything. A car stops dead at another car, parked or moving, or at a person, bouncing back slightly, and the other driver's car stops too. People can't walk through cars, moving or parked. For now nobody is hurt.
+
 `J` in a world copies an invite link, if you're a manager: the creator or the backup. The first person to join becomes the backup, and either can choose another in the People app, which also makes a rejoin link for someone who has lost their browser. An invite works once and lasts a day. Whoever opens one chooses a name, unique in that world for good, and a look, then appears on a road within about 300 m of someone. A browser that knows a world asks where to play when it opens.
 
 Buildings are shared: whoever goes in first decides what's there, and from then on everyone sees the same rooms, what's been taken or moved, holes, lights and things dropped, as they happen. If two people grab one thing, the first to reach the server gets it. People on your floor are drawn with their names, and block you.

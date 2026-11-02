@@ -98,6 +98,22 @@ test('those who are away or indoors aren\'t solid outdoors, and others are', () 
   assert.equal(people.solidNow(800).length, 0);
 });
 
+test('right now is further on than what\'s drawn, as the drawing is a moment behind', () => {
+  const people = crowd();
+  people.heard(place({ speed: 20, seq: 1 }), 1000);
+  people.heard(place({ speed: 20, seq: 2, lat: AT.lat + 2 * metre }), 1100);
+  assert.ok(people.nowAt('dana', 1200).lat > people.drawnAt('dana', 1200).lat);
+  near(people.nowAt('dana', 1200).lat, AT.lat + 4 * metre, 1e-6);
+  assert.equal(people.nowAt('dana', 99999), null, 'and nothing for someone gone quiet');
+  assert.equal(people.nowAt('nobody', 0), null);
+});
+
+test('a car isn\'t solid as a person: it has its own shape', () => {
+  const people = crowd();
+  people.heard(place({ flags: 0 }), 0);
+  assert.equal(people.solidNow(100).length, 0);
+});
+
 test('someone counts as near within 100 m', () => {
   const people = crowd();
   people.heard(place({ lat: AT.lat + 50 * metre }), 0);

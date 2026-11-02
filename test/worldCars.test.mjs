@@ -5,6 +5,7 @@ import { FLAG_BRIDGE } from '../public/js/road.js';
 import { GAME } from '../public/js/gameConfig.js';
 import { SAYINGS } from '../public/js/sayingsConfig.js';
 import { SharedCars } from '../public/js/sharedWorld.js';
+import { BumpLimit, carTouchesPerson, carsTouch, closingSpeed, firstHit } from '../public/js/collide.js';
 import { metresApart } from '../public/js/protocol.js';
 
 const METRE = 1 / 111320;
@@ -73,4 +74,88 @@ test('around shows parked cars, a moved one where it now is, and not those being
   assert.ok(metresApart(cars.around(planted[3], 5000, 1)[0], planted[3]) < 1, 'nearest first');
   cars.plantFrom(new Map());
   assert.equal(cars.plantedTiles.size, 0, 'and a tile let go of takes its cars with it');
+});
+
+const CAR_BOX = { halfWidth: 1, halfLength: 2.2 };
+const METRE_LAT = 1 / 111320;
+const north = (metres) => ({ lat: 38.9 + metres * METRE_LAT, lng: -77.4 });
+const parked = (metres, over = {}) => ({ id: 'p', kind: 'parked', ...north(metres), heading: 0, speed: 0, ...CAR_BOX, ...over });
+const driving = (metres, speed, heading = 0) => ({ ...north(metres), heading, speed, ...CAR_BOX });
+
+test('cars touch when their rectangles do, turned or not', () => {
+  const at = (x, y, heading = 0) => ({ x, y, heading, ...CAR_BOX });
+  assert.equal(carsTouch(at(0, 0), at(0, 4)), true, 'nose to tail, overlapping');
+  assert.equal(carsTouch(at(0, 0), at(0, 5)), false);
+  assert.equal(carsTouch(at(0, 0), at(1.9, 0)), true, 'side by side');
+  assert.equal(carsTouch(at(0, 0), at(2.1, 0)), false);
+  assert.equal(carsTouch(at(0, 0, 90), at(0, 3.3)), false, 'a car across the road reaches less far that way');
+  assert.equal(carsTouch(at(0, 0, 90), at(0, 3.1)), true);
+  assert.equal(carsTouch(at(0, 0, 90), at(0, 2.9, 90)), false);
+  assert.equal(carsTouch(at(0, 0, 90), at(4, 0, 90)), true);
+  assert.equal(carsTouch(at(0, 0, 45), at(2.5, 2.5, 45)), true);
+  assert.equal(carsTouch(at(0, 0, 45), at(2.5, -2.5, 45)), false, 'beside it, on the diagonal');
+});
+
+test('a car touches a person at its edge', () => {
+  const car = { x: 0, y: 0, heading: 0, ...CAR_BOX };
+  assert.equal(carTouchesPerson(car, { x: 0, y: 2.5 }, 0.35), true);
+  assert.equal(carTouchesPerson(car, { x: 0, y: 2.6 }, 0.35), false);
+  assert.equal(carTouchesPerson(car, { x: 1.3, y: 0 }, 0.35), true);
+  assert.equal(carTouchesPerson(car, { x: 1.4, y: 0 }, 0.35), false);
+});
+
+test('a car hits what\'s ahead, and says how fast and how far to go back', () => {
+  const hit = firstHit(driving(1, 20), 0.5, [parked(5)]);
+  assert.ok(hit);
+  assert.equal(hit.closing, 20);
+  assert.ok(hit.back > 0);
+  assert.equal(firstHit(driving(1, 20), 0.5, [parked(10)]), null, 'not yet');
+  assert.equal(firstHit(driving(1, 20), 0.5, []), null);
+});
+
+test('at any speed nothing is jumped over', () => {
+  const fast = driving(100, 223), moved = 223 / 10; // a whole 10 fps frame at top speed
+  const hit = firstHit({ ...fast, ...north(100) }, moved, [parked(90)]);
+  assert.ok(hit, 'it was in the way');
+  assert.ok(hit.back > 3, `stops well short of where it would have got to: ${hit.back}`);
+  assert.equal(firstHit({ ...fast, ...north(100) }, moved, [parked(150)]), null, 'beyond it, nothing');
+});
+
+test('reversing hits what\'s behind', () => {
+  const hit = firstHit(driving(0, -5), -0.2, [parked(-4)]);
+  assert.ok(hit);
+  assert.equal(hit.closing, 5);
+  assert.equal(firstHit(driving(0, -5), -0.2, [parked(4.5)]), null);
+});
+
+test('a car already touching something can drive away from it', () => {
+  assert.equal(firstHit(driving(0, 5), 0.1, [parked(-4)]), null, 'forward, from what\'s behind');
+  assert.equal(firstHit(driving(0, -5), -0.1, [parked(4)]), null, 'back, from what\'s ahead');
+  assert.ok(firstHit(driving(0, 5), 0.1, [parked(4)]), 'but not further in');
+  assert.equal(firstHit(driving(0, 0), 0, [parked(4)]), null, 'and sitting still does nothing');
+});
+
+test('closing speed is how fast two are coming together', () => {
+  const toward = { x: 0, y: 1 };
+  assert.equal(closingSpeed({ heading: 0, speed: 20 }, { heading: 180, speed: 25 }, toward), 45, 'head on adds up');
+  assert.equal(closingSpeed({ heading: 0, speed: 30 }, { heading: 0, speed: 20 }, toward), 10, 'catching up is the difference');
+  assert.equal(closingSpeed({ heading: 0, speed: 20 }, { heading: 0, speed: 30 }, toward), 0, 'being left behind is nothing');
+  assert.equal(closingSpeed({ heading: 180, speed: 20 }, { speed: 0 }, toward), 0, 'nor is moving away');
+  assert.ok(Math.abs(closingSpeed({ heading: 90, speed: 20 }, { heading: 0, speed: 0 }, { x: 0, y: 1 })) < 1e-9, 'passing across isn\'t closing');
+});
+
+test('a moving car and a person are both hit', () => {
+  const hit = firstHit(driving(0, 10), 0.2, [{ id: 'd', kind: 'car', ...north(4), heading: 180, speed: 10, ...CAR_BOX }]);
+  assert.equal(hit.closing, 20);
+  const person = firstHit(driving(0, 10), 0.2, [{ id: 'p', kind: 'person', ...north(2.5), radius: 0.35 }]);
+  assert.equal(person.closing, 10);
+  assert.equal(person.other.kind, 'person');
+});
+
+test('bumps between two things come at most once in a while', () => {
+  const limit = new BumpLimit(1000);
+  assert.equal(limit.allows('a', 0), true);
+  assert.equal(limit.allows('a', 500), false);
+  assert.equal(limit.allows('b', 500), true, 'something else is its own');
+  assert.equal(limit.allows('a', 1000), true);
 });

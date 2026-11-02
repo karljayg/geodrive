@@ -65,8 +65,9 @@ function personMesh(frame) {
 
 export class Foot {
   // cars: those that can be walked up to, { x, y, heading, halfWidth, halfLength } in metres from the origin. tiles: the RoadTiles that fetches the same map tiles for driving. view: the camera to match.
-  constructor({ canvas, origin, heading, cars, buildings, look, others, roomPeople, tiles, view, onLocked, onLoadCar, onFound, onSlept, roughChoices, drops, onDropsChanged, hasKey, hasHammer, onSay, onGetIn, onOpenBag, onUsed, onSound }) {
+  constructor({ canvas, origin, heading, cars, buildings, look, others, carsDriven, roomPeople, tiles, view, onLocked, onLoadCar, onFound, onSlept, roughChoices, drops, onDropsChanged, hasKey, hasHammer, onSay, onGetIn, onOpenBag, onUsed, onSound }) {
     this.saved = buildings; // the store of buildings entered, from the world
+    this.carsDriven = carsDriven; // others' cars, moving, which block as parked ones do: (at) => [{ lat, lng, heading, halfWidth, halfLength }]
     this.gave = new Map();  // what's gone in the bag from each thing, in case someone else turns out to have got there first
     this.canvas = canvas;
     this.roomPeople = roomPeople; // who else is on this floor, in a shared world: (building, floor) => [{ member, place }]
@@ -117,7 +118,19 @@ export class Foot {
   // The parked cars' outlines, in whatever size the Settings panel has them right now.
   setCars(cars) {
     this.cars = cars;
-    this.world.carWalls = cars.flatMap((car) => carWalls(car.heading, car.halfWidth, car.halfLength, car.x, car.y));
+    this.parkedWalls = cars.flatMap((car) => carWalls(car.heading, car.halfWidth, car.halfLength, car.x, car.y));
+    this.world.carWalls = this.parkedWalls;
+  }
+
+  // Moving cars block too, wherever they've got to this frame.
+  syncDrivenCars() {
+    if (!this.carsDriven) return;
+    const driven = this.carsDriven(this.where());
+    if (!driven.length && this.world.carWalls === this.parkedWalls) return;
+    this.world.carWalls = driven.length ? [...this.parkedWalls, ...driven.flatMap((car) => {
+      const { x, y } = toLocal(this.origin, car.lat, car.lng);
+      return carWalls(car.heading, car.halfWidth, car.halfLength, x, y);
+    })] : this.parkedWalls;
   }
 
   // Height above the ground under the car, or null if that tile isn't here yet.
@@ -626,6 +639,7 @@ export class Foot {
   }
 
   update(dt, input, hour) {
+    this.syncDrivenCars();
     if (!this.alive || gl.lost) return;
     const now = performance.now();
     if (now - this.lookedAt > LOOK_EVERY) {

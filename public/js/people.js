@@ -88,6 +88,13 @@ export class People {
     return placeAt(known.list, now - DRAW_BEHIND);
   }
 
+  // Where they are right now, as best anyone can tell: their last place carried on by their speed, not the smoothed picture drawn a moment ago. For collisions.
+  nowAt(id, now) {
+    const known = this.places.get(id);
+    if (!known || now - known.list.at(-1).at > QUIET) return null;
+    return placeAt(known.list, now);
+  }
+
   // Their best known place, however old, for a phone: the latest news, or where they were when they left.
   lastKnown(id) {
     const known = this.places.get(id)?.list.at(-1), member = this.members.get(id);
@@ -111,7 +118,7 @@ export class People {
   solidNow(now) {
     return this.othersOnline.flatMap((member) => {
       const there = this.drawnAt(member.id, now);
-      return there && !(there.flags & (FLAGS.away | FLAGS.indoors)) ? [there] : [];
+      return there && there.flags & FLAGS.onFoot && !(there.flags & (FLAGS.away | FLAGS.indoors)) ? [there] : []; // a car has its own shape
     });
   }
 }

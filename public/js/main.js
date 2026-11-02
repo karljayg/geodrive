@@ -24,6 +24,7 @@ import { Soundtrack } from './musicPlayer.js';
 import { needsEntry, openWorld } from './world.js';
 import { FLAGS } from './protocol.js';
 import { bearingBetween, initialsOf, statusLine } from './people.js';
+import { BOUNCE, BumpLimit, firstHit } from './collide.js';
 import { DEFAULTS, saveSettings, settings } from './settings.js';
 import { RoadTiles } from './tiles.js';
 import { Terrain } from './terrain.js';
@@ -760,6 +761,7 @@ function frame(t) {
     const meters = stepCar(car, controls, dt);
     followRoad(!!controls.steer, guide, dt);
     if (meters) Object.assign(pos, move(pos.lat, pos.lng, car.heading, meters));
+    if (world.rules.people) hitAnything(meters);
     updateTrip(trip, dt, meters, { speed: car.speed, fsd, onRoad: !!match, onBridge });
     burnFuel(trip, dt);
     const profile = profileFor(carType());
@@ -1040,7 +1042,7 @@ async function startWalking() {
     const { Foot, PERSON_SIZE: personSize } = await import('./foot.js'); // only those who walk load any of this
     await makePeople();
     (await pocketReady()).close();
-    foot = new Foot({ onGetIn: () => (world.rules.ownCar ? stopFoot() : getInWorldCar(foot.carHere()?.record)), onOpenBag: () => { if (!pocket.bagOpen) pocket.toggleBag(); }, drops, onDropsChanged: () => { dropsSyncedAt = -Infinity; }, onSound: sfx, onUsed: (effect, count) => { vitals.apply(effect, count); }, hasKey: () => pocket.data.bagHas(BUILDING_KEY), hasHammer: () => pocket.data.bagHas(GAME.hammer.item), onSay: (text) => notice(text, 3000), onLocked: showLocked, onLoadCar: loadCar, onFound: (name) => pocket.collect(name), onSlept: sleepUntilMorning, roughChoices, canvas: el('foot'), origin: { lat: pos.lat, lng: pos.lng }, heading: car.heading, cars: footCars(), buildings, look, others: world.rules.people ? () => world.people.solidNow(performance.now()) : null, roomPeople: world.rules.people ? (building, floor) => world.peopleOnFloor(building, floor, performance.now()) : null, tiles, view: { tilt: CAMERAS[0].tilt, range: CAMERAS[0].range * FOOT_RANGE_SHARE, fov: FOV_Y, below: CAR_BELOW_CENTRE } });
+    foot = new Foot({ onGetIn: () => (world.rules.ownCar ? stopFoot() : getInWorldCar(foot.carHere()?.record)), onOpenBag: () => { if (!pocket.bagOpen) pocket.toggleBag(); }, drops, onDropsChanged: () => { dropsSyncedAt = -Infinity; }, onSound: sfx, onUsed: (effect, count) => { vitals.apply(effect, count); }, hasKey: () => pocket.data.bagHas(BUILDING_KEY), hasHammer: () => pocket.data.bagHas(GAME.hammer.item), onSay: (text) => notice(text, 3000), onLocked: showLocked, onLoadCar: loadCar, onFound: (name) => pocket.collect(name), onSlept: sleepUntilMorning, roughChoices, canvas: el('foot'), origin: { lat: pos.lat, lng: pos.lng }, heading: car.heading, cars: footCars(), buildings, look, others: world.rules.people ? () => world.people.solidNow(performance.now()) : null, carsDriven: world.rules.people ? (at) => carsDrivenNear(at, performance.now()) : null, roomPeople: world.rules.people ? (building, floor) => world.peopleOnFloor(building, floor, performance.now()) : null, tiles, view: { tilt: CAMERAS[0].tilt, range: CAMERAS[0].range * FOOT_RANGE_SHARE, fov: FOV_Y, below: CAR_BELOW_CENTRE } });
     showPerson(personSize);
   } catch (err) {
     console.warn('getting out:', err);
@@ -2568,6 +2570,55 @@ let peopleView = null, chatView = null, firstAppearance = false;
 const SIT_GAIT = 17; // SIT_FRAME in footPerson.js, which only those who walk load
 const badgeColour = (member) => member.colours?.jacket ?? '#5a6470';
 
+// Everything a car could hit right now: parked cars, others' cars and people, where they are this instant.
+const bumps = new BumpLimit(), PERSON_REACH = 0.35;
+function carShape(type) {
+  const shape = BODY_SHAPES[type] || BODY_SHAPES.sport;
+  return { halfWidth: shape.w * DEFAULTS.carScale, halfLength: shape.l * DEFAULTS.carScale };
+}
+function obstacles(now) {
+  const list = world.cars.around(pos, 40, 12).filter((known) => known.id !== myCar?.id).map((known) => ({ id: known.id, kind: 'parked', lat: known.lat, lng: known.lng, heading: known.heading, speed: 0, ...carShape(known.type) }));
+  for (const member of world.people.othersOnline) {
+    const there = world.people.nowAt(member.id, now);
+    if (!there || there.flags & FLAGS.indoors) continue;
+    if (there.flags & FLAGS.onFoot) {
+      if (!(there.flags & FLAGS.away)) list.push({ id: member.id, member: member.id, kind: 'person', lat: there.lat, lng: there.lng, radius: PERSON_REACH, speed: 0, heading: 0 });
+      continue;
+    }
+    const driven = [...world.cars.records.values()].find((known) => known.driver === member.id);
+    list.push({ id: member.id, member: member.id, kind: 'car', lat: there.lat, lng: there.lng, heading: there.heading, speed: there.speed, ...carShape(driven?.type) });
+  }
+  return list;
+}
+
+// What's solid about others' cars to someone on foot.
+function carsDrivenNear(at, now) {
+  return world.people.othersOnline.flatMap((member) => {
+    const there = world.people.nowAt(member.id, now);
+    if (!there || there.flags & (FLAGS.onFoot | FLAGS.indoors)) return [];
+    const driven = [...world.cars.records.values()].find((known) => known.driver === member.id);
+    return [{ lat: there.lat, lng: there.lng, heading: there.heading, ...carShape(driven?.type) }];
+  });
+}
+
+// Each frame at the wheel. Stops this car at whatever it hits, and tells the other game.
+function hitAnything(meters) {
+  if (!meters) return;
+  const now = performance.now(), hit = firstHit({ ...pos, heading: car.heading, speed: car.speed, ...carShape(myCar?.type) }, meters, obstacles(now));
+  if (!hit) return;
+  Object.assign(pos, move(pos.lat, pos.lng, car.heading, -hit.back));
+  stoppedByHit(hit.other, hit.closing);
+}
+
+function stoppedByHit(other, closing) {
+  car.speed = -Math.sign(car.speed || 1) * Math.min(BOUNCE, Math.abs(car.speed));
+  setFsd(false);
+  if (!bumps.allows(other.id, performance.now())) return;
+  if (closing > 2) sfx('thud');
+  perfLog.event('bump', { kind: other.kind, mph: Math.round(closing * MPS_TO_MPH) });
+  if (other.member) world.link.send({ t: 'bump', to: other.member, closing });
+}
+
 // What's sent about this person. A timer asks, as the game loop stops in a hidden tab.
 function whereIAm() {
   if (!map) return null;
@@ -2627,6 +2678,12 @@ async function startPeople() {
     canShow: (thread) => !(pocket?.app === 'messages' && world.chat.threadWith(pocket.contact === 'group' ? null : pocket.contact) === thread),
   });
   world.whereAmI = whereIAm;
+  world.on.bumped = ({ by, closing }) => {
+    if (foot) return; // someone on foot just stands there, for now
+    car.speed = -Math.sign(car.speed || 1) * Math.min(BOUNCE, Math.abs(car.speed));
+    if (bumps.allows(by, performance.now()) && closing > 2) sfx('thud');
+    setFsd(false);
+  };
   setInterval(() => {
     world.cars.plantFrom(tiles.waysOf);
     if (foot) foot.setCars(worldCarsNear(pos));

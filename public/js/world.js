@@ -265,6 +265,8 @@ export class PrivateWorld extends World {
       this.buildings.heardSwitchesOn(message);
     } else if (message.t === 'dropAdded') {
       this.drops.heardAdded(message.drop);
+    } else if (message.t === 'bumped') {
+      this.on.bumped?.(message);
     } else if (message.t === 'car') {
       this.cars.heard(message.car);
     } else if (message.t === 'dropTaken') {
