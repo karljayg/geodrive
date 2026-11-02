@@ -56,10 +56,11 @@ export class Pocket {
     this.recentStation = null;
     this.shown = {};       // what the live figures last said, so nothing is written that hasn't changed
     root.innerHTML = `
-      <div class="tray"><div class="trayClock" title="The time here"><div class="trayDial"><i class="hour"></i><i class="minute"></i></div><span class="trayLabel" data-tray-clock></span></div>${TRAY.map((item) => `<button class="trayItem" data-tray="${item.id}" title="${item.label} (${item.key.toUpperCase()})"><span class="trayArt">${picture(item.art)}</span><span class="trayLabel">${item.html}</span></button>`).join('')}</div>
+      <div class="footKeys">Walk (W A S D) · Run (Shift) · Jump (Space) · View (Q E) · Use (F) · Mute (M) · Radio (N) · Time (T)</div>
+      <div class="tray"><button class="trayClock" data-tray="clock" title="The time here. Click or press T to move it on an hour."><span class="trayDial"><i class="hour"></i><i class="minute"></i></span><span class="trayLabel" data-tray-clock></span></button>${TRAY.map((item) => `<button class="trayItem" data-tray="${item.id}" title="${item.label} (${item.key.toUpperCase()})"><span class="trayArt">${picture(item.art)}</span><span class="trayLabel">${item.html}</span></button>`).join('')}</div>
       <div class="device" hidden>
         <div class="screen">
-          <div class="statusBar"><span data-clock></span><span class="island"></span><button data-close aria-label="Put the phone away" title="Put the phone away (Esc)">✕</button></div>
+          <div class="statusBar"><span data-clock></span><span class="island"></span><button data-close aria-label="Put the phone away" title="Put the phone away (Esc)"><span class="keyHint">Esc</span> ✕</button></div>
           <div class="appArea"></div>
           <button class="homeBar" data-home aria-label="Home screen"></button>
         </div>
@@ -136,6 +137,7 @@ export class Pocket {
     if (id === 'phone') return this.app ? this.closePhone() : this.openApp('home');
     if (id === 'bag') return this.toggleBag();
     if (id === 'flash') return this.calls.flashlight();
+    if (id === 'clock') return this.calls.addHour();
     const app = id === 'notepad' ? 'notes' : id;
     return this.app === app ? this.closePhone() : this.openApp(app);
   }
@@ -223,9 +225,16 @@ export class Pocket {
       return true;
     }
     if (this.app === 'call' && this.pressDialKey(key)) return true;
-    if (this.app === 'notes' && !this.note && key === 'n') {
-      this.calls.sound('paper');
-      this.openNote(this.data.addNote().id);
+    if (this.app === 'notes' && this.pressNotesKey(key)) return true;
+    if (this.app === 'messages' && this.pressMessagesKey(key)) return true;
+    if (this.app === 'health' && key === 'x') {
+      this.startOver();
+      return true;
+    }
+    if (this.app === 'music' && (key === ',' || key === '.')) {
+      const volume = Math.max(0, Math.min(1, this.calls.radioVolume() + (key === ',' ? -0.05 : 0.05)));
+      this.calls.setRadioVolume(volume);
+      this.area.querySelector('[data-volume]').value = volume;
       return true;
     }
     if (this.app === 'map' && (key === '-' || key === '=' || key === '+')) {
@@ -248,6 +257,47 @@ export class Pocket {
     const item = TRAY.find((t) => t.key === key);
     if (item) this.press(item.id);
     return !!item;
+  }
+
+  // In Notes, numbers open the list's notes, and 0 and Delete work on an open one (Esc first if the cursor is in it). True if it used the key.
+  pressNotesKey(key) {
+    if (this.note) {
+      if (key === '0') this.openApp('notes');
+      else if (key === 'delete') this.deleteNote();
+      else return false;
+      return true;
+    }
+    if (key === 'n') {
+      this.calls.sound('paper');
+      this.openNote(this.data.addNote().id);
+      return true;
+    }
+    const note = /^[1-9]$/.test(key) && this.data.notes[Number(key) - 1];
+    if (!note) return /^[1-9]$/.test(key);
+    this.openNote(note.id);
+    return true;
+  }
+
+  async deleteNote() {
+    const id = this.note;
+    if (!await this.calls.confirm('Delete this note?', 'It can\'t be brought back.', 'Delete')) return;
+    this.note = null;
+    this.data.deleteNote(id);
+    this.openApp('notes');
+  }
+
+  // In Messages, numbers pick a contact, and 0 goes back to the list from a conversation. True if it used the key.
+  pressMessagesKey(key) {
+    if (this.contact) {
+      if (key !== '0') return false;
+      this.contact = null;
+      this.render();
+      return true;
+    }
+    if (!/^[1-9]$/.test(key)) return false;
+    const contact = CONTACTS[Number(key) - 1];
+    if (contact) this.openThread(contact.id);
+    return true;
   }
 
   // In the Phone app, the keyboard is its dial pad. True if it used the key.
@@ -297,7 +347,7 @@ export class Pocket {
     else if ('newNote' in button.dataset) { this.calls.sound('paper'); this.openNote(this.data.addNote().id); }
     else if ('openNote' in button.dataset) this.openNote(button.dataset.openNote);
     else if ('notesBack' in button.dataset) this.openApp('notes');
-    else if ('deleteNote' in button.dataset) { const id = this.note; this.note = null; this.data.deleteNote(id); this.openApp('notes'); }
+    else if ('deleteNote' in button.dataset) this.deleteNote();
     else if (thread) this.openThread(thread);
     else if ('threadsBack' in button.dataset) { this.contact = null; this.render(); }
     else if ('send' in button.dataset) this.sendText();
@@ -340,7 +390,7 @@ export class Pocket {
     };
     this.area.innerHTML = `${this.title('Health')}<table class="healthTable"><tr><td></td><td>Now</td><td>Rate</td><td>Left</td></tr>${rows.map(row).join('')}</table>
       <p class="healthTotals">Day ${Math.floor(state.hours / 24) + 1}. Eaten ${t.food}, drinks ${t.drink}, restroom ${t.restroom}, accidents ${t.accidents}, slept ${t.sleeps} times, collapsed ${t.collapses}.</p>
-      <button class="healthReset" data-health-reset>Start over</button>`;
+      <button class="healthReset" data-health-reset>Start over <span class="keyHint">(X)</span></button>`;
   }
 
   // What the game has said, newest first, as a message on screen goes after a few seconds.
@@ -369,7 +419,7 @@ export class Pocket {
         <button class="play" data-toggle-music title="Play or pause (N)" aria-label="Play or pause"></button>
         <button data-next title="Next station ( ] )" aria-label="Next station">${ART.next()}</button>
       </div>
-      <label class="volume">Volume <input type="range" min="0" max="1" step="0.05" data-volume></label>
+      <label class="volume">Volume <span class="keyHint">(, .)</span> <input type="range" min="0" max="1" step="0.05" data-volume></label>
       <p class="small" data-music-note></p>
       <div class="recent" data-recent></div></div>`;
     const volume = this.area.querySelector('[data-volume]');
@@ -394,7 +444,7 @@ export class Pocket {
   renderNotes() {
     const { notes } = this.data;
     this.area.innerHTML = `${this.title('Notes', '<button class="appAction" data-new-note>+ <u>N</u>ew</button>')}<div class="list">${notes.length
-      ? notes.map((n) => `<button class="row" data-open-note="${esc(n.id)}"><b>${esc(noteTitle(n))}</b><small>${esc(new Date(n.at).toLocaleDateString())}</small></button>`).join('')
+      ? notes.map((n, i) => `<button class="row" data-open-note="${esc(n.id)}"><b>${i < 9 ? `<kbd>${i + 1}</kbd> ` : ''}${esc(noteTitle(n))}</b><small>${esc(new Date(n.at).toLocaleDateString())}</small></button>`).join('')
       : '<p class="empty">No notes yet. Press + New to write one.</p>'}</div>`;
   }
 
@@ -402,7 +452,7 @@ export class Pocket {
     const note = this.data.notes.find((n) => n.id === id);
     if (!note) return;
     this.note = id;
-    this.area.innerHTML = `<div class="appTitle"><button class="appBack" data-notes-back>‹ Notes</button><button class="appAction danger" data-delete-note>Delete</button></div><textarea class="noteText" placeholder="Write anything here" aria-label="Note"></textarea>`;
+    this.area.innerHTML = `<div class="appTitle"><button class="appBack homeLink" data-notes-back>‹ Notes <kbd>0</kbd></button><button class="appAction danger" data-delete-note>Delete <span class="keyHint">(Del)</span></button></div><textarea class="noteText" placeholder="Write anything here. Esc to stop typing." aria-label="Note"></textarea>`;
     const box = this.area.querySelector('textarea');
     box.value = note.text;
     box.addEventListener('input', () => this.data.setNote(id, box.value));
@@ -411,16 +461,16 @@ export class Pocket {
 
   renderMessages() {
     if (this.contact) return this.openThread(this.contact);
-    this.area.innerHTML = `${this.title('Messages')}<div class="list">${CONTACTS.map((c) => {
+    this.area.innerHTML = `${this.title('Messages')}<div class="list">${CONTACTS.map((c, i) => {
       const last = this.data.thread(c.id).at(-1);
-      return `<button class="row" data-thread="${c.id}"><b>${esc(c.name)}</b><small>${last ? esc(last.text.slice(0, 34)) : 'No messages yet'}</small></button>`;
+      return `<button class="row" data-thread="${c.id}"><b><kbd>${i + 1}</kbd> ${esc(c.name)}</b><small>${last ? esc(last.text.slice(0, 34)) : 'No messages yet'}</small></button>`;
     }).join('')}</div>`;
   }
 
   openThread(id) {
     const contact = CONTACTS.find((c) => c.id === id);
     this.contact = id;
-    this.area.innerHTML = `<div class="appTitle"><button class="appBack" data-threads-back>‹ Messages</button><h2>${esc(contact.name)}</h2></div>
+    this.area.innerHTML = `<div class="appTitle"><button class="appBack homeLink" data-threads-back>‹ Messages <kbd>0</kbd></button><h2>${esc(contact.name)}</h2></div>
       <div class="bubbles">${this.data.thread(id).map((m) => `<div class="bubble ${m.mine ? 'mine' : ''}">${esc(m.text)}</div>`).join('') || '<p class="empty">Say something.</p>'}</div>
       <form class="sendBox"><input type="text" placeholder="Text message" aria-label="Text message" maxlength="400"><button data-send aria-label="Send">↑</button></form>`;
     const list = this.area.querySelector('.bubbles');
@@ -467,13 +517,13 @@ export class Pocket {
 
   renderCall() {
     if (this.calling) {
-      this.area.innerHTML = `<div class="callScreen"><div class="caller">${esc(this.calling.name)}</div><div class="callState">${esc(this.calling.state)}</div><button class="hangUp" data-hang-up aria-label="Hang up">${picture('call')}</button><span>Hang up</span></div>`;
+      this.area.innerHTML = `<div class="callScreen"><div class="caller">${esc(this.calling.name)}</div><div class="callState">${esc(this.calling.state)}</div><button class="hangUp" data-hang-up aria-label="Hang up">${picture('call')}</button><span>Hang up <span class="keyHint">(Enter)</span></span></div>`;
       return;
     }
     const keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '*', '0', '#'];
     this.area.innerHTML = `${this.title('Phone', '', false)}<div class="dialled">${esc(this.dialled || '') || '&nbsp;'}</div>
       <div class="dialPad">${keys.map((k) => `<button data-digit="${k}">${k}</button>`).join('')}</div>
-      <div class="dialActions"><button class="dialGo" data-dial-go aria-label="Call">${picture('call')}</button><button class="dialClear" data-dial-clear aria-label="Delete a digit">⌫</button></div>
+      <p class="small">Type to dial · Enter calls · Backspace deletes</p><div class="dialActions"><button class="dialGo" data-dial-go aria-label="Call" title="Call (Enter)">${picture('call')}</button><button class="dialClear" data-dial-clear title="Delete a digit (Backspace)" aria-label="Delete a digit">⌫</button></div>
       <div class="list short">${CONTACTS.map((c) => `<button class="row" data-dial-contact="${c.number}"><b>${esc(c.name)}</b><small>${c.number}</small></button>`).join('')}</div>`;
   }
 
@@ -492,9 +542,9 @@ export class Pocket {
       : '<div class="bagSlot"></div>')).join('');
     this.nearShown = near;
     this.bagPanel.classList.toggle('withCar', near);
-    this.bagPanel.innerHTML = `<div class="bagHead"><span class="bagArt">${picture('bag')}</span><h2>Bag</h2><small>${bag.length} of ${BAG_SLOTS}</small><button data-close-bag aria-label="Close" title="Close (Esc)">✕</button></div>
+    this.bagPanel.innerHTML = `<div class="bagHead"><span class="bagArt">${picture('bag')}</span><h2>Bag</h2><small>${bag.length} of ${BAG_SLOTS}</small><button data-close-bag aria-label="Close" title="Close (Esc)"><span class="keyHint">Esc</span> ✕</button></div>
       <div class="bagGrid">${slots(bag, BAG_SLOTS, 'bag')}</div>
-      <p class="empty">${near ? 'Click something, or press its number, to move it between your bag and the car.' : 'Stand next to the car to reach its storage.'}${this.data.bagHas('Flashlight') ? ` Press ${(this.data.bag.findIndex((i) => i.id === 'Flashlight') + 1) % 10} or G to turn on the flashlight.` : ''} A number eats, drinks or uses what's in that slot.</p>
+      <p class="empty">${near ? 'Click something, or press its number, to move it between your bag and the car.' : 'Stand next to the car to reach its storage.'}${this.data.bagHas('Flashlight') ? ` Press ${(this.data.bag.findIndex((i) => i.id === 'Flashlight') + 1) % 10} or G to turn on the flashlight.` : ''} A number eats, drinks or uses what's in that slot, and Shift and a number drops it.</p>
       ${near ? `<div class="bagHead carHead"><h2>Car storage</h2><small>${car.length} of ${CAR_SLOTS}</small></div><div class="bagGrid carGrid">${slots(car, CAR_SLOTS, 'car')}</div>` : ''}`;
   }
 

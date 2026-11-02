@@ -56,7 +56,7 @@ export const KEY_LIST = {
       { name: 'Doing things', keys: [
         [['L'], 'Car, doors, stairs and lifts'],
         [['Shift', 'L'], 'Downstairs, between floors'],
-        [['F'], 'Use what\'s near. It asks: F or a number says yes, walking away says no'],
+        [['F'], 'Use what\'s near. It asks: F or a number says yes, walking away or Esc says no. At the car, it offers to load it'],
         [['G'], 'Flashlight'],
       ] },
       { name: 'What you carry', keys: [
@@ -67,7 +67,14 @@ export const KEY_LIST = {
       ] },
       { name: 'Phone', keys: [
         [['1–9'], 'Open an app'],
-        [['0'], 'Home screen (in the Phone app, numbers dial)'],
+        [['0'], 'Home screen, or back a step'],
+        [['1–9'], 'In Phone: dial. In Notes and Messages: pick from the list'],
+        [['Enter'], 'In Phone: call or hang up'],
+        [['N'], 'In Notes: new note'],
+        [['Del'], 'In a note: delete it'],
+        [['-', '='], 'In Map: zoom'],
+        [[',', '.'], 'In Music: volume'],
+        [['X'], 'In Health: start over'],
       ] },
       { name: 'Bag open', keys: [
         [['1–0'], 'Use or move that slot'],

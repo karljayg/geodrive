@@ -55,7 +55,7 @@ function personMesh(frame) {
 
 export class Foot {
   // tiles: the RoadTiles that fetches the same map tiles for driving. view: the camera to match.
-  constructor({ canvas, origin, heading, profile, scale, tiles, view, onLocked, onFound, onSlept, drops, onDropsChanged, hasKey, onUsed, onSound }) {
+  constructor({ canvas, origin, heading, profile, scale, tiles, view, onLocked, onLoadCar, onFound, onSlept, drops, onDropsChanged, hasKey, onUsed, onSound }) {
     this.hasKey = hasKey;
     this.drops = drops;
     this.onDropsChanged = onDropsChanged;
@@ -65,6 +65,7 @@ export class Foot {
     gl.onRestored = () => this.rebuildAll();
     this.view = view;
     this.onLocked = onLocked;
+    this.onLoadCar = onLoadCar; // F at the car, answered yes
     this.onFound = onFound;   // given a thing for the bag, returns false if there's no room
     this.onSlept = onSlept;
     this.pose = null;         // sitting or lying on something
@@ -346,6 +347,7 @@ export class Foot {
     if (this.pose) return [];
     const building = this.walker.inside, record = this.room?.furnishing?.record;
     const list = this.dropsInReach().map((drop) => ({ label: `Pick up the ${drop.name.toLowerCase()}?`, run: () => this.pickUpDrop(drop) }));
+    if (this.canGetIn()) list.unshift({ label: 'Load into car?', html: '<u>L</u>oad into car?', key: 'l', run: () => this.onLoadCar?.() });
     if (!building?.plan || !record || !furniture) return uniqueChoices(list);
     if (this.switchHere()) list.push({ label: this.roomLightsOn() ? 'Turn off the lights?' : 'Turn on the lights?', run: () => this.useLightSwitch() });
     if (this.outletHere()) list.push({ label: this.charging ? 'Unplug?' : 'Plug in here?', run: () => this.useOutlet() });

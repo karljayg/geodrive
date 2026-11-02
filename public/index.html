@@ -30,7 +30,7 @@
   <div id="asking"></div>
   <div id="footHint"></div>
   <div id="locked" role="status"><b id="lockedSay"></b><span id="lockedType"></span></div>
-  <div id="liftPanel" role="dialog" aria-label="Lift"><div class="liftHead"><b>Lift</b><button id="liftClose" type="button" aria-label="Stay on this floor" title="Stay on this floor (Esc)">✕</button></div><div id="liftFloors"></div></div>
+  <div id="liftPanel" role="dialog" aria-label="Lift"><div class="liftHead"><b>Lift</b><span class="keyHint">Esc stays</span><button id="liftClose" type="button" aria-label="Stay on this floor" title="Stay on this floor (Esc)">✕</button></div><div id="liftFloors"></div></div>
   <div id="pockets"></div>
   <div id="signalLeft">◀</div>
   <div id="signalRight">▶</div>
@@ -59,7 +59,7 @@
   <div class="centre">
     <div class="navTop">
       <span id="eta" title="Estimated arrival time, time left and miles left"></span>
-      <span class="navKeys">Signal <span class="keyHint">(Q E)</span> · <u>Z</u>oom <span class="keyHint">(Space)</span> · FSD speed <span class="keyHint">(- =)</span></span>
+      <span class="navKeys">Drive (W A S D) · Handbrake (Shift) · Signal <span class="keyHint">(Q E)</span> · <u>Z</u>oom <span class="keyHint">(Space)</span> · FSD speed <span class="keyHint">(- =)</span></span>
       <button id="timeButton" title="Move the time on an hour"><u>T</u>ime +1h</button>
     </div>
     <div class="navBox">
@@ -106,10 +106,10 @@
     <div class="or">Or override it with an address. The car goes on the nearest road, and this becomes your new default.</div>
     <form id="startForm">
       <input id="startAddress" type="text" placeholder="Enter an address" autocomplete="street-address" aria-label="Starting address">
-      <button class="quiet" id="startGo" type="submit">Go</button>
+      <button class="quiet" id="startGo" type="submit">Go <span class="keyHint">(Enter)</span></button>
     </form>
     <div id="startStatus"></div>
-    <button id="resetDefault" type="button">Go back to the original default</button>
+    <button id="resetDefault" type="button">Go back to the original default <span class="keyHint">(Alt+D)</span></button>
   </div>
 </div>
 <div id="shared" role="dialog" aria-label="Shared drive">
@@ -160,11 +160,11 @@
 </div>
 <div id="settings" role="dialog" aria-label="Settings">
   <h2>Settings</h2>
-  <div id="settingsTabs" role="tablist"><button type="button" data-tab="car">Car</button><button type="button" data-tab="foot">On foot</button><button type="button" data-tab="world">World</button><button type="button" data-tab="sound">Sound</button><button type="button" data-tab="graphics">Graphics</button><button type="button" data-tab="diagnostics">Diagnostics</button></div>
+  <div id="settingsTabs" role="tablist"><button type="button" data-tab="car">Car <span class="keyHint">(1)</span></button><button type="button" data-tab="foot">On foot <span class="keyHint">(2)</span></button><button type="button" data-tab="world">World <span class="keyHint">(3)</span></button><button type="button" data-tab="sound">Sound <span class="keyHint">(4)</span></button><button type="button" data-tab="graphics">Graphics <span class="keyHint">(5)</span></button><button type="button" data-tab="diagnostics">Diagnostics <span class="keyHint">(6)</span></button></div>
   <section data-tab="world">
     <h3>Start location</h3>
     <div id="settingsStart"></div>
-    <button class="link" id="changeStart" type="button">Change start location</button>
+    <button class="link" id="changeStart" type="button" data-hotkey="c"><u>C</u>hange start location</button>
   </section>
   <section data-tab="car">
     <h3>Car</h3>
@@ -224,11 +224,11 @@
   <section data-tab="car">
     <h3>Driving</h3>
     <label class="check"><input id="roadFollow" data-setting="roadFollow" type="checkbox"> Follow the road when not steering</label>
-    <button class="link" id="newTrip" type="button">Reset trip stats</button>
+    <button class="link" id="newTrip" type="button" data-hotkey="t">Reset <u>t</u>rip stats</button>
   </section>
   <section data-tab="foot">
     <h3>Buildings</h3>
-    <button class="link" id="forgetBuildings" type="button">Forget building interiors</button>
+    <button class="link" id="forgetBuildings" type="button" data-hotkey="f"><u>F</u>orget building interiors</button>
   </section>
   <section data-tab="diagnostics">
     <h3>Performance</h3>
@@ -237,10 +237,10 @@
     <div id="apiSummary"></div>
     <div id="apiDetail"></div>
     <h3>For the developer</h3>
-    <button class="link" id="sendLog" type="button" title="Sends the performance log to the server for review, including where the car has been">Send log</button>
-    <button class="link" id="settingsCopy" type="button">Copy settings (to make them the new-player defaults)</button>
+    <button class="link" id="sendLog" type="button" data-hotkey="l" title="Sends the performance log to the server for review, including where the car has been">Send <u>l</u>og</button>
+    <button class="link" id="settingsCopy" type="button" data-hotkey="y">Cop<u>y</u> settings (to make them the new-player defaults)</button>
   </section>
-  <button class="link" id="settingsReset" type="button">Reset all to defaults</button>
+  <button class="link" id="settingsReset" type="button" data-hotkey="a">Reset <u>a</u>ll to defaults</button>
   <button class="primary wide" id="settingsDone" type="button">Done <span class="keyHint">(Esc)</span></button>
 </div>
 <div id="dest">
@@ -254,7 +254,7 @@
     <div id="destStatus"></div>
     <div class="row">
       <button class="quiet" id="destCancel" type="button">Cancel <span class="keyHint">(Esc)</span></button>
-      <button class="quiet" id="destClear" type="button">Clear destination</button>
+      <button class="quiet" id="destClear" type="button">Clear destination <span class="keyHint">(Alt+C)</span></button>
     </div>
   </div>
 </div>

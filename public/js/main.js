@@ -878,7 +878,7 @@ async function getOut() {
     const { Foot, PERSON_SIZE: personSize } = await import('./foot.js'); // only those who walk load any of this
     await makePeople();
     (await pocketReady()).close();
-    foot = new Foot({ drops, onDropsChanged: () => { dropsSyncedAt = -Infinity; }, onSound: sfx, onUsed: (effect, count) => { vitals.apply(effect, count); }, hasKey: () => pocket.data.bagHas(BUILDING_KEY), onLocked: showLocked, onFound: (name) => pocket.collect(name), onSlept: sleepUntilMorning, canvas: el('foot'), origin: { lat: pos.lat, lng: pos.lng }, heading: car.heading, profile: settings.carProfile, scale: settings.carScale, tiles, view: { tilt: CAMERAS[0].tilt, range: CAMERAS[0].range * FOOT_RANGE_SHARE, fov: FOV_Y, below: CAR_BELOW_CENTRE } });
+    foot = new Foot({ drops, onDropsChanged: () => { dropsSyncedAt = -Infinity; }, onSound: sfx, onUsed: (effect, count) => { vitals.apply(effect, count); }, hasKey: () => pocket.data.bagHas(BUILDING_KEY), onLocked: showLocked, onLoadCar: loadCar, onFound: (name) => pocket.collect(name), onSlept: sleepUntilMorning, canvas: el('foot'), origin: { lat: pos.lat, lng: pos.lng }, heading: car.heading, profile: settings.carProfile, scale: settings.carScale, tiles, view: { tilt: CAMERAS[0].tilt, range: CAMERAS[0].range * FOOT_RANGE_SHARE, fov: FOV_Y, below: CAR_BELOW_CENTRE } });
     showPerson(personSize);
   } catch (err) {
     console.warn('getting out:', err);
@@ -1004,10 +1004,16 @@ function pressUse() {
   if (!choices.length) return notice(say('nothingHere'), 2000);
   asking = { choices, x: foot.walker.x, y: foot.walker.y, level: foot.level, inside: foot.walker.inside };
   const many = choices.length > 1, box = el('asking');
-  box.innerHTML = `${choices.map(({ label }, i) => `<button data-answer="${i}">${many ? `<kbd>${i + 1}</kbd> ` : ''}${label}</button>`).join('')}
+  box.innerHTML = `${choices.map(({ label, html }, i) => `<button data-answer="${i}">${many ? `<kbd>${i + 1}</kbd> ` : ''}${html || label}</button>`).join('')}
     <small>${many ? 'Press a number, walk away or Esc' : 'F for yes, walk away or Esc'}</small>`;
   box.classList.toggle('many', many);
   document.body.classList.add('asked');
+}
+
+// Bag and car storage side by side, to move things across.
+async function loadCar() {
+  const ready = await pocketReady();
+  if (!ready.bagOpen) ready.toggleBag();
 }
 
 function answer(index) {
@@ -1114,6 +1120,7 @@ async function pocketReady() {
     stowed: () => { if (foot?.light === 'flash') carryLight('flash'); }, // it can't stay on in the car
     flashlightOn: () => foot?.light === 'flash',
     recentSaid: () => recentSaid,
+    addHour,
     confirm: askFirst,
   });
   return pocket;
@@ -1928,7 +1935,22 @@ function showTab(name) {
   for (const b of el('settingsTabs').children) b.classList.toggle('on', b.dataset.tab === name);
   if (name === 'diagnostics') renderApiDetail();
 }
-el('settingsTabs').addEventListener('click', (e) => { if (e.target.dataset.tab) showTab(e.target.dataset.tab); });
+// A tab's number, or the underlined letter of a link on the tab in view.
+function pressSettingsKey(e) {
+  if (e.metaKey || e.ctrlKey || e.altKey || e.repeat) return false;
+  const tabs = [...el('settingsTabs').children], tab = tabs[Number(e.key) - 1];
+  if (tab) {
+    e.preventDefault();
+    showTab(tab.dataset.tab);
+    return true;
+  }
+  const button = [...el('settings').querySelectorAll('[data-hotkey]')].find((b) => b.dataset.hotkey === e.key.toLowerCase() && b.offsetParent);
+  if (!button) return false;
+  e.preventDefault();
+  button.click();
+  return true;
+}
+el('settingsTabs').addEventListener('click', (e) => { const tab = e.target.closest('[data-tab]'); if (tab) showTab(tab.dataset.tab); });
 
 function openSettings() {
   releaseMouse();
@@ -2166,6 +2188,10 @@ document.addEventListener('keydown', (e) => {
     return;
   }
   if (el('settings').classList.contains('open') && e.key.toLowerCase() === 'o') { e.preventDefault(); return closeSettings(); }
+  if (el('settings').classList.contains('open') && !e.target.matches?.('input, select') && pressSettingsKey(e)) return;
+  // A dialog's box takes the letters, so its other button needs Alt. By key position, as Alt changes the letter on a Mac.
+  if (openId === 'dest' && e.altKey && e.code === 'KeyC' && destination) { e.preventDefault(); return el('destClear').click(); }
+  if (openId === 'start' && e.altKey && e.code === 'KeyD' && start !== ORIGINAL_START) { e.preventDefault(); return el('resetDefault').click(); }
   if (dialogOpen) return; // the keys belong to the open dialog
   if (foot?.picking && e.key === 'Enter') { foot.goToFloor(foot.picking.floor); syncLift(); e.preventDefault(); return; }
   if (foot?.picking && /^[0-9]$/.test(e.key)) { foot.typeFloor(e.key); e.preventDefault(); return; }
@@ -2177,6 +2203,9 @@ document.addEventListener('keydown', (e) => {
     return;
   }
   if (k === 'p' && !e.repeat) { e.preventDefault(); return setPaused(true); }
+  // A question with its own letter takes that key first, so L means Load while it's asked, and getting in otherwise.
+  const lettered = asking && !e.repeat ? asking.choices.findIndex((choice) => choice.key === k) : -1;
+  if (lettered >= 0) { e.preventDefault(); return answer(lettered); }
   if (k === 'l' && !e.repeat) { e.preventDefault(); return pressL(); }
   if (asking && /^[1-9]$/.test(k)) { e.preventDefault(); if (!e.repeat) answer(Number(k) - 1); return; }
   if (pocket?.bagOpen && e.shiftKey && !e.repeat && /^Digit\d$/.test(e.code)) { e.preventDefault(); return pocket.dropNumber(e.code.slice(5)); }
