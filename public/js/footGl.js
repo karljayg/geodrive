@@ -4,25 +4,36 @@
 const VERTEX = `#version 300 es
 in vec3 aPos; in vec3 aNor; in vec3 aCol;
 uniform mat4 uViewProj, uModel; uniform vec3 uEye;
-out vec3 vNor, vCol; out float vDist;
+out vec3 vNor, vCol, vWorld; out float vDist;
 void main() {
   vec4 world = uModel * vec4(aPos, 1.0);
   vNor = mat3(uModel) * aNor;
   vCol = aCol;
   vDist = distance(world.xyz, uEye);
+  vWorld = world.xyz;
   gl_Position = uViewProj * world;
 }`;
 const FRAGMENT = `#version 300 es
 precision highp float;
-in vec3 vNor, vCol; in float vDist;
+in vec3 vNor, vCol, vWorld; in float vDist;
 uniform vec3 uTint, uSky; uniform vec2 uFog;
+uniform sampler2D uLightMap; uniform vec4 uLightBox; uniform float uRoomLights;
+uniform vec3 uTorchAt; uniform vec2 uTorchDir; uniform vec3 uTorch;
 out vec4 colour;
 void main() {
   vec3 albedo = vCol;
   vec3 n = normalize(vNor);
   float light = 0.56 + 0.14 * (n.z * 0.5 + 0.5) + 0.36 * max(dot(n, normalize(vec3(0.45, -0.35, 0.82))), 0.0);
+  // Windows alone with the lights off; with them on, windows only brighten what's near them a little.
+  float win = texture(uLightMap, (vWorld.xy - uLightBox.xy) * uLightBox.zw).r;
+  float lit = mix(0.08 + win * 1.05, 0.9 + win * 0.2, uRoomLights);
+  if (uTorch.z > 0.0) {
+    vec2 to = vWorld.xy - uTorchAt.xy;
+    float d = length(to), along = d > 0.01 ? dot(to / d, uTorchDir) : 1.0;
+    lit += uTorch.z * smoothstep(uTorch.y, mix(uTorch.y, 1.0, 0.7), along) * (1.0 - smoothstep(uTorch.x * 0.45, uTorch.x, d));
+  }
   float fog = clamp((vDist - uFog.x) / (uFog.y - uFog.x), 0.0, 1.0);
-  colour = vec4(mix(albedo * light, uSky, fog) * uTint, 1.0);
+  colour = vec4(mix(albedo * light * lit, uSky, fog) * uTint, 1.0);
 }`;
 const STRIDE_BYTES = 36; // nine floats a vertex
 
@@ -97,7 +108,16 @@ export class FootGl {
     if (!gl.getProgramParameter(program, gl.LINK_STATUS) && !gl.isContextLost()) throw new Error(gl.getProgramInfoLog(program));
     gl.useProgram(program);
     this.u = {};
-    for (const name of ['uViewProj', 'uModel', 'uEye', 'uTint', 'uSky', 'uFog']) this.u[name] = gl.getUniformLocation(program, name);
+    for (const name of ['uViewProj', 'uModel', 'uEye', 'uTint', 'uSky', 'uFog', 'uLightMap', 'uLightBox', 'uRoomLights', 'uTorchAt', 'uTorchDir', 'uTorch']) this.u[name] = gl.getUniformLocation(program, name);
+    this.lightTexture = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, this.lightTexture);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+    gl.uniform1i(this.u.uLightMap, 0);
+    if (this.lightMap) this.setLightMap(this.lightMap);
     gl.enable(gl.DEPTH_TEST);
     gl.enable(gl.CULL_FACE);
   }
@@ -143,6 +163,26 @@ export class FootGl {
     gl.uniform3fv(u.uTint, tint);
     gl.uniform3fv(u.uSky, sky);
     gl.uniform2f(u.uFog, fogFrom, fogTo);
+  }
+
+  // The floor's light map from roomLight.js.
+  setLightMap(map) {
+    const { gl, u } = this;
+    this.lightMap = map; // a restored context needs it again
+    gl.bindTexture(gl.TEXTURE_2D, this.lightTexture);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.R8, map.width, map.height, 0, gl.RED, gl.UNSIGNED_BYTE, map.data);
+    gl.uniform4f(u.uLightBox, map.minX, map.minY, 1 / map.spanX, 1 / map.spanY);
+  }
+
+  // How the room is lit this frame. torch: null, or { x, y, dirX, dirY, reach, cone, strength }.
+  setLights(roomLights, torch) {
+    const { gl, u } = this;
+    gl.uniform1f(u.uRoomLights, roomLights);
+    gl.uniform3f(u.uTorch, torch?.reach ?? 0, torch?.cone ?? 0, torch?.strength ?? 0);
+    if (torch) {
+      gl.uniform3f(u.uTorchAt, torch.x, torch.y, 0);
+      gl.uniform2f(u.uTorchDir, torch.dirX, torch.dirY);
+    }
   }
 
   // Nothing drawn: the map shows through.

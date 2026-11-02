@@ -29,6 +29,16 @@ export function beamPools(length, width) {
   return pools;
 }
 
+// One beam from someone on foot: reach m long, widening as it goes. The same pools as a headlight, so it draws the same way.
+export function torchPools(reach, wide) {
+  const pools = [];
+  for (let i = 0; i < SLICES; i++) {
+    const ahead = ((i + 0.5) / SLICES) * reach;
+    pools.push({ f: 0.3 + ahead, r: 0, rx: 0.5 + ahead * wide, ry: Math.max(0.5, reach / SLICES), strength: (1 - i / SLICES) ** 1.2 });
+  }
+  return pools;
+}
+
 // Whether the brake lights are on: slowing down, or S held, which carries on from braking into reversing, so they stay lit
 // through the stop and all the way back. controls is the game loop's input.
 export const brakeLit = (speed, controls, arriving = false) => !!controls.reverse

@@ -5,7 +5,7 @@ import { Path, brakeFor, pursuitYaw, rerouteWait } from './route.js';
 import { CAR_PROFILES, hornFor, profileFor } from './cars.js';
 import { engineFadeAt } from './engineMix.js';
 import { BODY_SHAPES, buildCarGlb, buildPersonGlb, carPicture } from './carModel.js';
-import { beamPools, brakeLit, drawDots, drawPools, tailDots } from './headlights.js';
+import { beamPools, brakeLit, drawDots, drawPools, tailDots, torchPools } from './headlights.js';
 import { clockText, darknessAt, tintAt } from './daylight.js';
 import { drawGauge, drawNav, navBehind, revRange, speedRange, speedStep } from './dash.js';
 import { EngineAudio } from './engineSound.js';
@@ -789,6 +789,11 @@ function runFoot(t, dt) {
   if (!live) return;
   if (radio.on) refreshStations();
   syncLift();
+  applyDaylight(); // a carried light turns with the person
+  if (foot.walker.inside && !foot.roomLightsOn() && !toldLights) {
+    toldLights = true;
+    notice('The lights are off. H switches them on, and V is your flashlight.', 4000);
+  }
   const walker = foot.walker;
   pocket.update(t, { x: walker.x, y: walker.y, facing: foot.compass(), where: foot.where() }, { roads, parked: pos, hour: settings.hour });
   if (t - tilesCheckedAt > 1000) {
@@ -812,23 +817,9 @@ async function getOut() {
   if (onBridge) return notice('There is nothing to stand on here. Get off the bridge first.', 3000);
   footLoading = true;
   try {
-    const [{ Foot, PERSON_SIZE: personSize }, { Pocket }] = await Promise.all([import('./foot.js'), import('./pocket.js')]); // only those who walk load any of this
+    const { Foot, PERSON_SIZE: personSize } = await import('./foot.js'); // only those who walk load any of this
     await makePeople();
-    pocket ||= new Pocket(el('pockets'), radio, {
-      music: (on) => {
-        engine.start();
-        applySound();
-        if (on) {
-          radio.playBand('FM');
-          refreshStations();
-        } else radio.setPower(false);
-      },
-      setRadioVolume: (value) => { settings.radioVolume = value; applySound(); saveSettings(); },
-      radioVolume: () => settings.radioVolume,
-      muted: () => settings.muted,
-      onOpen: releaseMouse, // the mouse is needed to use them
-      onTyping: () => keys.clear(), // or a key held down would keep walking
-    });
+    (await pocketReady()).close();
     foot = new Foot({ onLocked: showLocked, onFound: (name) => pocket.collect(name), onSlept: sleepUntilMorning, canvas: el('foot'), origin: { lat: pos.lat, lng: pos.lng }, heading: car.heading, profile: settings.carProfile, scale: settings.carScale, tiles, view: { tilt: CAMERAS[0].tilt, range: CAMERAS[0].range * FOOT_RANGE_SHARE, fov: FOV_Y, below: CAR_BELOW_CENTRE } });
     showPerson(personSize);
   } catch (err) {
@@ -863,6 +854,7 @@ function stopFoot() {
   foot.stop();
   foot = null;
   pocket?.close();
+  lightKey = '';
   if (carRadio) radio.putBack(carRadio);
   carRadio = null;
   for (const p of people || []) { p.scale = HIDDEN_PERSON; p.remove(); }
@@ -928,6 +920,47 @@ function pressUse(second = false) {
   const said = foot.useHere(second);
   if (said === null) return notice('There is nothing here to use.', 1500);
   if (said) notice(said, 2500);
+}
+
+// The bag and phone share one pocket object, made the first time either is wanted. Being in or next to the car is what opens its storage.
+async function pocketReady() {
+  if (pocket) return pocket;
+  const { Pocket } = await import('./pocket.js');
+  pocket ||= new Pocket(el('pockets'), radio, {
+    music: (on) => {
+      engine.start();
+      applySound();
+      if (on) {
+        radio.playBand('FM');
+        refreshStations();
+      } else radio.setPower(false);
+    },
+    setRadioVolume: (value) => { settings.radioVolume = value; applySound(); saveSettings(); },
+    radioVolume: () => settings.radioVolume,
+    muted: () => settings.muted,
+    onOpen: releaseMouse, // the mouse is needed to use them
+    onTyping: () => keys.clear(), // or a key held down would keep walking
+    nearCar: () => !foot || foot.canGetIn(),
+    flashlight: () => carryLight('flash'),
+    phoneLight: () => carryLight('phone'),
+    stowed: () => { if (foot?.light === 'flash') carryLight('flash'); }, // it can't stay on in the car
+  });
+  return pocket;
+}
+
+// On, or off if it's on. The flashlight has to be in the bag.
+function carryLight(kind) {
+  if (!foot) return;
+  if (kind === 'flash' && !pocket?.data.bagHas('Flashlight')) return notice('Your flashlight isn\'t in your bag. It may be in the car.', 2500);
+  const on = foot.toggleLight(kind);
+  lightKey = '';
+  notice(on ? (kind === 'flash' ? 'Flashlight on. V turns it off.' : 'Phone light on.') : 'Light off.', 1500);
+}
+
+async function openStorage() {
+  const ready = await pocketReady();
+  if (ready.bagOpen) ready.close();
+  else ready.openStorage();
 }
 
 function sleepUntilMorning() {
@@ -1305,16 +1338,17 @@ function applyCarLook() {
 
 // The tint covers the map, and the headlight beams are cut out of it and lightly added on top. The car's place on
 // screen is fixed; the beams are sized from the car, zoom with the map and turn with the car against the camera.
-let lightKey = '', braking = false, mapBox = null;
+let lightKey = '', braking = false, mapBox = null, toldLights = false;
 window.addEventListener('resize', () => { mapBox = null; gaugesShown = {}; navShown = ''; });
 function applyDaylight() {
-  const dark = darknessAt(settings.hour), lit = settings.headlights && !foot; // nobody at the wheel on foot, and the beams sit where the car does on screen
+  const carried = (!foot?.walker.inside && foot?.light) || null, dark = darknessAt(settings.hour), lit = settings.headlights && !foot; // nobody at the wheel on foot, and the beams sit where the car does on screen
   mapBox ||= { width: el('map').clientWidth, height: el('map').clientHeight }; // asking every frame would force a layout
   const { width, height } = mapBox;
-  const angle = ((car.heading - camHeading + 540) % 360) - 180;
+  const facing = carried ? foot.posture().facing : car.heading, angle = ((facing - camHeading + 540) % 360) - 180;
   // Only the headlights and brake lights depend on the view, so with neither on nothing redraws while driving.
-  const moving = lit || braking ? `${Math.round(range / 2)}|${Math.round(tilt)}|${Math.round(angle * 2)}` : '';
-  const key = `${settings.hour}|${lit}|${braking}|${settings.carScale}|${settings.carProfile}|${width}x${height}|${moving}`;
+  const moving = lit || braking || carried ? `${Math.round(range / 2)}|${Math.round(tilt)}|${Math.round(angle * 2)}` : '';
+  const indoors = !!foot?.walker.inside; // a room shows its own hour, so the map's tint mustn't darken it again
+  const key = `${indoors}|${carried}|${settings.hour}|${lit}|${braking}|${settings.carScale}|${settings.carProfile}|${width}x${height}|${moving}`;
   if (key === lightKey) return;
   lightKey = key;
   el('lightsButton').setAttribute('aria-pressed', String(settings.headlights));
@@ -1322,13 +1356,14 @@ function applyDaylight() {
   for (const canvas of [night, beam]) {
     if (canvas.width !== width || canvas.height !== height) { canvas.width = width; canvas.height = height; }
   }
-  night.style.display = dark > 0.005 ? 'block' : 'none';
-  beam.style.display = lit ? 'block' : 'none';
+  night.style.display = dark > 0.005 && !indoors ? 'block' : 'none';
+  beam.style.display = lit || carried ? 'block' : 'none';
+  document.body.classList.toggle('carrying', !!carried);
   const shape = BODY_SHAPES[settings.carProfile] || BODY_SHAPES.sport;
   const length = shape.l * 2 * settings.carScale, carWidth = shape.w * 2 * settings.carScale;
   const view = {
     x: width / 2,
-    y: height * (0.5 + CAR_BELOW_CENTRE / 2),
+    y: height * (0.5 + CAR_BELOW_CENTRE / 2 - (carried ? 0.013 : 0)), // someone's feet are a little above where a car's middle is
     perMetre: height / (2 * Math.tan(rad(FOV_Y / 2)) * Math.max(range, 1)),
     foreshorten: Math.cos(rad(tilt)),
     angle,
@@ -1356,6 +1391,13 @@ function applyDaylight() {
     tint.restore();
     light.globalCompositeOperation = 'lighter';
     drawPools(light, pools, view, 0.03 + dark * 0.05, '255,240,190');
+  }
+  if (carried) {
+    const beamShape = carried === 'flash' ? torchPools(22, 0.36) : torchPools(2.2, 0.28);
+    tint.globalCompositeOperation = 'destination-out';
+    drawPools(tint, beamShape, view, 0.75);
+    light.globalCompositeOperation = 'lighter';
+    drawPools(light, beamShape, view, 0.05 + dark * 0.08, '255,244,210');
   }
   const tails = el('tails');
   if (tails.width !== width || tails.height !== height) { tails.width = width; tails.height = height; }
@@ -1595,6 +1637,7 @@ document.addEventListener('pointerdown', (e) => {
 // --- Dashboard ------------------------------------------------------------------------------------------------
 
 el('lightsButton').addEventListener('click', () => setHeadlights(!settings.headlights));
+el('storageButton').addEventListener('click', openStorage);
 el('hornButton').addEventListener('pointerdown', (e) => { e.preventDefault(); e.currentTarget.setPointerCapture(e.pointerId); hornDown(); });
 for (const kind of ['pointerup', 'pointercancel']) el('hornButton').addEventListener(kind, () => hornUp());
 el('radioPower').addEventListener('click', () => setRadioPower(!radio.on));
@@ -1715,6 +1758,9 @@ document.addEventListener('keydown', (e) => {
   if (k === 'l' && !e.repeat) { e.preventDefault(); return pressL(); }
   if (foot && !e.repeat && pocket?.pressKey(k)) { e.preventDefault(); return; }
   if (foot && k === 'f' && !e.repeat) { e.preventDefault(); return pressUse(e.shiftKey); }
+  if (foot && k === 'h' && !e.repeat) { e.preventDefault(); const said = foot.toggleRoomLights(); return notice(said || 'There are no lights to switch out here. V is your flashlight.', 1500); }
+  if (foot && k === 'v' && !e.repeat) { e.preventDefault(); return carryLight('flash'); }
+  if (!foot && k === 'y' && !e.repeat) { e.preventDefault(); return openStorage(); }
   if (foot && k === ' ') jumpPressed = true; // a quick tap can come and go between two frames
   if (foot && (k === 'q' || k === 'e')) keys.add(k);
   if (DRIVE_KEYS.has(k)) { keys.add(k); e.preventDefault(); e.stopPropagation(); }

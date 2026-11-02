@@ -10,7 +10,7 @@ html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background:
 /* On foot the map stays. This canvas is clear over it, except for a room while indoors, and takes the mouse. */
 #foot { display: none; width: 100%; height: calc(100% - var(--dash)); z-index: 1; touch-action: none; cursor: grab; }
 body.onFoot #foot { display: block; }
-body.onFoot #shield, body.onFoot #beam, body.onFoot #tails { display: none !important; }
+body.onFoot #shield, body.onFoot:not(.carrying) #beam, body.onFoot #tails { display: none !important; }
 #footHint { display: none; position: absolute; left: 50%; bottom: 20px; transform: translateX(-50%); padding: 5px 12px; border-radius: 999px; background: #0d1621cc; border: 1px solid #ffffff26; font-size: 12px; color: #e7eef3; white-space: nowrap; }
 body.onFoot #footHint { display: block; }
 /* The dashboard is in the car. On foot the view takes its place. */
@@ -348,3 +348,13 @@ body.onFoot #pockets { display: block; }
 #liftFloors button:hover { background: #3a424a; }
 #liftFloors button.on { color: #10202f; background: #ffd27a; }
 #locked span:empty { display: none; }
+
+/* The car's storage: from the dash the bag opens on its own, over the dashboard. */
+#pockets.storageOnly { display: block; position: fixed; left: 10px; bottom: calc(var(--dash) + 2px); }
+#pockets.storageOnly .tray { visibility: hidden; height: 0; padding: 0; border: 0; }
+#pockets.storageOnly .bagPanel { bottom: 8px; }
+.bagPanel.withCar { width: 372px; max-height: calc(100vh - var(--dash) - 110px); overflow-y: auto; }
+#pockets button.bagSlot { width: 100%; cursor: pointer; }
+#pockets button.bagSlot:hover { background: #ffffff33; }
+.carHead { margin-top: 12px; padding-top: 10px; border-top: 1px solid #c79a6866; }
+.carGrid { grid-template-columns: repeat(5, 1fr); }

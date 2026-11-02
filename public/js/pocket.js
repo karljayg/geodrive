@@ -3,7 +3,7 @@
 import { clockText } from './daylight.js';
 import { drawNav } from './dash.js';
 import { ART } from './pocketArt.js';
-import { BAG_SLOTS, CONTACTS, PocketData, addRecent, bearingToCar, compassName, distanceText, noteTitle, songParts, turnToCar } from './pocketData.js';
+import { BAG_SLOTS, CAR_SLOTS, CONTACTS, PocketData, addRecent, bearingToCar, compassName, distanceText, noteTitle, songParts, turnToCar } from './pocketData.js';
 import { frequencyText } from './radio.js';
 
 const TRAY = [
@@ -19,6 +19,7 @@ const APPS = [
   { id: 'call', label: 'Phone', art: 'call' },
   { id: 'messages', label: 'Messages', art: 'messages' },
   { id: 'map', label: 'Map', art: 'map' },
+  { id: 'torch', label: 'Flashlight', art: 'torch' },
 ];
 const REFRESH = 100;       // ms between updates of the live figures
 const MAP_REFRESH = 333;   // ms, as for the nav screen
@@ -75,6 +76,7 @@ export class Pocket {
   // --- Opening and closing --------------------------------------------------------------------------------------
 
   openApp(id) {
+    if (id === 'torch') return this.calls.phoneLight(); // it does its one job, rather than opening
     if (this.app === 'notes' && this.note) this.data.closeNote(this.note);
     this.note = null;
     this.bagOpen = false;
@@ -109,6 +111,7 @@ export class Pocket {
   // Everything away, for getting back in the car. True if anything was open.
   close() {
     const was = !!this.app || this.bagOpen;
+    this.root.classList.remove('storageOnly');
     this.closePhone();
     this.bagOpen = false;
     this.bagPanel.hidden = true;
@@ -120,6 +123,17 @@ export class Pocket {
     if (id === 'bag') return this.toggleBag();
     const app = id === 'notepad' ? 'notes' : id;
     return this.app === app ? this.closePhone() : this.openApp(app);
+  }
+
+  pressSlot(id, side) {
+    if (!this.calls.nearCar()) {
+      if (id === 'Flashlight') this.calls.flashlight();
+      return;
+    }
+    const moved = this.data.move(id, side === 'bag');
+    if (moved && id === 'Flashlight' && side === 'bag') this.calls.stowed();
+    if (!moved) this.bagPanel.querySelector('.empty').textContent = side === 'bag' ? 'The car is full.' : 'Your bag is full.';
+    else this.renderBag();
   }
 
   // Something found, for the bag. False if the bag is full.
@@ -154,11 +168,12 @@ export class Pocket {
   onClick(e) {
     const button = e.target.closest('button, [data-open-note], [data-thread], [data-dial-contact]');
     if (!button) return;
+    if (button.dataset.slot) return this.pressSlot(button.dataset.slot, button.dataset.side);
     const { tray, app, thread, digit, dialContact, radius } = button.dataset;
     if (tray) this.press(tray);
     else if ('close' in button.dataset) this.closePhone();
     else if ('home' in button.dataset) this.openApp('home');
-    else if ('closeBag' in button.dataset) this.toggleBag();
+    else if ('closeBag' in button.dataset) { this.root.classList.remove('storageOnly'); this.toggleBag(); }
     else if (app) this.openApp(app);
     else if ('toggleMusic' in button.dataset) this.toggleMusic();
     else if ('prev' in button.dataset) this.radio.seek(-1);
@@ -330,11 +345,23 @@ export class Pocket {
     this.mapDrawn = 0;
   }
 
+  // Your bag, and the car's storage beside it when you're in or next to the car. Clicking something moves it across; the flashlight, away from the car, turns on.
   renderBag() {
-    const { bag } = this.data, slots = Array.from({ length: BAG_SLOTS }, (_, i) => bag[i]);
-    this.bagPanel.innerHTML = `<div class="bagHead"><span class="bagArt">${picture('bag')}</span><h2>Bag</h2><small>${bag.length} of ${BAG_SLOTS}</small><button data-close-bag aria-label="Close the bag">✕</button></div>
-      <div class="bagGrid">${slots.map((item) => (item ? `<div class="bagSlot full" title="${esc(item.name)}"><span>${esc(item.name)}</span>${item.count > 1 ? `<b>${item.count}</b>` : ''}</div>` : '<div class="bagSlot"></div>')).join('')}</div>
-      ${bag.length ? '' : '<p class="empty">Nothing collected yet. What you pick up will show here.</p>'}`;
+    const { bag, car } = this.data, near = this.calls.nearCar(), slots = (list, size, side) => Array.from({ length: size }, (_, i) => list[i]).map((item) => (item
+      ? `<button class="bagSlot full" data-slot="${esc(item.id)}" data-side="${side}" title="${esc(item.name)}"><span>${esc(item.name)}</span>${item.count > 1 ? `<b>${item.count}</b>` : ''}</button>`
+      : '<div class="bagSlot"></div>')).join('');
+    this.nearShown = near;
+    this.bagPanel.classList.toggle('withCar', near);
+    this.bagPanel.innerHTML = `<div class="bagHead"><span class="bagArt">${picture('bag')}</span><h2>Bag</h2><small>${bag.length} of ${BAG_SLOTS}</small><button data-close-bag aria-label="Close">✕</button></div>
+      <div class="bagGrid">${slots(bag, BAG_SLOTS, 'bag')}</div>
+      <p class="empty">${near ? 'Click something to move it between your bag and the car.' : 'Stand next to the car to reach its storage.'}${!near && this.data.bagHas('Flashlight') ? ' Click the flashlight, or press V, to turn it on.' : ''}</p>
+      ${near ? `<div class="bagHead carHead"><h2>Car storage</h2><small>${car.length} of ${CAR_SLOTS}</small></div><div class="bagGrid carGrid">${slots(car, CAR_SLOTS, 'car')}</div>` : ''}`;
+  }
+
+  // From the dash in the car, or Y.
+  openStorage() {
+    this.root.classList.add('storageOnly');
+    if (!this.bagOpen) this.toggleBag();
   }
 
   // --- Live figures ---------------------------------------------------------------------------------------------
@@ -358,6 +385,7 @@ export class Pocket {
       this.shown.tray = facing;
       this.turnCard(this.card, facing);
     }
+    if (this.bagOpen && this.calls.nearCar() !== this.nearShown) this.renderBag();
     if (this.app) this.write('clock', this.root.querySelector('[data-clock]'), clockText(at.hour));
     const metres = Math.hypot(on.x, on.y), bearing = bearingToCar(on.x, on.y);
     const carLine = metres < 3 ? 'Your car is right here' : `Car ${distanceText(metres)} ${compassName(bearing)}`;

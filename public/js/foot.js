@@ -13,6 +13,7 @@ import { FURNISHED, coreNear, coreOf, frameOf as buildingFrame, layoutFloor, pla
 import { parseFurniture } from './furniture.js';
 import { buildingWithin, carWalls, distanceToCar, enterBuilding, GET_IN_REACH, leaveBuilding, newWalker, frameOf, placeCamera, spawnSpot, stepClearOfThings, stepWalker, wayToCar } from './footWalker.js';
 import { Overture } from './overture.js';
+import { TORCHES, lightMap, sunAt, windowsOn } from './roomLight.js';
 import { Terrain } from './terrain.js';
 import { vectorTileAt } from './vector.js';
 
@@ -21,7 +22,6 @@ const TERRAIN_ZOOM = 15;     // about 5 m a sample at these latitudes; the drive
 const LOOK_EVERY = 1000;     // ms between checking which tiles are wanted
 const RETRY_AFTER = 15000;   // ms before a tile that failed is tried again
 const ROOM_SKY = [0.42, 0.58, 0.76];
-const INDOOR_LIGHT = 0.62; // how much of the room stays lit however dark it is outside, as the lights are on
 const NEAR = 2, FAR = 400;   // m from the camera
 const INDOOR_RANGE = 0.45;   // of the camera's distance outdoors, as furniture is small from there
 export const PERSON_SIZE = 1.1; // times real size, which is hard to follow from the driving camera
@@ -58,6 +58,7 @@ export class Foot {
     this.onFound = onFound;   // given a thing for the bag, returns false if there's no room
     this.onSlept = onSlept;
     this.pose = null;         // sitting or lying on something
+    this.light = null;        // a flashlight or phone light that's on
     this.origin = origin;
     this.heading = heading;
     this.tiles = tiles;
@@ -371,18 +372,55 @@ export class Foot {
   renderRoom(hour) {
     const view = { ...this.view, range: this.view.range * INDOOR_RANGE };
     const aspect = gl.fit(), { eye, target } = placeCamera(this.walker, view);
-    const daylight = tintAt(hour).map((v) => v / 255), tint = daylight.map((v) => INDOOR_LIGHT + (1 - INDOOR_LIGHT) * v);
-    const sky = ROOM_SKY.map((v, i) => (v * daylight[i]) / tint[i]); // outside goes properly dark, though the room doesn't
+    const daylight = tintAt(hour).map((v) => v / 255), tint = [1, 1, 1], sky = ROOM_SKY.map((v, i) => v * daylight[i]);
     gl.begin({
       viewProj: multiply(perspective(this.view.fov, aspect, NEAR, FAR), lookAt(eye, target)),
       eye, tint, sky, fogFrom: FAR, fogTo: FAR * 2,
     });
+    this.syncLightMap(hour);
+    const carried = this.light && TORCHES[this.light], facing = this.walker.facing;
+    gl.setLights(this.roomLightsOn() ? 1 : 0, carried ? { x: this.walker.x, y: this.walker.y, dirX: Math.sin(facing), dirY: Math.cos(facing), ...carried } : null);
     gl.draw(this.room.mesh, translate(0, 0, this.room.floor));
     const w = this.walker, n = PERSON_SIZE;
     const sized = [n, 0, 0, 0, 0, n, 0, 0, 0, 0, n, 0, 0, 0, 0, 1];
     if (this.pose?.kind === 'sleep') gl.draw(personMesh(0), multiply(multiply(multiply(translate(w.x, w.y, this.room.floor + LIE_HEIGHT), bearing(w.facing)), multiply(swing(Math.PI / 2), translate(0, 0, -0.85))), sized));
     else if (this.pose) gl.draw(personMesh(SIT_FRAME), multiply(multiply(translate(w.x, w.y, this.room.floor), bearing(w.facing)), sized));
     else gl.draw(personMesh(frameOf(w)), multiply(multiply(translate(w.x, w.y, w.z + w.height), bearing(w.facing)), sized));
+  }
+
+  // The floor's light from its windows, again as the hour changes or the room does.
+  syncLightMap(hour) {
+    const { room } = this, key = `${room.level}|${Math.round(hour * 2)}`;
+    if (room.lightKey === key) return;
+    room.lightKey = key;
+    const building = this.walker.inside, pieces = building.pieces || [building], record = room.furnishing?.record, frame = record && buildingFrame(pieces, record.axis);
+    const windows = pieces.flatMap((piece) => this.place.walls(piece).flatMap(windowsOn));
+    const walls = record ? record.walls.map(([u0, v0, u1, v1]) => {
+      const a = frame.toWorld(u0, v0), b = frame.toWorld(u1, v1);
+      return { ax: a.x, ay: a.y, bx: b.x, by: b.y };
+    }) : [];
+    const box = { minX: Math.min(...pieces.map((p) => p.minX)), maxX: Math.max(...pieces.map((p) => p.maxX)), minY: Math.min(...pieces.map((p) => p.minY)), maxY: Math.max(...pieces.map((p) => p.maxY)) };
+    gl.setLightMap(lightMap(box, windows, walls, hour));
+  }
+
+  roomLightsOn() {
+    return !!this.walker.inside?.plan?.state?.[this.level]?.lights;
+  }
+
+  // H indoors: the lights on this floor, kept with the building. Says what happened, or null outdoors.
+  toggleRoomLights() {
+    const { plan } = this.walker.inside || {};
+    if (!plan) return null;
+    const state = ((plan.state ||= {})[this.level] ||= { taken: [], opened: [] });
+    state.lights = !state.lights;
+    saved.saveIndex();
+    return state.lights ? 'Lights on.' : 'Lights off.';
+  }
+
+  // Which light is being carried: 'flash', 'phone', or null. Asking for the one that's on turns it off.
+  toggleLight(kind) {
+    this.light = this.light === kind ? null : kind;
+    return this.light;
   }
 
   rebuildAll() {
@@ -472,7 +510,8 @@ export class Foot {
         if (this.level >= plan.floors) return `${here} · press L to go downstairs`;
         return this.level > GROUND_FLOOR ? `${here} · L upstairs, Shift+L downstairs` : `${here} · press L to go upstairs`;
       }
-      return this.level > GROUND_FLOOR ? `${here} · find the stairs to go down` : `${here} · press L to go back out`;
+      const lights = this.roomLightsOn() ? 'H lights off' : 'H lights on';
+      return this.level > GROUND_FLOOR ? `${here} · ${lights} · find the stairs to go down` : `${here} · ${lights} · press L to go back out`;
     }
     if (this.canGetIn()) return 'Press L to get in';
     const near = buildingWithin(this.walker, this.world);

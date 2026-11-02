@@ -1,6 +1,8 @@
 // What a person carries, kept in this browser: notes, text messages and the bag. Pure, tested in node.
 const STORE = 'geodrive_pocket_v1';
 export const BAG_SLOTS = 12;
+export const CAR_SLOTS = 60;
+export const FLASHLIGHT = 'Flashlight'; // everyone starts with one
 const MOST_NOTES = 200, MOST_TEXT = 4000, MOST_MESSAGES = 100; // per thread
 
 // The people in the phone. Calls and texts stay inside the game, so these are made up, and nothing is sent anywhere.
@@ -11,14 +13,16 @@ export const CONTACTS = [
   { id: 'pizza', name: 'Pizza Place', number: '555-0193', replies: ['Large pepperoni, 30 minutes.', 'Sorry, delivery only.', 'Your order is ready.'] },
 ];
 
-const blank = () => ({ notes: [], messages: {}, bag: [] });
+const blank = () => ({ notes: [], messages: {}, bag: [{ id: FLASHLIGHT, name: FLASHLIGHT, count: 1 }], car: [] });
 
 export class PocketData {
   constructor(storage) {
     this.state = blank();
     try {
       this.storage = storage ?? localStorage;
-      this.state = { ...blank(), ...JSON.parse(this.storage.getItem(STORE)) };
+      const saved = JSON.parse(this.storage.getItem(STORE));
+      this.state = { ...blank(), ...saved };
+      if (saved?.bag && !saved.car) this.state.bag.length < BAG_SLOTS ? this.state.bag.push(blank().bag[0]) : this.state.car.push(blank().bag[0]); // saved before there was a flashlight
     } catch (err) {
       console.warn('saved pocket:', err);
     }
@@ -98,6 +102,28 @@ export class PocketData {
     if (known) known.count++;
     else if (this.state.bag.length >= BAG_SLOTS) return false;
     else this.state.bag.push({ ...item, count: 1 });
+    this.save();
+    return true;
+  }
+
+  get car() {
+    return this.state.car;
+  }
+
+  bagHas(id) {
+    return this.state.bag.some((item) => item.id === id);
+  }
+
+  // One of a thing from the bag to the car, or back. False if there's no room where it's going.
+  move(id, toCar) {
+    const [from, to, room] = toCar ? [this.state.bag, this.state.car, CAR_SLOTS] : [this.state.car, this.state.bag, BAG_SLOTS];
+    const item = from.find((i) => i.id === id);
+    if (!item) return false;
+    const there = to.find((i) => i.id === id);
+    if (!there && to.length >= room) return false;
+    if (there) there.count++;
+    else to.push({ id: item.id, name: item.name, count: 1 });
+    if (--item.count <= 0) from.splice(from.indexOf(item), 1);
     this.save();
     return true;
   }

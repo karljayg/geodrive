@@ -64,14 +64,14 @@ test('text messages are kept by contact, and each contact goes round their repli
 
 test('the bag holds a limited number of things, counts repeats and gives them back', () => {
   const storage = memory(), data = new PocketData(storage);
-  for (let i = 0; i < BAG_SLOTS; i++) assert.equal(data.addToBag({ id: `t${i}`, name: `Thing ${i}` }), true);
+  for (let i = 0; i < BAG_SLOTS - 1; i++) assert.equal(data.addToBag({ id: `t${i}`, name: `Thing ${i}` }), true); // beside the flashlight
   assert.equal(data.addToBag({ id: 'one too many', name: 'x' }), false);
   assert.equal(data.addToBag({ id: 't0', name: 'Thing 0' }), true, 'one already there stacks');
-  assert.equal(new PocketData(storage).bag[0].count, 2);
+  assert.equal(new PocketData(storage).bag.find((i) => i.id === 't0').count, 2);
   assert.equal(data.takeFromBag('t0'), true);
   assert.equal(data.takeFromBag('t0'), true);
   assert.equal(data.takeFromBag('t0'), false);
-  assert.equal(data.bag.length, BAG_SLOTS - 1);
+  assert.equal(data.bag.length, BAG_SLOTS - 1, 'one gone');
 });
 
 test('storage that fails or holds rubbish loses only the saving', () => {

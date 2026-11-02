@@ -5,7 +5,8 @@
 import { parseFurniture } from './js/furniture.js';
 import { Place } from './js/footData.js';
 import { roomMesh } from './js/footScene.js';
-import { coreOf, layoutFloor } from './js/furnish.js';
+import { coreOf, frameOf, layoutFloor } from './js/furnish.js';
+import { lightMap, windowsOn } from './js/roomLight.js';
 import { dice, hashText } from './js/buildings.js';
 import { FootGl, lookAt, multiply, perspective } from './js/footGl.js';
 const q = new URLSearchParams(location.search), list = (q.get('t') || 'parking:60x34:2').split(','), cols = Number(q.get('cols') || 2), seed = q.get('s') || '1';
@@ -30,6 +31,9 @@ list.forEach((entry, n) => {
   const r = Math.max(w, d), eye = { x: w / 2, y: d / 2 - r * 0.62, z: r * 1.05 + 8 }, target = { x: w / 2, y: d / 2, z: 0 };
   gl.uniformMatrix4fv(fg.u.uViewProj, false, multiply(perspective(42, cw / ch, 1, 2000), lookAt(eye, target)));
   gl.uniform3f(fg.u.uEye, eye.x, eye.y, eye.z);
+  const frame = frameOf([b], record.axis), lit = record.walls.map(([u0, v0, u1, v1]) => { const a = frame.toWorld(u0, v0), c = frame.toWorld(u1, v1); return { ax: a.x, ay: a.y, bx: c.x, by: c.y }; });
+  fg.setLightMap(lightMap(b, place.walls(b).flatMap(windowsOn), lit, Number(q.get('hour') ?? 10)));
+  fg.setLights(q.get('lights') ? 1 : 0, null);
   fg.draw(mesh);
   const c = {}; record.items.forEach((i) => { c[i[0]] = (c[i[0]] || 0) + 1; });
   window.report.push({ entry, ms: Math.round(ms), tris: floats.length / 27 | 0, zones: record.zones.map((z) => z[0]).join(' '), items: c });
