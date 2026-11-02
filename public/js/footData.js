@@ -7,6 +7,7 @@ export const LOW_ENOUGH = 2.2;  // m; a building part lifted higher than this is
 const EARTH = 6371000;
 const MIN_BUILDING = 6;         // m² of footprint
 const UNMAPPED_HEIGHT = 5;      // m
+const POI_REACH = 25;           // m outside a footprint that a place still belongs to it, as places are often mapped at the door or the car park
 const SEAM_MATCH = 0.01;        // m; pieces of one building cut by a tile edge lie on the same line
 const ROAD_PAD = 6;    // m around a road that its cells also list it, for checks just beside it
 const TREE_STEP = { dense: 8, sparse: 18 }; // m between trees
@@ -231,7 +232,7 @@ export function parseTile(bytes, tx, ty, origin, zoom = VECTOR_ZOOM) {
 
   features('poi', ({ tags, type }, lines, extent, toMetres) => {
     if (type !== 1) return;
-    for (const line of lines) for (const p of line) out.pois.push({ ...toMetres(p), cls: tags.class, sub: tags.subclass });
+    for (const line of lines) for (const p of line) out.pois.push({ ...toMetres(p), cls: tags.class, sub: tags.subclass, name: tags['name:latin'] || tags.name || '' });
   });
 
   const addLand = (kind, name) => (lines, toMetres) => {
@@ -298,6 +299,7 @@ export class Place {
     this.origin = origin;
     this.cells = new Map();
     this.tiles = new Set();
+    this.poisSeen = new Set();
     this.roadsAdded = 0;
     this.revision = 0;
   }
@@ -329,7 +331,13 @@ export class Place {
     }
     for (const land of parsed.lands) this.file('lands', land, land);
     for (const water of parsed.waters) this.file('waters', water, water);
-    for (const poi of parsed.pois || []) this.file('pois', poi, { minX: poi.x, maxX: poi.x, minY: poi.y, maxY: poi.y });
+    for (const poi of parsed.pois || []) {
+      // A tile also holds what lies just over its edge, so the same place can arrive from up to four tiles, and must count once.
+      const same = `${Math.round(poi.x)}_${Math.round(poi.y)}_${poi.cls}_${poi.sub}_${poi.name || ''}`;
+      if (this.poisSeen.has(same)) continue;
+      this.poisSeen.add(same);
+      this.file('pois', poi, { minX: poi.x, maxX: poi.x, minY: poi.y, maxY: poi.y });
+    }
     for (const road of parsed.roads) {
       for (let i = 1; i < road.line.length; i++) {
         const a = road.line[i - 1], b = road.line[i];
@@ -388,24 +396,43 @@ export class Place {
     return { pieces, missing: [...missing] };
   }
 
+  // The footprint a place belongs to: the one it's in, or the nearest within reach if it's in none. A car park stays outside, so parking must be inside.
+  footprintOfPlace(poi, parking) {
+    const inside = this.cellAt(poi.x, poi.y).buildings.find((b) => within(b, poi.x, poi.y) && inRings(b.rings.map((r) => r.pts), poi.x, poi.y));
+    if (inside || parking) return inside || null;
+    let best = null, bestDistance = POI_REACH;
+    for (const cell of this.cellsOver({ minX: poi.x - POI_REACH, maxX: poi.x + POI_REACH, minY: poi.y - POI_REACH, maxY: poi.y + POI_REACH })) {
+      for (const building of cell.buildings) {
+        if (!building.ground) continue;
+        for (const w of this.walls(building)) {
+          const d = distToSegment(poi.x, poi.y, w.ax, w.ay, w.bx, w.by);
+          if (d < bestDistance) { bestDistance = d; best = building; }
+        }
+      }
+    }
+    return best;
+  }
+
   // What the map says about a whole building, for working out what it is. typeOf turns a point of interest into a building type, or null.
   cluesFor(pieces, bounds, typeOf) {
-    const pois = [], seen = new Set();
+    const pois = [], names = {}, seen = new Set(), all = new Set(pieces);
     for (const piece of pieces) {
-      const rings = piece.rings.map((r) => r.pts);
-      for (const cell of this.cellsOver(piece)) {
+      const box = { minX: piece.minX - POI_REACH, maxX: piece.maxX + POI_REACH, minY: piece.minY - POI_REACH, maxY: piece.maxY + POI_REACH };
+      for (const cell of this.cellsOver(box)) {
         for (const poi of cell.pois) {
-          if (seen.has(poi) || !within(piece, poi.x, poi.y) || !inRings(rings, poi.x, poi.y)) continue;
+          if (seen.has(poi) || !within(box, poi.x, poi.y)) continue;
           seen.add(poi);
           const type = typeOf(poi);
-          if (type) pois.push(type);
+          if (!type || !all.has(this.footprintOfPlace(poi, type === 'parking'))) continue;
+          pois.push(type);
+          if (poi.name && !names[type]) names[type] = poi.name;
         }
       }
     }
     const x = (bounds.minX + bounds.maxX) / 2, y = (bounds.minY + bounds.maxY) / 2;
     const lands = this.cellAt(x, y).lands.filter((land) => within(land, x, y) && inRings(land.rings, x, y)).map((land) => land.name);
     const tallest = pieces.reduce((best, p) => (p.height > best.height ? p : best));
-    return { area: pieces.reduce((sum, p) => sum + Math.abs(signedArea(p.rings[0].pts)), 0), height: tallest.height, known: !!tallest.known, pois, lands };
+    return { area: pieces.reduce((sum, p) => sum + Math.abs(signedArea(p.rings[0].pts)), 0), height: tallest.height, known: !!tallest.known, pois, names, lands };
   }
 
   // Trees for a chunk, placed from a hash of where they stand, so they don't move when more tiles arrive; a tree only goes if something now covers its spot.

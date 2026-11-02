@@ -29,6 +29,7 @@ let furniture = null, furnitureLoading = false, furnitureFailed = -Infinity; // 
 const GROUND_FLOOR = 1;
 const PICK_REPEAT = 0.16;    // s between floors while W or S is held in a lift
 const PICK_FAST = 10;        // floors a press moves with Shift held
+const TYPE_WINDOW = 1500;    // ms in which a second digit makes a two-figure floor
 
 // The button in Settings. Buildings already identified on this walk stay as they are until the next one.
 export function forgetBuildings() {
@@ -208,6 +209,20 @@ export class Foot {
     return coreNear(building.plan, buildingFrame(building.pieces, building.plan.core.axis), furniture.models, this.walker.x, this.walker.y);
   }
 
+  goToFloor(floor) {
+    this.level = floor;
+    this.picking = null;
+  }
+
+  // A digit while choosing a floor: 1 then 0 is the tenth, if it comes quickly and there is a tenth.
+  typeFloor(digit, now = performance.now()) {
+    if (!this.picking) return;
+    const { floors } = this.walker.inside.plan, typed = now - (this.picking.typedAt ?? -Infinity) < TYPE_WINDOW ? Number(`${this.picking.floor}${digit}`) : Number(digit);
+    const floor = typed >= GROUND_FLOOR && typed <= floors ? typed : Number(digit);
+    if (floor >= GROUND_FLOOR && floor <= floors) this.picking.floor = floor;
+    this.picking.typedAt = now;
+  }
+
   // W and S choose a floor in a lift, and nothing else moves until L goes or cancels.
   pickFloor(dt, input) {
     const { floors } = this.walker.inside.plan, way = input.forward || 0;
@@ -248,7 +263,7 @@ export class Foot {
     });
     gl.draw(this.room.mesh, translate(0, 0, this.room.floor));
     const w = this.walker, n = PERSON_SIZE;
-    gl.draw(personMesh(frameOf(w)), multiply(multiply(translate(w.x, w.y, w.z), bearing(w.facing)), [n, 0, 0, 0, 0, n, 0, 0, 0, 0, n, 0, 0, 0, 0, 1]));
+    gl.draw(personMesh(frameOf(w)), multiply(multiply(translate(w.x, w.y, w.z + w.height), bearing(w.facing)), [n, 0, 0, 0, 0, n, 0, 0, 0, 0, n, 0, 0, 0, 0, 1]));
   }
 
   rebuildAll() {
@@ -267,15 +282,14 @@ export class Foot {
 
   // Which way the person faces, and which of the model's frames fits the stride now.
   posture() {
-    return { facing: (((this.walker.facing * 180) / Math.PI) % 360 + 360) % 360, frame: frameOf(this.walker), z: this.walker.z, inside: !!this.walker.inside };
+    return { facing: (((this.walker.facing * 180) / Math.PI) % 360 + 360) % 360, frame: frameOf(this.walker), z: this.walker.z, height: this.walker.height, inside: !!this.walker.inside };
   }
 
   // L at a building: in if beside one, out if inside. False if there is nothing to go through here, or { locked } or { waiting } if it can't be gone into.
   // down: Shift was held, for the stairs on a floor that has both ways.
   pressBuilding(down = false) {
     if (this.picking) {
-      this.level = this.picking.floor;
-      this.picking = null;
+      this.goToFloor(this.picking.floor);
       return true;
     }
     if (this.walker.inside) {
@@ -322,7 +336,7 @@ export class Foot {
     if (this.walker.inside) {
       const { plan } = this.walker.inside;
       if (!plan) return 'Inside · press L to go back out';
-      if (this.picking) return `Lift · go to floor ${this.picking.floor} of ${plan.floors} · W and S choose, Shift for 10 · L goes`;
+      if (this.picking) return `Lift · floor ${this.picking.floor} of ${plan.floors} · click a floor, or type it · L goes`;
       const here = planLabel(plan, this.level), near = this.coreHere();
       if (near === 'lift') return `${here} · press L for the lift`;
       if (near === 'stairs') {

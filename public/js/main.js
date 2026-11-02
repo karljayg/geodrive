@@ -103,6 +103,7 @@ const perfLog = new PerfLog(logStore());
 tiles.onWork = (ms) => perfLog.spend('tile', ms);
 let lineVertices = 0, lineAlong = 0, navVertices = 0;
 let hudTextAt = 0, startLabel = '', town = null, townAt = null, townAsked = -Infinity, townBusy = false;
+let liftFloors = 0, liftSelected = 0, jumpPressed = false;
 let lockedTimer = 0;
 const LOCKED_TIME = 2800; // ms
 let carRadio = null; // what the car's radio was doing when they got out
@@ -726,9 +727,10 @@ function footInput(dt) {
   const input = {
     forward: (keys.has('w') || keys.has('arrowup') ? 1 : 0) - (keys.has('s') || keys.has('arrowdown') ? 1 : 0),
     strafe: (keys.has('d') || keys.has('arrowright') ? 1 : 0) - (keys.has('a') || keys.has('arrowleft') ? 1 : 0),
-    run: keys.has('shift'), walkSpeed: settings.walkSpeed, runSpeed: settings.runSpeed, lookX: lookX * LOOK_SENSITIVITY + ((keys.has('e') ? 1 : 0) - (keys.has('q') ? 1 : 0)) * FOOT_TURN * dt,
+    jump: keys.has(' ') || jumpPressed, run: keys.has('shift'), walkSpeed: settings.walkSpeed, runSpeed: settings.runSpeed, lookX: lookX * LOOK_SENSITIVITY + ((keys.has('e') ? 1 : 0) - (keys.has('q') ? 1 : 0)) * FOOT_TURN * dt,
   };
   lookX = lookY = 0;
+  jumpPressed = false;
   return input;
 }
 
@@ -767,7 +769,7 @@ function syncFootScene(dt) {
   if (shownFrame !== showing && people[shownFrame]) people[shownFrame].scale = HIDDEN_PERSON;
   const person = people[showing];
   if (person) {
-    person.position = { lat: at.lat, lng: at.lng, altitude: 0 };
+    person.position = { lat: at.lat, lng: at.lng, altitude: posture.height };
     person.orientation = { heading: posture.facing, tilt: 0, roll: 0 };
     if (shownFrame !== showing) person.scale = personSizeNow;
   }
@@ -786,6 +788,7 @@ function runFoot(t, dt) {
   perfLog.spend('drive', performance.now() - began);
   if (!live) return;
   if (radio.on) refreshStations();
+  syncLift();
   const walker = foot.walker;
   pocket.update(t, { x: walker.x, y: walker.y, facing: foot.compass(), where: foot.where() }, { roads, parked: pos, hour: settings.hour });
   if (t - tilesCheckedAt > 1000) {
@@ -851,7 +854,8 @@ async function getOut() {
   mapBox = null;
   navDrawnAt = 0;
   perfLog.event('foot', { on: true });
-  notice('WASD walks, Shift runs. Q and E turn the view, to see round a building.', 5000);
+  notice('WASD walks, Shift runs, Space jumps. Q and E turn the view, to see round a building.', 5000);
+  el('touch').querySelector('[data-key=" "]').textContent = 'Jump';
 }
 
 function stopFoot() {
@@ -867,6 +871,8 @@ function stopFoot() {
   keys.clear();
   lookX = lookY = 0;
   document.body.classList.remove('onFoot');
+  syncLift();
+  el('touch').querySelector('[data-key=" "]').textContent = '−';
   applySound();
   show('cam', CAMERAS[camIndex].name);
   navDrawnAt = 0;
@@ -875,6 +881,38 @@ function stopFoot() {
   applyDaylight();
   perfLog.event('foot', { on: false });
 }
+
+// The lift's buttons, on screen while someone is choosing a floor.
+function syncLift() {
+  const picking = foot?.picking, box = el('liftPanel');
+  if (!picking) {
+    if (liftFloors) box.classList.remove('open');
+    liftFloors = 0;
+    liftSelected = 0;
+    return;
+  }
+  const { floors } = foot.walker.inside.plan;
+  if (liftFloors !== floors) {
+    liftFloors = floors;
+    el('liftFloors').innerHTML = Array.from({ length: floors }, (_, i) => `<button type="button" data-floor="${floors - i}">${floors - i}</button>`).join('');
+    box.classList.add('open');
+    releaseMouse();
+  }
+  if (liftSelected !== picking.floor) {
+    liftSelected = picking.floor;
+    for (const b of el('liftFloors').children) b.classList.toggle('on', Number(b.dataset.floor) === liftSelected);
+    el('liftFloors').querySelector('.on')?.scrollIntoView({ block: 'nearest' });
+  }
+}
+el('liftFloors').addEventListener('click', (e) => {
+  const floor = Number(e.target.dataset?.floor);
+  if (floor && foot?.picking) foot.goToFloor(floor);
+  syncLift();
+});
+el('liftClose').addEventListener('click', () => {
+  if (foot) foot.picking = null;
+  syncLift();
+});
 
 // The big message for a building with nothing inside yet.
 function showLocked(type) {
@@ -1651,6 +1689,9 @@ document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') e.target.blur();
     return;
   }
+  if (foot?.picking && e.key === 'Escape') { foot.picking = null; syncLift(); e.preventDefault(); return; }
+  if (foot?.picking && e.key === 'Enter') { foot.goToFloor(foot.picking.floor); syncLift(); e.preventDefault(); return; }
+  if (foot?.picking && /^[0-9]$/.test(e.key)) { foot.typeFloor(e.key); e.preventDefault(); return; }
   if (foot && e.key === 'Escape' && pocket?.close()) { e.preventDefault(); return; }
   const k = e.key.toLowerCase();
   if (e.metaKey || e.ctrlKey || e.altKey) return;
@@ -1661,6 +1702,7 @@ document.addEventListener('keydown', (e) => {
   if (k === 'p' && !e.repeat) { e.preventDefault(); return setPaused(true); }
   if (k === 'l' && !e.repeat) { e.preventDefault(); return pressL(); }
   if (foot && !e.repeat && pocket?.pressKey(k)) { e.preventDefault(); return; }
+  if (foot && k === ' ') jumpPressed = true; // a quick tap can come and go between two frames
   if (foot && (k === 'q' || k === 'e')) keys.add(k);
   if (DRIVE_KEYS.has(k)) { keys.add(k); e.preventDefault(); e.stopPropagation(); }
   if (e.repeat || (foot && DRIVING_ONLY.has(k))) return;

@@ -12,12 +12,16 @@ export const STEEP = 0.6;        // m of rise per metre of ground that stops you
 export const ROOM_HEIGHT = 3;    // m
 const ENTER_REACH = 1;           // m from a wall that L takes you through it
 const STEP_INSIDE = 1;           // m past the wall that you end up, either way
+export const JUMP_HEIGHT = 1.3;  // m, which clears chairs, tables, beds and counters, but not wardrobes or a fridge
+const GRAVITY = 12;              // m/s², a little more than real, for a snappy hop that still stays up long enough to clear a chair at a walk
+const JUMP_SPEED = Math.sqrt(2 * GRAVITY * JUMP_HEIGHT);
+const STAND_INSET = 0.15;        // m past a thing's edge that someone standing on it stays on it
 const SUB_STEP = 0.2;            // m, less than the person is wide, so a run can't pass through a wall
 const CLEAR_STEP = 0.25, CLEAR_REACH = 8, CLEAR_DIRECTIONS = 16; // m, m, and how many ways to look for a clear spot
 const clamp = (n, a, b) => Math.max(a, Math.min(b, n));
 
 export function newWalker(x, y, yaw) {
-  return { x, y, z: 0, yaw, facing: yaw, phase: 0, running: false, dist: 0, speed: 0, inside: null };
+  return { x, y, z: 0, height: 0, rise: 0, yaw, facing: yaw, phase: 0, running: false, dist: 0, speed: 0, inside: null };
 }
 
 // The parked car's outline as walls, from the same half sizes the model is built with.
@@ -39,10 +43,11 @@ export function spawnSpot(headingDeg, halfWidth, halfLength, isClear) {
 }
 
 // Moves a point clear of anything solid, which is also what lets the person slide along a wall.
-function pushClear(x, y, world) {
+function pushClear(x, y, world, height = 0) {
   for (let round = 0; round < 3; round++) {
     let moved = false;
     const away = (wall) => {
+      if (wall.top !== undefined && wall.top <= height + 0.01) return; // over the top of it
       const d = distToSegment(x, y, wall.ax, wall.ay, wall.bx, wall.by);
       if (d >= RADIUS) return;
       const dx = wall.bx - wall.ax, dy = wall.by - wall.ay, len2 = dx * dx + dy * dy || 1;
@@ -138,7 +143,35 @@ export function stepClearOfThings(walker, world) {
   return false;
 }
 
-export const frameOf = (walker) => frameFor(walker.speed, walker.running, walker.phase);
+// In the air, the person holds one stride of the run, whatever they were doing.
+export const frameOf = (walker) => (walker.height > 0.05 && walker.rise !== 0 ? frameFor(RUN_SPEED, true, 0.25) : frameFor(walker.speed, walker.running, walker.phase));
+
+// The top of what's under someone at this height, or the floor. It only counts if they're above it.
+function standingOn(walker, world) {
+  let top = 0;
+  for (const box of world.inner?.boxes || []) {
+    if (box.top > top && box.top <= walker.height + 0.02 && inBox(box, walker.x, walker.y, STAND_INSET)) top = box.top;
+  }
+  return top;
+}
+
+// Up, and back down on to whatever is underneath. A jump only starts from something solid.
+function stepHeight(walker, input, dt, world) {
+  const under = standingOn(walker, world), grounded = walker.height <= under + 0.001 && walker.rise <= 0;
+  if (grounded && input.jump) walker.rise = JUMP_SPEED;
+  else if (grounded) {
+    walker.height = under;
+    walker.rise = 0;
+    return;
+  }
+  walker.rise -= GRAVITY * dt;
+  walker.height += walker.rise * dt;
+  const landing = standingOn(walker, world);
+  if (walker.height <= landing && walker.rise <= 0) {
+    walker.height = landing;
+    walker.rise = 0;
+  }
+}
 
 // Water is a wall from the shore, though someone already in it can always wade out. A slope is judged by the ground ahead,
 // so nothing here depends on the height the person was last at: ground whose tile arrived late can never leave them stuck.
@@ -153,7 +186,7 @@ function canGo(walker, to, dx, dy, world) {
 function stepOnce(walker, dx, dy, world) {
   for (const [mx, my] of [[dx, dy], [dx, 0], [0, dy]]) {
     if (!mx && !my) continue;
-    const to = pushClear(walker.x + mx, walker.y + my, world);
+    const to = pushClear(walker.x + mx, walker.y + my, world, walker.height);
     if (!canGo(walker, to, mx, my, world)) continue;
     const moved = Math.hypot(to.x - walker.x, to.y - walker.y);
     walker.x = to.x;
@@ -183,6 +216,7 @@ export function stepWalker(walker, input, dt, world) {
   walker.speed = dt ? walked / dt : 0;
   walker.running = !!input.run;
   walker.phase += dt * cadenceOf(walker.speed, walker.running);
+  if (dt) stepHeight(walker, input, dt, world);
   walker.inside = world.place.footprintAt(walker.x, walker.y);
   const ground = walker.inside ? world.floor(walker.inside) : world.height(walker.x, walker.y);
   if (ground !== null) walker.z += (ground - walker.z) * (dt ? 1 - Math.exp(-dt * 12) : 1);

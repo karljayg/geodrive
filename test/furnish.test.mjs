@@ -6,7 +6,7 @@ import { Place, inRings } from '../public/js/footData.js';
 import { Mesh, clipToRect, lowWall, roomMesh } from '../public/js/footScene.js';
 import { FLOOR_VERSION, axisOf, colourFor, coreNear, coreOf, frameOf, layoutFloor, plainFloor, solidsOf, worldBearing } from '../public/js/furnish.js';
 import { ITEMS, bake, isSolid, parseFurniture, triangleCount, usedModels } from '../public/js/furniture.js';
-import { newWalker, stepClearOfThings, stepWalker } from '../public/js/footWalker.js';
+import { JUMP_HEIGHT, frameOf as walkerFrame, newWalker, stepClearOfThings, stepWalker } from '../public/js/footWalker.js';
 
 const bytes = readFileSync(new URL('../public/furniture.bin', import.meta.url));
 const { models, colours } = parseFurniture(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.length));
@@ -331,10 +331,10 @@ test('stairs stand in the same place on every floor, with their head on the top 
   }
 });
 
-test('only a building of 5 floors or more has a lift, beside the stairs and clear of them', () => {
+test('only a building of 4 floors or more has a lift, beside the stairs and clear of them', () => {
   const p = rectangle(30, 20);
-  assert.equal(withCore(p, 4).core.parts.length, 1);
-  const { core } = withCore(p, 5);
+  assert.equal(withCore(p, 3).core.parts.length, 1);
+  const { core } = withCore(p, 4);
   assert.deepEqual(core.parts.map((part) => part.item), ['stairs', 'lift']);
   const [a, b] = core.parts;
   assert.equal(a.rot, b.rot);
@@ -639,4 +639,84 @@ test('no room name means two different things', () => {
   const source = readFileSync(new URL('../public/js/furnish.js', import.meta.url), 'utf8'), block = source.slice(source.indexOf('const RECIPES = {'), source.indexOf('// A colour for each thing'));
   const names = [...block.matchAll(/^  (\w+): \[$/gm)].map((m) => m[1]);
   assert.equal(new Set(names).size, names.length, names.filter((n, i) => names.indexOf(n) !== i).join());
+});
+
+const hopWorld = (boxes, walls = []) => {
+  const place = new Place(ORIGIN);
+  const outer = rectangle(40, 40);
+  place.addTile('t', { buildings: [outer], lands: [], waters: [], roads: [] });
+  const made = boxes.map(({ x, y, hw, hd, top }) => ({ x, y, c: 1, s: 0, hw, hd, top }));
+  const segments = made.flatMap(({ x, y, hw, hd, top }) => {
+    const pts = [[x - hw, y - hd], [x + hw, y - hd], [x + hw, y + hd], [x - hw, y + hd]];
+    return pts.map((a, i) => ({ ax: a[0], ay: a[1], bx: pts[(i + 1) % 4][0], by: pts[(i + 1) % 4][1], top }));
+  });
+  return { place, carWalls: [], height: () => 0, floor: () => 0, inner: { walls: [...segments, ...walls], boxes: made } };
+};
+const hopAcross = (world, input) => {
+  const walker = newWalker(20, 15, 0); // walking north, towards y = 20
+  let jumped = false;
+  for (let t = 0; t < 4; t += 1 / 60) {
+    const press = !jumped && walker.y > 18.4;
+    if (press) jumped = true;
+    stepWalker(walker, { forward: 1, ...input, jump: press }, 1 / 60, world);
+  }
+  return walker;
+};
+
+test('a jump clears a chair or a table, and comes back to the floor', () => {
+  const world = hopWorld([{ x: 20, y: 20, hw: 1.5, hd: 0.3, top: 0.94 }]);
+  const walked = newWalker(20, 15, 0);
+  for (let t = 0; t < 4; t += 1 / 60) stepWalker(walked, { forward: 1 }, 1 / 60, world);
+  assert.ok(walked.y < 20, `walking doesn't pass it: ${walked.y}`);
+  const hopped = hopAcross(world, {});
+  assert.ok(hopped.y > 20.7, `jumping does: ${hopped.y}`);
+  assert.equal(hopped.height, 0, 'and lands on the floor');
+});
+
+test('a jump does not clear a wardrobe, or a wall', () => {
+  assert.ok(hopAcross(hopWorld([{ x: 20, y: 20, hw: 1.5, hd: 0.3, top: 1.7 }]), {}).y < 20, 'a wardrobe');
+  const wall = { ax: 10, ay: 20, bx: 30, by: 20 };
+  assert.ok(hopAcross(hopWorld([], [wall]), {}).y < 20, 'a wall has no top to get over');
+});
+
+test('someone can stand on a table, walk off it, and jump again from it', () => {
+  const world = hopWorld([{ x: 20, y: 20, hw: 1.5, hd: 1.5, top: 0.75 }]), walker = newWalker(20, 17.8, 0);
+  let on = 0;
+  for (let t = 0; t < 1.2; t += 1 / 60) {
+    stepWalker(walker, { forward: t < 0.3 ? 1 : 0, jump: t < 0.02 }, 1 / 60, world);
+    if (walker.height === 0.75) on++;
+  }
+  assert.ok(on > 0, `landed on it: ${walker.y}, ${walker.height}`);
+  assert.equal(walker.height, 0.75);
+  for (let t = 0; t < 2; t += 1 / 60) stepWalker(walker, { forward: 1 }, 1 / 60, world);
+  assert.equal(walker.height, 0, 'walked off the end, and fell');
+});
+
+test('a jump reaches about its height, and shows in the frame', () => {
+  const world = hopWorld([]), walker = newWalker(20, 20, 0);
+  let peak = 0, frame = 0;
+  for (let t = 0; t < 1.5; t += 1 / 60) {
+    stepWalker(walker, { jump: true }, 1 / 60, world);
+    if (t < 0.7) { peak = Math.max(peak, walker.height); if (walker.height > 0.3) frame = walkerFrame(walker); }
+    if (t >= 0.7) break;
+  }
+  assert.ok(Math.abs(peak - JUMP_HEIGHT) < 0.08, `${peak}`);
+  assert.ok(frame > 0, 'not the standing frame');
+});
+
+test('a tall building has a lobby on its ground floor for its lift, whatever it is', () => {
+  const p = rectangle(40, 30);
+  for (const type of ['office', 'hotel', 'hospital', 'school', 'library']) {
+    const plan = { type, floors: 8, style: 'modern' };
+    plan.core = coreOf([p], plan, models, dice(1));
+    const record = layoutFloor([p], plan, 1, models, dice(2));
+    assert.ok(record.zones.some((z) => z[0] === 'lobby'), `${type}: ${record.zones.map((z) => z[0])}`);
+    assert.ok(record.items.some((i) => i[0] === 'lift'), `${type} lift`);
+  }
+  const bank = { type: 'office', ground: 'bank', floors: 8, style: 'modern' };
+  bank.core = coreOf([p], bank, models, dice(1));
+  assert.ok(layoutFloor([p], bank, 1, models, dice(2)).zones.some((z) => z[0] === 'bankLobby'), 'a bank has its own');
+  const small = { type: 'office', floors: 2, style: 'modern' };
+  small.core = coreOf([p], small, models, dice(1));
+  assert.ok(!layoutFloor([p], small, 1, models, dice(2)).items.some((i) => i[0] === 'lift'), 'no lift in a small one');
 });

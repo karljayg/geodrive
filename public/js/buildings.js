@@ -3,10 +3,12 @@
 // See docs/INTERIORS.md, whose tables these follow.
 import { fromLocal } from './footData.js';
 
-const STORE = 'geodrive_rooms_v1';
-const TERMINAL_AREA = 5000, MALL_AREA = 3000, MALL_POIS = 4; // m², m², points of interest
+const STORE = 'geodrive_rooms_v2'; // v1 had wrong types from how places were matched, so it's dropped
+const OLD_STORE = 'geodrive_rooms_v1';
+const TERMINAL_AREA = 5000, MALL_AREA = 3000, MALL_POIS = 3; // m², m², points of interest
 const WAREHOUSE_AREA = 2000, LOW = 15, BIG_SHOP_AREA = 3000; // m², m, m²
 const SHED_AREA = 40, HOME_AREA = 400, HOME_HEIGHT = 12;     // m², m², m
+const APARTMENT_AREA = 2500; // m²; bigger and low is more likely offices, even on residential land
 const TOWER_FLOORS = 5;      // from here up, a shop or restaurant has the ground floor only
 const AREA_FOR_ALL = 3000;   // m²; below it, a type sized by footprint uses only the lower of its floor counts
 const ID_GRID = 2e-5;        // degrees, about 2 m
@@ -110,13 +112,15 @@ export function dice(seed) {
 const pick = (list, roll) => list[Math.floor(roll() * list.length)];
 
 // What the land and size alone say. clues: { area, height, known, pois: [types], lands: [classes] }.
+// When nothing says what a big building is, it's offices. It's only apartments on land mapped as residential.
 function typeFromLand({ area, height, known, lands }) {
   const low = !known || height < LOW;
   for (const land of lands) if (LAND_TYPE[land]) return LAND_TYPE[land];
-  if (lands.includes('industrial')) return area > WAREHOUSE_AREA && low ? 'warehouse' : 'factory';
+  if (lands.includes('industrial')) return area <= WAREHOUSE_AREA ? 'office' : low ? 'warehouse' : 'factory'; // estates are full of small offices
   if (lands.includes('retail')) return area > BIG_SHOP_AREA ? 'supermarket' : 'shop';
   if (area < SHED_AREA) return 'shed';
-  return area > HOME_AREA || (known && height > HOME_HEIGHT) ? 'apartments' : 'home';
+  if (area <= HOME_AREA && !(known && height > HOME_HEIGHT)) return 'home';
+  return lands.includes('residential') && (area <= APARTMENT_AREA || (known && height > HOME_HEIGHT)) ? 'apartments' : 'office';
 }
 
 // The most common kind of point of interest inside. A tie goes to the first found.
@@ -130,7 +134,7 @@ export function buildingType(clues) {
   const { area, pois, lands } = clues, airport = lands.includes('aerodrome');
   if (pois.length && pois.every((type) => type === 'parking')) return 'parking'; // before the airport, whose garages are huge
   if (airport && area > TERMINAL_AREA) return 'terminal';
-  if (area > MALL_AREA && pois.filter((type) => RETAIL.has(type)).length >= MALL_POIS) return 'mall';
+  if (area > MALL_AREA && pois.filter((type) => RETAIL.has(type) || type === 'bank').length >= MALL_POIS) return 'mall'; // several tenants under one roof
   const named = commonest(pois.filter((type) => type !== 'parking'));
   if (named) return named;
   return airport ? 'hangar' : typeFromLand(clues);
@@ -145,15 +149,16 @@ function floorCount(type, { area, height, known }, roll) {
 
 // A building's plan: { type, floors, style }, and ground when its ground floor is something else, like a bank in a tower.
 export function planBuilding(clues, roll) {
-  const type = buildingType(clues), style = pick(STYLES, roll);
+  const type = buildingType(clues), style = pick(STYLES, roll), name = clues.names?.[type];
+  const named = name ? { name } : {};
   if (GROUND_ONLY.has(type) && clues.known) {
     let above = typeFromLand(clues);
     if (ALSO_OFFICES.has(above)) above = 'office';
     else if (above === 'home' || above === 'shed') above = 'apartments';
     const floors = Math.round(clues.height / TYPES[above].floor);
-    if (floors >= TOWER_FLOORS) return { type: above, ground: type, floors: Math.min(floors, TYPES[above].max), style };
+    if (floors >= TOWER_FLOORS) return { type: above, ground: type, floors: Math.min(floors, TYPES[above].max), style, ...named };
   }
-  return { type, floors: floorCount(type, clues, roll), style };
+  return { type, floors: floorCount(type, clues, roll), style, ...named };
 }
 
 // The same for this building wherever the car is parked, which metres from the car are not.
@@ -169,6 +174,11 @@ export class BuildingStore {
     this.buildings = {};
     try {
       this.storage = storage ?? localStorage;
+      const old = JSON.parse(this.storage.getItem(OLD_STORE));
+      if (old) {
+        for (const [id, building] of Object.entries(old)) for (const floor of Object.keys(building.saved || {})) this.storage.removeItem(`${OLD_STORE}_${id}_${floor}`);
+        this.storage.removeItem(OLD_STORE);
+      }
       this.buildings = JSON.parse(this.storage.getItem(STORE)) || {};
     } catch (err) {
       console.warn('saved buildings:', err);
@@ -266,6 +276,6 @@ export const floorHeight = (plan) => TYPES[plan.type].floor;
 
 // The line on screen: Bank · Floor 1 of 20.
 export function planLabel(plan, floor = 1) {
-  const type = floor === 1 && plan.ground ? plan.ground : plan.type;
-  return `${TYPES[type].name} · Floor ${floor} of ${plan.floors}`;
+  const type = floor === 1 && plan.ground ? plan.ground : plan.type, ownName = plan.name && (type === (plan.ground || plan.type));
+  return `${ownName ? plan.name : TYPES[type].name} · Floor ${floor} of ${plan.floors}`;
 }

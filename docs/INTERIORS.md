@@ -27,19 +27,23 @@ Measured on 2026-11-01 from one zoom-14 OpenFreeMap tile per place, counting foo
 - Footprints can be huge: bounding boxes reach 196,000 m² at Tysons and 100,000 m² at Dulles. Those need a limit on how much gets furnished.
 
 ## Working out the type
+The names on the map come from Google, which is billed per lookup. Building types come from OpenStreetMap, so the two can disagree. A place counts for the footprint it's in, or the nearest within 25 m if it's in none, because 21% of places in six sampled areas lie just outside a footprint. Parking must be inside. A place's name shows in the hint when the map has it.
+
 First match wins. Rules 1 and 2 come first because a terminal or mall holds many POIs, and it must not become a "restaurant" because of one of them. POIs come before hangars so a café or hotel on airport land is what it says.
 
 | # | Clue | Type |
 |---:|---|---|
 | 1 | In `aerodrome` land, footprint over 5,000 m² | Airport terminal |
-| 2 | 4 or more shop or food POIs inside, footprint over 3,000 m² | Mall |
+| 2 | 3 or more shop, food or bank POIs, footprint over 3,000 m² | Mall |
 | 3 | A POI inside that the table below lists (others, like toilets, are ignored); the commonest wins | Its type |
 | 4 | In `aerodrome` land, smaller | Hangar |
 | 5 | `school`, `university`, `college`, `hospital`, `library` land | That type |
 | 6 | `commercial` land | Office |
-| 7 | `industrial` land: footprint over 2,000 m² and under 15 m or unknown, otherwise | Warehouse, otherwise factory |
+| 7 | `industrial` land: up to 2,000 m², over 2,000 m² and low, otherwise | Office, warehouse, factory |
 | 8 | `retail` land: over 3,000 m², otherwise | Supermarket, otherwise shop |
-| 9 | Anything else: under 40 m², 40 to 400 m², over 400 m² or over 12 m tall | Shed, home, apartments |
+| 9 | Anything else: under 40 m², 40 to 400 m² | Shed, home |
+| 10 | Over 400 m² or over 12 m tall, on land mapped as residential, up to 2,500 m² unless tall | Apartments |
+| 11 | Any other big or tall building nothing is known about | Office |
 
 ### Tried on real buildings
 The classifier run over the tile at each place, with its neighbours loaded, on 2026-11-01. About 0.03 to 0.4 ms a building.

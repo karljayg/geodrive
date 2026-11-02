@@ -47,8 +47,12 @@ test('with nothing inside, the land and the size decide', () => {
   assert.equal(buildingType(clues({ area: 9000, lands: ['retail'] })), 'supermarket');
   assert.equal(buildingType(clues({ area: 30 })), 'shed');
   assert.equal(buildingType(clues({ area: 200, lands: ['residential'] })), 'home');
-  assert.equal(buildingType(clues({ area: 900 })), 'apartments');
-  assert.equal(buildingType(clues({ area: 200, known: true, height: 40 })), 'apartments');
+  assert.equal(buildingType(clues({ area: 900 })), 'office', 'a big building nothing is known about');
+  assert.equal(buildingType(clues({ area: 200, known: true, height: 40 })), 'office');
+  assert.equal(buildingType(clues({ area: 900, lands: ['residential'] })), 'apartments', 'but on residential land it is flats');
+  assert.equal(buildingType(clues({ area: 200, known: true, height: 40, lands: ['residential'] })), 'apartments');
+  assert.equal(buildingType(clues({ area: 9000, lands: ['residential'] })), 'office', 'too big and low for flats');
+  assert.equal(buildingType(clues({ area: 500, lands: ['industrial'] })), 'office', 'not everything on an estate is a factory');
 });
 
 test('a mapped height sets the floors, within what that type can have', () => {
@@ -137,9 +141,9 @@ test('storage that fails or holds rubbish loses nothing but the saving', () => {
 });
 
 test('a point of interest only counts inside the footprint, not in a corner of its box', () => {
-  const pts = [{ x: 0, y: 0 }, { x: 40, y: 0 }, { x: 0, y: 40 }];
-  const piece = { rings: [{ pts, seam: [false, false, false] }], height: 5, known: false, ground: true, minX: 0, maxX: 40, minY: 0, maxY: 40 };
-  const place = placeWith({ buildings: [piece], pois: [{ x: 35, y: 35, cls: 'bank', sub: 'bank' }] });
+  const pts = [{ x: 0, y: 0 }, { x: 80, y: 0 }, { x: 0, y: 80 }];
+  const piece = { rings: [{ pts, seam: [false, false, false] }], height: 5, known: false, ground: true, minX: 0, maxX: 80, minY: 0, maxY: 80 };
+  const place = placeWith({ buildings: [piece], pois: [{ x: 75, y: 75, cls: 'bank', sub: 'bank' }] });
   const whole = place.wholeOf(piece);
   assert.deepEqual(place.cluesFor(whole.pieces, piece, poiType).pois, []);
 });
@@ -196,4 +200,42 @@ test('a parking garage is one even at an airport, unless something else is in th
   assert.equal(poiType({ cls: 'shop', sub: 'beauty' }), 'salon');
   assert.equal(poiType({ cls: 'hospital', sub: 'clinic' }), 'clinic');
   assert.equal(poiType({ cls: 'hospital', sub: 'nursing_home' }), 'nursingHome');
+});
+
+test('a place counts once though neighbouring tiles repeat it, and its name is what the building is called', () => {
+  const piece = rect(0, 0, 60, 60), poi = () => ({ x: 10, y: 10, cls: 'bank', sub: 'bank', name: 'United Bank' }), place = new Place(ORIGIN);
+  for (const key of ['a', 'b', 'c', 'd']) place.addTile(key, { buildings: key === 'a' ? [piece] : [], lands: [], waters: [], roads: [], pois: [poi()] });
+  const plan = identify(place, piece, new BuildingStore(memory()));
+  assert.deepEqual(place.cluesFor([piece], piece, poiType).pois, ['bank']);
+  assert.equal(plan.type, 'bank');
+  assert.equal(plan.name, 'United Bank');
+  assert.match(planLabel(plan), /^United Bank · Floor 1 of/);
+});
+
+test('one shop repeated by tiles does not make a mall', () => {
+  const piece = rect(0, 0, 80, 80), place = new Place(ORIGIN);
+  for (const key of ['a', 'b', 'c', 'd']) place.addTile(key, { buildings: key === 'a' ? [piece] : [], lands: [], waters: [], roads: [], pois: [{ x: 5, y: 5, cls: 'shop', sub: 'gift', name: 'Gifts' }] });
+  assert.equal(identify(place, piece, new BuildingStore(memory())).type, 'shop');
+});
+
+test('a place just outside a footprint belongs to the nearest building, but a car park does not, and a far one does not', () => {
+  const near = rect(0, 0, 20, 20), other = rect(60, 0, 80, 20);
+  const place = placeWith({ buildings: [near, other], pois: [{ x: 28, y: 10, cls: 'bank', sub: 'bank', name: '' }, { x: 10, y: 28, cls: 'parking', sub: 'parking', name: '' }, { x: 120, y: 10, cls: 'cafe', sub: 'cafe', name: '' }] });
+  assert.deepEqual(place.cluesFor([near], near, poiType).pois, ['bank']);
+  assert.deepEqual(place.cluesFor([other], other, poiType).pois, []);
+});
+
+test('a place in one building is not claimed by the one beside it', () => {
+  const a = rect(0, 0, 20, 20), b = rect(22, 0, 42, 20);
+  const place = placeWith({ buildings: [a, b], pois: [{ x: 25, y: 10, cls: 'bank', sub: 'bank', name: '' }] });
+  assert.deepEqual(place.cluesFor([a], a, poiType).pois, []);
+  assert.deepEqual(place.cluesFor([b], b, poiType).pois, ['bank']);
+});
+
+test('the old saved buildings are cleared away', () => {
+  const storage = memory(), removed = [];
+  storage.setItem('geodrive_rooms_v1', JSON.stringify({ x: { type: 'factory', saved: { 1: 10 } } }));
+  storage.removeItem = (key) => removed.push(key);
+  new BuildingStore(storage);
+  assert.deepEqual(removed.sort(), ['geodrive_rooms_v1', 'geodrive_rooms_v1_x_1']);
 });

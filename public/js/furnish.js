@@ -87,7 +87,7 @@ const PILLAR_EVERY = 3;    // bays
 const RAMP_BAYS = 4;       // bays a ramp takes the place of
 const CORRIDOR = 2;        // m wide
 const FLAT_WIDTH = 8, FLAT_WIDTH_MIN = 6.5, FLAT_DEPTH_MIN = 5.5, BAND_DEPTH = 22, MOST_FLATS = 9; // m, m, m, m, on a floor
-const LIFT_FROM = 5;       // floors from which a building has a lift as well as stairs
+const LIFT_FROM = 4;       // floors from which a building has a lift as well as stairs, and a lobby to take it from
 const LIFT_GAP = 0.3;      // m between the stairs and the lift
 const CORE_CLEAR = 1.4;    // m in front of the stairs and lift kept free on every floor
 const CORE_REACH = 1.2;    // m from them that L uses them
@@ -1324,6 +1324,7 @@ function zonesFor(plan, floor, area) {
   const type = floor === 1 && plan.ground ? plan.ground : plan.type, own = TYPE_ZONES[type];
   if (own) {
     const list = (floor > 1 && own.upper) || own.ground, then = own.then || [], zones = [...list];
+    if (floor === 1 && plan.floors >= LIFT_FROM && !zones.some((z) => z[0] === 'lobby' || z[0] === 'bankLobby' || z[0] === 'foyer')) zones.unshift(['lobby', 40]);
     let total = zones.reduce((sum, z) => sum + z[1], 0);
     for (let i = 0; then.length && zones.length < MOST_ZONES && i < MOST_ZONES; i++) {
       const zone = then[i % then.length];
@@ -1637,7 +1638,8 @@ export function layoutFloor(pieces, plan, floor, models, roll) {
   return { v: FLOOR_VERSION, axis, zones, walls: wallLengths(grid), items: furnisher.items };
 }
 
-// What stops a person on this floor, in metres from the car: wall lengths, and each solid thing's outline and box.
+// What stops a person on this floor, in metres from the car: wall lengths, and each solid thing's outline and box. A thing has
+// a top, as it can be jumped over or stood on, and a wall hasn't, as walls really go to the ceiling.
 export function solidsOf(record, frame, models) {
   const walls = record.walls.map(([u0, v0, u1, v1]) => {
     const a = frame.toWorld(u0, v0), b = frame.toWorld(u1, v1);
@@ -1650,8 +1652,8 @@ export function solidsOf(record, frame, models) {
     const { x, y } = frame.toWorld(u, v), b = worldBearing(rot, frame.axis), c = Math.cos(b), s = Math.sin(b);
     const corner = (mx, my) => ({ x: x + mx * c + my * s, y: y - mx * s + my * c });
     const pts = [corner(-model.w / 2, -model.d / 2), corner(model.w / 2, -model.d / 2), corner(model.w / 2, model.d / 2), corner(-model.w / 2, model.d / 2)];
-    pts.forEach((p, i) => walls.push({ ax: p.x, ay: p.y, bx: pts[(i + 1) % 4].x, by: pts[(i + 1) % 4].y }));
-    boxes.push({ x, y, c, s, hw: model.w / 2, hd: model.d / 2 });
+    pts.forEach((p, i) => walls.push({ ax: p.x, ay: p.y, bx: pts[(i + 1) % 4].x, by: pts[(i + 1) % 4].y, top: model.h }));
+    boxes.push({ x, y, c, s, hw: model.w / 2, hd: model.d / 2, top: model.h });
   }
   return { walls, boxes };
 }
