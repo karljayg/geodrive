@@ -199,7 +199,7 @@ The server sends `{ hour, rate, at }`. Every client works out the hour itself: `
 This can't be perfect. Each player sees the others slightly in the past, so someone who swerves late may still be stopped. The server's check is there to keep that from costing a life.
 
 ### A car
-- **Planted:** a hash of the place decides where cars are (`GAME.worldCars`, about one per 300 m of road), their type and colour, whether they run (about 1 in 4), why they don't, and whether a sledgehammer is in storage (1 in 4).
+- **Planted:** a hash of the place decides where cars are (`GAME.worldCars`, about one per 300 m of road), their type and colour, whether they run (about 2 in 5), why they don't, and whether a sledgehammer is in storage (1 in 4).
 - **Recorded:** the first time someone drives it or changes its storage.
 - **Never stranded:** with no running car within a short walk of where someone first appears, one is added.
 - **Driver disconnects:** the car stops where it is, with no crash, and it's free after 10 s.
@@ -255,7 +255,7 @@ All in `public/js/gameConfig.js`, the same for every player.
 | Invite lasts | 24 hours |
 | Appear within | 300 m |
 | Cars planted | About 1 per 300 m of road |
-| Cars that run | 1 in 4 |
+| Cars that run | 2 in 5 |
 | Cars with a hammer | 1 in 4 |
 | Driver seat freed after disconnecting | 10 s |
 | Name tags shown within | 100 m |

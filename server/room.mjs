@@ -348,6 +348,7 @@ export class Room {
     const member = this.store.member(client.id), lives = Math.max(0, member.lives - 1);
     this.store.setLives(client.id, lives);
     client.car = null;
+    client.planted = false; // a new life can have a car near it too
     const dead = this.store.member(client.id);
     this.tellAll({ t: 'died', member: client.id, lives, how, by, at });
     this.tellAll({ t: 'member', member: publicMember(dead, this.clients.has(client.id), null) });

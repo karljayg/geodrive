@@ -87,7 +87,7 @@ Settings' Diagnostics tab shows FPS, the slowest frame in the last second, and J
 ## Shared worlds
 `J` in the sandbox makes a shared world: a name for it, then your own name, male or female, and a colour for each part of your person. The sandbox stays as it is. Your start is chosen once, in the usual dialog, and only places you: it isn't kept. In a world, New start, Back to start, the time slider, `T` and Forget interiors aren't there, and everyone starts on foot.
 
-Cars in a world belong to the world. They're planted along the roads, the same for everyone: about 1 in 4 runs, and the rest say why not when you try. Walk up to one and press L. One driver at a time, first come first served, and anyone can take a car that's been left. Each car has its own fuel and storage, and about 1 in 4 has a sledgehammer in it. Others see your car move as you drive. If there's no running car near where someone first appears, one is added.
+Cars in a world belong to the world. They're planted along the roads, the same for everyone: about 2 in 5 run, and the rest say why not when you try. Walk up to one and press L. One driver at a time, first come first served, and anyone can take a car that's been left. Each car has its own fuel and storage, and about 1 in 4 has a sledgehammer in it. Others see your car move as you drive. If there's no running car near where someone first appears, or comes back after dying, one is added.
 
 Nothing passes through anything. A car stops dead at another car, parked or moving, or at a person, bouncing back slightly, and the other driver's car stops too. People can't walk through cars, moving or parked.
 

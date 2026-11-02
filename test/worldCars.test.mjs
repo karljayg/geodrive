@@ -24,7 +24,7 @@ test('cars are spaced along a road at about the set distance, none on bridges', 
   assert.equal(plantCars([{ f: 0, c: [1, 2] }]).length, 0, 'a road with one point');
 });
 
-test('about 1 in 4 run and about 1 in 4 hold a sledgehammer, and those that don\'t run say why', () => {
+test('about 2 in 5 run and about 1 in 4 hold a sledgehammer, and those that don\'t run say why', () => {
   const cars = Array.from({ length: 40 }, (_, i) => plantCars([road(38 + i * 0.5)])).flat();
   const share = (fits) => cars.filter(fits).length / cars.length;
   assert.ok(cars.length > 1000);

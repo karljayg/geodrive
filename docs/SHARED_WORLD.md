@@ -214,7 +214,7 @@ There's no automatic backup. A disk failure loses what no manager has saved.
 ## Cars
 The biggest change for the game. Designed here in outline; passengers and the rest are planned later.
 
-**What exists.** Cars are planted along roads as tiles load, decided by a hash of the place: `GAME.worldCars`, say one per 300 m of road, with about 1 in 4 running. So everybody sees the same cars with nothing stored and nothing prepared, and the server records one only once someone touches it. A car that won't start says why in `sayingsConfig.js` (no key, flat battery, and so on), by the same hash. If there's no running car within a short walk of where someone first appears, one is added there, so nobody's left stranded by the hash.
+**What exists.** Cars are planted along roads as tiles load, decided by a hash of the place: `GAME.worldCars`, say one per 300 m of road, with about 2 in 5 running (raised from 1 in 4 after the owner tried five in a row that wouldn't start). So everybody sees the same cars with nothing stored and nothing prepared, and the server records one only once someone touches it. A car that won't start says why in `sayingsConfig.js` (no key, flat battery, and so on), by the same hash. If there's no running car within a short walk of where someone first appears, one is added there, so nobody's left stranded by the hash.
 
 **Getting in.** F at any free car asks to get in. The server gives the seat to the first to ask. Getting out leaves the car there for anyone. If a driver disconnects, the car stops, and after 10 s it's free.
 

@@ -400,7 +400,7 @@ export class Foot {
     if (!this.waiting) list.push(...(this.roughChoices?.() || []));
     if (this.canGetIn()) {
       list.unshift({ label: 'Get in the car?', run: () => { this.onGetIn?.(); return ''; } },
-        { label: 'Load into car?', html: '<u>L</u>oad into car?', key: 'l', run: () => this.onLoadCar?.() },
+        { label: 'Load into car?', html: '<u>L</u>oad into car?', key: 'l', run: () => { this.onLoadCar?.(); return ''; } },
         { label: 'Open the car\'s storage?', run: () => { this.onOpenBag?.(); return ''; } });
     }
     if (!building) {

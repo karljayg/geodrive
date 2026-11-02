@@ -1212,7 +1212,7 @@ function answer(index) {
   stopAsking();
   if (!choice) return;
   const said = choice.run();
-  if (said) notice(said, 2500);
+  if (typeof said === 'string' && said) notice(said, 2500); // some run on after answering, and say what they have to say themselves
 }
 
 function stopAsking() {
@@ -2657,6 +2657,15 @@ async function iDied({ lives, how, by, at }) {
   showFinalDeath({ how, by, ...figures });
 }
 
+// Nobody should start out stranded: once the roads are in, a running car within walking distance.
+function makeSureOfACar() {
+  setTimeout(() => {
+    world.cars.plantFrom(tiles.waysOf);
+    const at = foot ? foot.where() : pos, road = roads.nearest(at.lat, at.lng, 0, GAME.world.appearWithin);
+    if (road) world.cars.makeSureOfOne(at, { lat: road.lat, lng: road.lng, heading: road.heading });
+  }, 4000);
+}
+
 // Back on foot, on a road near somewhere.
 async function beginAfterDeath(near) {
   const turn = Math.random() * 360, within = GAME.world.appearWithin * Math.sqrt(Math.random()), { lat, lng } = move(near.lat, near.lng, turn, within);
@@ -2664,6 +2673,7 @@ async function beginAfterDeath(near) {
   await placeCar({ lat, lng, heading: turn, label: world.name });
   quietStop = false;
   await startWalking();
+  makeSureOfACar();
 }
 
 async function leaveBelongings(place) {
@@ -2777,13 +2787,7 @@ async function startPeople() {
     if (foot) foot.setCars(worldCarsNear(pos));
     syncCarStorage();
   }, 1000);
-  if (firstAppearance) {
-    setTimeout(async () => {
-      world.cars.plantFrom(tiles.waysOf);
-      const at = foot ? foot.where() : pos, road = roads.nearest(at.lat, at.lng, 0, GAME.world.appearWithin);
-      if (road) world.cars.makeSureOfOne(at, { lat: road.lat, lng: road.lng, heading: road.heading });
-    }, 4000);
-  }
+  if (firstAppearance) makeSureOfACar();
   world.cars.onChange = () => {
     peopleView.carsChanged();
     syncCarStorage();
