@@ -7,6 +7,7 @@ import { itemIcon } from './itemArt.js';
 import { ART } from './pocketArt.js';
 import { BAG_SLOTS, CAR_SLOTS, CONTACTS, PocketData, addRecent, bearingToCar, compassName, distanceText, noteTitle, songParts, turnToCar } from './pocketData.js';
 import { frequencyText } from './radio.js';
+import { SERVICE_RANK } from './vector.js';
 
 const TRAY = [
   { id: 'phone', label: 'Phone', key: 'i', art: 'phone' },
@@ -30,6 +31,7 @@ const RING_TIME = 5000;    // ms a call rings before nobody answers
 const REPLY_TIME = 2500;   // ms before a text gets its answer
 const MAP_RADII = [150, 400, 1000, 3000]; // m from the person to the top of the map
 const MAP_REACH = 1.2;    // of that, out to the screen's corners
+const SERVICE_NAMES_FROM = 1000; // m of that from which service roads are too faint to see, so a name would float on nothing
 const MAP_BUTTONS = [{ fromRight: 22, y: 49, r: 18 }, { fromRight: 22, y: 82, r: 18 }]; // the zoom buttons, which street names stay clear of
 
 let art = 0;
@@ -83,6 +85,7 @@ export class Pocket {
   openApp(id) {
     if (this.calls.phoneDead()) return this.calls.say('phoneDead');
     if (id === 'torch') return this.calls.phoneLight(); // it does its one job, rather than opening
+    this.calls.sound('tap');
     if (this.app === 'notes' && this.note) this.data.closeNote(this.note);
     this.note = null;
     this.bagOpen = false;
@@ -106,6 +109,7 @@ export class Pocket {
 
   toggleBag() {
     this.bagOpen = !this.bagOpen;
+    this.calls.sound('zip');
     if (this.bagOpen) {
       this.closePhone();
       this.renderBag();
@@ -125,6 +129,7 @@ export class Pocket {
   }
 
   press(id) {
+    if (id === 'phone' && this.app) this.calls.sound('tap');
     if (id === 'phone') return this.app ? this.closePhone() : this.openApp('home');
     if (id === 'bag') return this.toggleBag();
     const app = id === 'notepad' ? 'notes' : id;
@@ -144,10 +149,14 @@ export class Pocket {
   pressSlot(id, side) {
     if (!this.calls.nearCar()) {
       if (id === 'Flashlight') this.calls.flashlight();
-      else if (!this.useItem(id)) this.bagPanel.querySelector('.empty').textContent = say('noUse', { name: id.toLowerCase() });
+      else if (!this.useItem(id)) {
+        this.calls.sound('ack');
+        this.bagPanel.querySelector('.empty').textContent = say('noUse', { name: id.toLowerCase() });
+      }
       return;
     }
     const moved = this.data.move(id, side === 'bag');
+    this.calls.sound(moved ? 'rustle' : 'ack');
     if (moved && id === 'Flashlight' && side === 'bag') this.calls.stowed();
     if (!moved) this.bagPanel.querySelector('.empty').textContent = say(side === 'bag' ? 'carFull' : 'bagFull');
     else this.renderBag();
@@ -157,14 +166,18 @@ export class Pocket {
   dropItem(id, side) {
     const item = (side === 'car' ? this.data.car : this.data.bag).find((i) => i.id === id);
     if (!item || !this.data.drop(id, side === 'car')) return;
-    this.dropped = { id: item.id, name: item.name, side };
+    this.calls.sound('drop');
+    this.dropped = { id: item.id, name: item.name, side, world: this.calls.dropped(item.name) };
     if (id === 'Flashlight' && !this.data.bagHas(id)) this.calls.stowed();
     this.renderBag();
-    this.bagPanel.querySelector('.empty').innerHTML = `You dropped the ${esc(item.name.toLowerCase())}. It's gone. <button class="undoDrop" data-undo-drop>Undo</button>`;
+    this.bagPanel.querySelector('.empty').innerHTML = `You dropped the ${esc(item.name.toLowerCase())}. It's where you left it. <button class="undoDrop" data-undo-drop>Undo</button>`;
   }
 
   undoDrop() {
-    if (this.dropped) this.data.putBack(this.dropped, this.dropped.side === 'car');
+    if (this.dropped) {
+      this.data.putBack(this.dropped, this.dropped.side === 'car');
+      this.calls.undropped(this.dropped.world);
+    }
     this.dropped = null;
     this.renderBag();
   }
@@ -235,7 +248,7 @@ export class Pocket {
     else if ('toggleMusic' in button.dataset) this.toggleMusic();
     else if ('prev' in button.dataset) this.radio.seek(-1);
     else if ('next' in button.dataset) this.radio.seek(1);
-    else if ('newNote' in button.dataset) this.openNote(this.data.addNote().id);
+    else if ('newNote' in button.dataset) { this.calls.sound('paper'); this.openNote(this.data.addNote().id); }
     else if ('openNote' in button.dataset) this.openNote(button.dataset.openNote);
     else if ('notesBack' in button.dataset) this.openApp('notes');
     else if ('deleteNote' in button.dataset) { const id = this.note; this.note = null; this.data.deleteNote(id); this.openApp('notes'); }
@@ -495,7 +508,8 @@ export class Pocket {
         const canvas = this.area.querySelector('[data-map]');
         if (canvas) {
           const radius = MAP_RADII[this.mapRadius];
-          drawNav(canvas, { roads: at.roads, pos: on.where, heading: on.facing, parked: at.parked, route: null, routeIndex: 0, radius, hour: at.hour, clock: clockText(at.hour), streets: { lines: at.tiles.streetNames(on.where.lat, on.where.lng, radius * MAP_REACH), avoid: MAP_BUTTONS } });
+          const lines = at.tiles.streetNames(on.where.lat, on.where.lng, radius * MAP_REACH);
+          drawNav(canvas, { roads: at.roads, pos: on.where, heading: on.facing, parked: at.parked, route: null, routeIndex: 0, radius, hour: at.hour, clock: clockText(at.hour), streets: { lines: radius < SERVICE_NAMES_FROM ? lines : lines.filter((line) => line.rank < SERVICE_RANK), avoid: MAP_BUTTONS } });
         }
       }
     }

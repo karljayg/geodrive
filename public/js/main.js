@@ -1,4 +1,5 @@
 import { BUILDING_KEY } from './footActions.js';
+import { Drops, parcelParts } from './drops.js';
 import { GAME } from './gameConfig.js';
 import { say } from './sayings.js';
 import { Vitals } from './vitals.js';
@@ -13,6 +14,7 @@ import { beamPools, brakeLit, drawDots, drawPools, tailDots, torchPools } from '
 import { advanceHour, clockText, darknessAt, tintAt } from './daylight.js';
 import { drawGauge, drawNav, navBehind, revRange, speedRange, speedStep } from './dash.js';
 import { EngineAudio } from './engineSound.js';
+import { bagSound } from './sounds.js';
 import { apiPanelRows, describeMachine, observeBrowser, PerfLog } from './perflog.js';
 import { newGearbox, stepGearbox } from './gearbox.js';
 import { frequencyText, Radio } from './radio.js';
@@ -86,6 +88,18 @@ let lane = 0, laneNow = LANE_OFFSET; // lane: metres chosen off the usual line; 
 let destination = null, route = null, routeIndex = null, routeLine = null, routing = false, routedAt = 0, reroutes = 0, fsd = false, fsdBoost = 0, arriving = false;
 let paused = false, trip = newTrip();
 const engine = new EngineAudio();
+engine.onState = (state) => perfLog.event('audio', { state });
+
+// A sound, and now and then how late the audio is on this machine, for the log: what the output says it's behind by, and how far the audio clock got in 200 ms, which is short if it stalled.
+const SOUND_TIMED_EVERY = 30000, SOUND_CLOCK_MS = 200;
+let soundTimedAt = -Infinity;
+function sfx(name) {
+  engine.effect(name);
+  const now = performance.now(), before = engine.timing();
+  if (!before || now - soundTimedAt < SOUND_TIMED_EVERY) return;
+  soundTimedAt = now;
+  setTimeout(() => perfLog.event('sound', { name, state: before.state, baseMs: Math.round(before.base * 1000), outputMs: Math.round(before.output * 1000), behindMs: Math.round(before.behind * 1000), clockMs: Math.round((engine.timing().at - before.at) * 1000), wallMs: Math.round(performance.now() - now) }), SOUND_CLOCK_MS);
+}
 let soundThrottle = 0, savedAt = 0, radioResume = false, radioHeld = false;
 const SOUND_THROTTLE_RISE = 1.1; // s for a held W to reach full throttle in the sound; the car's acceleration doesn't change
 const SAVE_EVERY = 2000; // ms between saving the trip
@@ -300,6 +314,7 @@ function advanceRouteLine() {
 
 function setFsd(on, message) {
   if (on && !destination) return notice('Enter a destination first: press G.', 3000);
+  const was = fsd;
   fsd = on;
   if (on) {
     cancelSignal();
@@ -308,6 +323,7 @@ function setFsd(on, message) {
     if (away) requestRoute(true);
     else routeIndex = null;
   }
+  if (fsd !== was) sfx(on ? 'chimeUp' : 'chimeDown');
   if (message) notice(message, 3000);
 }
 
@@ -339,6 +355,7 @@ function currentGuide() {
       const where = destination.label;
       clearDestination();
       arriving = true;
+      sfx('arrived');
       notice(`Arrived at ${where}.`, 6000);
       return null;
     }
@@ -812,7 +829,7 @@ function runFoot(t, dt) {
     notice(say('lightsAreOff'), 5000);
   }
   const walker = foot.walker;
-  pocket.update(t, { x: walker.x, y: walker.y, facing: foot.compass(), where: foot.where() }, { roads, parked: pos, hour: settings.hour });
+  pocket.update(t, { x: walker.x, y: walker.y, facing: foot.compass(), where: foot.where() }, { roads, tiles, parked: pos, hour: settings.hour });
   if (t - tilesCheckedAt > 1000) {
     tilesCheckedAt = t;
     const at = foot.where();
@@ -837,7 +854,7 @@ async function getOut() {
     const { Foot, PERSON_SIZE: personSize } = await import('./foot.js'); // only those who walk load any of this
     await makePeople();
     (await pocketReady()).close();
-    foot = new Foot({ onUsed: (effect, count) => { vitals.apply(effect, count); }, hasKey: () => pocket.data.bagHas(BUILDING_KEY), onLocked: showLocked, onFound: (name) => pocket.collect(name), onSlept: sleepUntilMorning, canvas: el('foot'), origin: { lat: pos.lat, lng: pos.lng }, heading: car.heading, profile: settings.carProfile, scale: settings.carScale, tiles, view: { tilt: CAMERAS[0].tilt, range: CAMERAS[0].range * FOOT_RANGE_SHARE, fov: FOV_Y, below: CAR_BELOW_CENTRE } });
+    foot = new Foot({ drops, onDropsChanged: () => { dropsSyncedAt = -Infinity; }, onSound: sfx, onUsed: (effect, count) => { vitals.apply(effect, count); }, hasKey: () => pocket.data.bagHas(BUILDING_KEY), onLocked: showLocked, onFound: (name) => pocket.collect(name), onSlept: sleepUntilMorning, canvas: el('foot'), origin: { lat: pos.lat, lng: pos.lng }, heading: car.heading, profile: settings.carProfile, scale: settings.carScale, tiles, view: { tilt: CAMERAS[0].tilt, range: CAMERAS[0].range * FOOT_RANGE_SHARE, fov: FOV_Y, below: CAR_BELOW_CENTRE } });
     showPerson(personSize);
   } catch (err) {
     console.warn('getting out:', err);
@@ -858,6 +875,7 @@ async function getOut() {
   keys.clear();
   lightKey = '';
   document.body.classList.add('onFoot');
+  sfx('carDoor');
   applySound();
   mapBox = null;
   navDrawnAt = 0;
@@ -868,6 +886,7 @@ async function getOut() {
 
 function stopFoot() {
   if (!foot) return;
+  sfx('carDoor');
   foot.stop();
   foot = null;
   pocket?.close();
@@ -926,6 +945,7 @@ el('liftClose').addEventListener('click', () => {
 
 // The big message for a building with nothing inside yet.
 function showLocked(type) {
+  sfx('rattle');
   el('lockedType').textContent = type;
   el('lockedSay').textContent = say('locked');
   const box = el('locked');
@@ -941,6 +961,7 @@ let asking = null;
 function pressUse() {
   if (foot.pose) {
     foot.standUp();
+    sfx('sit');
     return;
   }
   if (asking) {
@@ -978,6 +999,50 @@ function checkAsking() {
   if (!w || Math.hypot(w.x - asking.x, w.y - asking.y) > WALK_AWAY || foot.level !== asking.level || w.inside !== asking.inside || foot.pose) stopAsking();
 }
 
+// --- Things left behind ----------------------------------------------------------------------------------------
+
+const drops = new Drops();
+const dropModels = new Map(); // id: { element, real }, for outdoor ones near enough to show
+const dropPictures = new Map(); // name: the model's address, once made from the real thing
+let dropsSyncedAt = -Infinity;
+
+// From the bag or the car's storage: a step ahead of someone on foot, or beside the car from inside it.
+function leaveDrop(name) {
+  dropsSyncedAt = -Infinity;
+  if (foot) return foot.placeDrop(name);
+  const { lat, lng } = move(pos.lat, pos.lng, car.heading + 90, GAME.drops.beside);
+  return drops.add({ name, lat, lng, facing: rad(car.heading) });
+}
+
+function dropPicture(name) {
+  if (dropPictures.has(name)) return { src: dropPictures.get(name), real: true };
+  const parts = foot?.dropParts(name);
+  const src = glbUrl(buildPersonGlb(parts || parcelParts()));
+  if (parts) dropPictures.set(name, src);
+  return { src, real: !!parts };
+}
+
+// Outdoor things near enough to see, as models on the map. Not every frame, and only when there are any.
+function syncDrops(t) {
+  if (!map || !maps3d || t - dropsSyncedAt < 1000) return;
+  dropsSyncedAt = t;
+  if (!drops.list.length && !dropModels.size) return;
+  const at = foot ? foot.where() : pos, near = new Map(drops.around(at.lat, at.lng, GAME.drops.shownWithin, GAME.drops.mostShown).map((drop) => [drop.id, drop]));
+  for (const [id, shown] of dropModels) {
+    if (near.has(id) && (shown.real || !foot)) continue;
+    shown.element.remove();
+    dropModels.delete(id);
+  }
+  for (const [id, drop] of near) {
+    if (dropModels.has(id)) continue;
+    const { src, real } = dropPicture(drop.name);
+    const element = new maps3d.Model3DElement({ position: { lat: drop.lat, lng: drop.lng, altitude: 0 }, altitudeMode: 'RELATIVE_TO_GROUND', orientation: { heading: (drop.facing * 180) / Math.PI, tilt: 0, roll: 0 } });
+    element.src = src;
+    map.append(element);
+    dropModels.set(id, { element, real });
+  }
+}
+
 // The bag and phone share one pocket object, made the first time either is wanted. Being in or next to the car is what opens its storage.
 async function pocketReady() {
   if (pocket) return pocket;
@@ -998,16 +1063,20 @@ async function pocketReady() {
     onTyping: () => keys.clear(), // or a key held down would keep walking
     nearCar: () => !foot || foot.canGetIn(),
     onFoot: () => !!foot,
+    dropped: leaveDrop,
+    undropped: (id) => { if (foot) foot.removeDrop(id); else drops.remove(id); dropsSyncedAt = -Infinity; },
     phoneDead: () => vitals.stats.phone <= 0,
     say: (text) => notice(say(text), 2500),
     useItem: (name) => {
       const said = vitals.consume(name);
       if (said) {
+        sfx(bagSound(name, GAME.consumables[name].kind));
         notice(said, 2500);
         perfLog.event('vital', { used: name });
       }
       return !!said;
     },
+    sound: sfx,
     vitals: () => ({ vitals, rates: vitals.rates(doingNow()), rows: VITAL_ROWS }),
     flashlight: () => carryLight('flash'),
     phoneLight: () => carryLight('phone'),
@@ -1020,6 +1089,7 @@ async function pocketReady() {
 function carryLight(kind) {
   if (!foot) return;
   if (kind === 'flash' && !pocket?.data.bagHas('Flashlight')) return notice(say('flashlightNotInBag'), 2500);
+  sfx('click'); // a dead one still clicks
   if (foot.light !== kind && vitals.stats[kind === 'flash' ? 'flashlight' : 'phone'] <= 0) return notice(say(kind === 'flash' ? 'flashlightDead' : 'phoneDead'), 2500);
   const on = foot.toggleLight(kind);
   lightKey = '';
@@ -1062,6 +1132,7 @@ function doingNow() {
 function passNeeds(t, hours) {
   if (!map) return;
   sayEvents(vitals.pass(hours, doingNow()));
+  syncDrops(t);
   if (t - vitalsDrawnAt > 500) {
     vitalsDrawnAt = t;
     drawVitals();
@@ -1075,6 +1146,11 @@ function passNeeds(t, hours) {
 function sayEvents(events) {
   for (const event of events) {
     if (event.say) notice(event.say, 4000);
+    if (event.type === 'warn') sfx('nudge');
+    if (event.type === 'accident') sfx('accident');
+    if (event.type === 'full') sfx('charged');
+    if (event.type === 'empty' && (event.stat === 'phone' || event.stat === 'flashlight')) sfx('powerDown');
+    if (event.type === 'collapse') sfx('collapse');
     if (event.type === 'accident' || event.type === 'collapse') perfLog.event('vital', event);
     if (event.type === 'full') notice(say('charged', { name: GAME.stats[event.stat].label }), 2500);
     if (event.type === 'empty' && event.stat === 'phone') {
@@ -1690,6 +1766,7 @@ async function sendLog() {
 }
 
 function setHeadlights(on) {
+  sfx('click');
   settings.headlights = on;
   applyDaylight();
   saveSettings();

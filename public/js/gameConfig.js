@@ -136,6 +136,16 @@ export const GAME = {
     workingChance: 0.55,      // of an outlet having power, decided once
   },
 
+  // Things dropped, which stay where they're left.
+  drops: {
+    ahead: 1.3,               // m in front of the person that a thing lands, far enough not to be hidden behind them
+    apart: 0.6,               // m kept from the last thing dropped, so they don't land in one pile
+    reach: 1.6,               // m to pick it up again
+    beside: 2.6,              // m from the middle of the car, dropped from inside it
+    shownWithin: 300,         // m outdoors, as each is a model on the map
+    mostShown: 24,
+  },
+
   warnEveryHours: 2,          // the least game time between one stat's warnings
   saveEverySeconds: 20,
 };

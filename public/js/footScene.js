@@ -2,7 +2,8 @@
 // A mesh is a flat list of x, y, z, nx, ny, nz, r, g, b per vertex. A triangle's normal always comes from its winding,
 // so a face that points the wrong way can't look right by accident.
 import { triangulate } from './footData.js';
-import { outletSpots, switchSpots } from './footActions.js';
+import { PARCEL } from './drops.js';
+import { modelNamed, outletSpots, switchSpots } from './footActions.js';
 import { colourFor, frameOf, hexColour, worldBearing } from './furnish.js';
 import { ITEMS, bake } from './furniture.js';
 import { ROOM_HEIGHT } from './footWalker.js';
@@ -20,7 +21,7 @@ const OUTLET_COLOUR = [0.75, 0.95, 1];
 const OUTLET_HALF = 0.09, OUTLET_LOW = 0.2, OUTLET_HIGH = 0.5; // m
 const SWITCH_COLOUR = [1, 0.94, 0.62];
 const SWITCH_HALF = 0.11, SWITCH_LOW = 0.85, SWITCH_HIGH = 1.32; // m
-const CORE_SCHEME = { wood: 'a58a6c', fabric: '6f7a80', accent: '6f7a80', floor: 'a8a8a0' }; // stairs and lifts belong to no room
+export const CORE_SCHEME = { wood: 'a58a6c', fabric: '6f7a80', accent: '6f7a80', floor: 'a8a8a0' }; // stairs and lifts belong to no room
 
 export class Mesh {
   constructor() {
@@ -155,8 +156,20 @@ function addWindows(mesh, wall, floor, doorSpots) {
   }
 }
 
-// The floor of a building from inside, with all its pieces, as a tile edge can cut a building in two. furnishing: { record, furniture } if it has any.
-export function roomMesh(place, building, floor, furnishing) {
+// Something left on the floor, as its own model or a parcel.
+function addDrop(mesh, pieces, drop, furniture) {
+  const { x, y } = frameOf(pieces, drop.axis).toWorld(drop.u, drop.v), lift = ZONE_FLOOR_LIFT + 0.01;
+  const model = furniture?.models[modelNamed(drop.name)];
+  if (model) {
+    bake(mesh, model, x, y, lift, drop.facing, (mat) => colourFor(mat, CORE_SCHEME, 1, furniture.colours));
+    return;
+  }
+  mesh.box(x, y, lift, lift + PARCEL.height, PARCEL.half, PARCEL.half, PARCEL.colour);
+  mesh.box(x, y, lift + PARCEL.height, lift + PARCEL.height + 0.006, PARCEL.band, PARCEL.half + 0.005, PARCEL.tape);
+}
+
+// The floor of a building from inside, with all its pieces, as a tile edge can cut a building in two. furnishing: { record, furniture } if it has any. drops: what's been left on this floor.
+export function roomMesh(place, building, floor, furnishing, drops = []) {
   const mesh = new Mesh(), top = floor + ROOM_HEIGHT, pieces = building.pieces || [building], look = furnishing?.record.look;
   const outer = look?.outer ? hexColour(look.outer) : ROOM_WALL_COLOUR, doorSpots = doorsOf(furnishing, pieces);
   for (const piece of pieces) {
@@ -172,5 +185,6 @@ export function roomMesh(place, building, floor, furnishing) {
     }
   }
   if (furnishing) addFurnishing(mesh, pieces, furnishing.record, furnishing.furniture, building.plan?.core, building.buildingId, furnishing.level);
+  for (const drop of drops) addDrop(mesh, pieces, drop, furnishing?.furniture);
   return mesh.floats();
 }

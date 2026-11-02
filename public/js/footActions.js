@@ -4,6 +4,7 @@ import { dice, hashText } from './buildings.js';
 import { ITEMS } from './furniture.js';
 import { GAME } from './gameConfig.js';
 import { say as line } from './sayings.js';
+import { useSound } from './sounds.js';
 
 const REACH = 1.2;       // m from a thing's edge that it can be used
 const DONE = new Set(['sit', 'sleep', 'open', 'search', 'pick up', 'use', 'switch', 'write']);
@@ -110,6 +111,20 @@ export function actionsOf(item) {
   return (ITEMS[item]?.use || []).filter((use) => DONE.has(use) && (use !== 'use' || USES[item]) && (use !== 'switch' || SWITCHES[item]));
 }
 
+// The model of a thing that was picked up in a room, by the name it has in the bag, or null.
+let modelNames = null;
+export function modelNamed(name) {
+  if (!modelNames) {
+    modelNames = new Map();
+    for (const item of Object.keys(ITEMS)) {
+      if (!actionsOf(item).includes('pick up')) continue;
+      const label = nameOf(item);
+      modelNames.set(label[0].toUpperCase() + label.slice(1), ITEMS[item].models[0]);
+    }
+  }
+  return modelNames.get(name) ?? null;
+}
+
 // The things in reach, the nearest first, favouring what's in front.
 export function thingsNear(record, frame, models, x, y, facing) {
   const { u, v } = frame.toFrame(x, y), bearing = facing + frame.axis, sin = Math.sin(bearing), cos = Math.cos(bearing), near = [];
@@ -145,9 +160,15 @@ export function uniqueChoices(choices) {
   return choices.filter((choice) => !seen.has(choice.label) && seen.add(choice.label)).slice(0, MOST_CHOICES);
 }
 
-// Does it. second: Shift was held. Returns what happened: { say } always, with { give: name of a thing for the bag }, { taken: true } if the thing has gone from the room, or { pose: 'sit' | 'sleep' }.
+// Does it, and says which sound goes with it. second: Shift was held.
 export function useThing(entry, plan, floor, buildingId, second = false) {
-  const actions = actionsOf(entry[0]), action = actions[second && actions[1] ? 1 : 0], item = entry[0], name = nameOf(item), state = stateOf(plan, floor), id = key(entry);
+  const actions = actionsOf(entry[0]), action = actions[second && actions[1] ? 1 : 0], result = doThing(entry, action, plan, floor, buildingId);
+  return { ...result, sound: useSound(entry[0], action, result) };
+}
+
+// Returns what happened: { say } always, with { give: name of a thing for the bag }, { taken: true } if the thing has gone from the room, { pose: 'sit' | 'sleep' }, or { empty } or { dry } if it had nothing to give.
+function doThing(entry, action, plan, floor, buildingId) {
+  const item = entry[0], name = nameOf(item), state = stateOf(plan, floor), id = key(entry);
   if (action === 'sit' || action === 'sleep') return { pose: action, say: action === 'sleep' ? 'You lie down.' : '' };
   if (action === 'pick up') {
     state.taken.push(id);
@@ -166,13 +187,13 @@ export function useThing(entry, plan, floor, buildingId, second = false) {
   if (action === 'write') return { say: 'You doodle on it and wipe it off.' };
   const machine = GAME.machines[item];
   if (machine) {
-    if (state.opened.includes(id)) return { say: line(machine.empty) };
+    if (state.opened.includes(id)) return { say: line(machine.empty), empty: true };
     state.opened.push(id);
-    return dice(hashText(`${buildingId}:${floor}:${id}`))() < machine.chance ? { say: line(machine.say), give: machine.give } : { say: line(machine.empty) };
+    return dice(hashText(`${buildingId}:${floor}:${id}`))() < machine.chance ? { say: line(machine.say), give: machine.give } : { say: line(machine.empty), empty: true };
   }
   const effect = GAME.uses[item];
   if (effect) {
-    if (effect.works !== undefined && dice(hashText(`${buildingId}:${floor}:${id}:works`))() >= effect.works) return { say: line(effect.dry) };
+    if (effect.works !== undefined && dice(hashText(`${buildingId}:${floor}:${id}:works`))() >= effect.works) return { say: line(effect.dry), dry: true };
     return { say: line(effect.say), effect, count: effect.count };
   }
   const use = USES[item];

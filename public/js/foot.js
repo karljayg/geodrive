@@ -7,18 +7,21 @@ import { tintAt } from './daylight.js';
 import { FootGl, bearing, lookAt, multiply, perspective, swing, translate } from './footGl.js';
 import { Place, fromLocal, parseTile, toLocal } from './footData.js';
 import { SIT_FRAME, personFloats } from './footPerson.js';
-import { SWITCH_REACH, outletSpots, switchNeedsKey, switchSpots, useSwitch, poseSpot, questionsFor, thingsNear, uniqueChoices, useThing, withoutTaken } from './footActions.js';
-import { roomMesh } from './footScene.js';
-import { FURNISHED, coreNear, coreOf, frameOf as buildingFrame, layoutFloor, plainFloor, solidsOf, upgradeFloor, worldBearing } from './furnish.js';
+import { SWITCH_REACH, outletSpots, switchNeedsKey, switchSpots, useSwitch, poseSpot, modelNamed, questionsFor, thingsNear, uniqueChoices, useThing, withoutTaken } from './footActions.js';
+import { CORE_SCHEME, roomMesh } from './footScene.js';
+import { FURNISHED, colourFor, coreNear, coreOf, frameOf as buildingFrame, layoutFloor, plainFloor, solidsOf, upgradeFloor, worldBearing } from './furnish.js';
 import { parseFurniture } from './furniture.js';
 import { buildingWithin, carWalls, distanceToCar, enterBuilding, GET_IN_REACH, leaveBuilding, newWalker, frameOf, placeCamera, spawnSpot, stepClearOfThings, stepWalker, wayToCar } from './footWalker.js';
+import { parcelParts, thingParts } from './drops.js';
 import { GAME } from './gameConfig.js';
 import { say } from './sayings.js';
+import { footfall, stepSound } from './sounds.js';
 import { Overture } from './overture.js';
 import { TORCHES, lightMap, sunAt, windowsOn } from './roomLight.js';
 import { Terrain } from './terrain.js';
 import { vectorTileAt } from './vector.js';
 
+const MOVING = 0.5; // m/s, or feet aren't really landing, as when pressed against a wall
 const TILE_REACH = 200;      // m around the person that buildings and water must be known
 const TERRAIN_ZOOM = 15;     // about 5 m a sample at these latitudes; the drive's zoom 12 is too coarse to walk on
 const LOOK_EVERY = 1000;     // ms between checking which tiles are wanted
@@ -52,8 +55,11 @@ function personMesh(frame) {
 
 export class Foot {
   // tiles: the RoadTiles that fetches the same map tiles for driving. view: the camera to match.
-  constructor({ canvas, origin, heading, profile, scale, tiles, view, onLocked, onFound, onSlept, hasKey, onUsed }) {
+  constructor({ canvas, origin, heading, profile, scale, tiles, view, onLocked, onFound, onSlept, drops, onDropsChanged, hasKey, onUsed, onSound }) {
     this.hasKey = hasKey;
+    this.drops = drops;
+    this.onDropsChanged = onDropsChanged;
+    this.onSound = onSound; // a name from sounds.js
     this.onUsed = onUsed; // something in a room did something to the person's stats
     if (!gl) gl = new FootGl(canvas);
     gl.onRestored = () => this.rebuildAll();
@@ -264,16 +270,83 @@ export class Foot {
     }
     gl.free(this.room?.mesh);
     if (this.room && !building) gl.clearAway();
-    this.room = building ? { whole, furnishing, level: this.level, floor: this.world.floor(building), mesh: gl.mesh(roomMesh(this.place, building, 0, furnishing)) } : null;
+    this.room = building ? { whole, furnishing, level: this.level, floor: this.world.floor(building), mesh: gl.mesh(roomMesh(this.place, building, 0, furnishing, this.dropsHere(building))) } : null;
     this.world.inner = furnishing ? solidsOf(furnishing.record, buildingFrame(building.pieces, furnishing.record.axis), furnishing.furniture.models) : null;
     stepClearOfThings(this.walker, this.world);
   }
 
+  dropsHere(building) {
+    return building.buildingId === undefined ? [] : this.drops?.inBuilding(building.buildingId, this.level) ?? [];
+  }
+
+  // Leaves something a step ahead, or at their feet if that's through a wall. Returns its id.
+  placeDrop(name) {
+    const w = this.walker, building = w.inside?.buildingId === undefined ? null : w.inside, facing = w.facing;
+    const taken = this.dropsInReach().map((drop) => (building ? buildingFrame(building.pieces, drop.axis).toWorld(drop.u, drop.v) : toLocal(this.origin, drop.lat, drop.lng)));
+    // Off to one side, as straight ahead is behind them from the camera.
+    const spot = [0.6, -0.6, 1.2, -1.2, 1.8, -1.8].map((turn) => ({ x: w.x + Math.sin(facing + turn) * GAME.drops.ahead, y: w.y + Math.cos(facing + turn) * GAME.drops.ahead }))
+      .find((p) => !taken.some((t) => Math.hypot(t.x - p.x, t.y - p.y) < GAME.drops.apart)) ?? { x: w.x + Math.sin(facing) * GAME.drops.ahead, y: w.y + Math.cos(facing) * GAME.drops.ahead };
+    const aheadX = spot.x, aheadY = spot.y;
+    if (!building) {
+      const { lat, lng } = fromLocal(this.origin, aheadX, aheadY);
+      return this.drops.add({ name, lat, lng, facing });
+    }
+    const clear = this.place.footprintAt(aheadX, aheadY) === building, axis = this.room?.furnishing?.record.axis ?? 0;
+    const { u, v } = buildingFrame(building.pieces, axis).toFrame(clear ? aheadX : w.x, clear ? aheadY : w.y);
+    const id = this.drops.add({ name, buildingId: building.buildingId, floor: this.level, axis, u, v, facing });
+    if (this.room) this.room.stale = true;
+    return id;
+  }
+
+  // Takes one back off the ground or floor, for undoing a drop or picking it up.
+  removeDrop(id) {
+    const gone = this.drops.remove(id);
+    if (gone && this.room) this.room.stale = true;
+    return gone;
+  }
+
+  // What's been left within reach, the nearest first.
+  dropsInReach() {
+    const w = this.walker, building = w.inside?.buildingId === undefined ? null : w.inside, reach = GAME.drops.reach, found = [];
+    if (building) {
+      for (const drop of this.dropsHere(building)) {
+        const { x, y } = buildingFrame(building.pieces, drop.axis).toWorld(drop.u, drop.v), away = Math.hypot(x - w.x, y - w.y);
+        if (away <= reach) found.push({ drop, away });
+      }
+    } else if (!w.inside && this.drops) {
+      const at = this.where();
+      for (const drop of this.drops.around(at.lat, at.lng, reach, GAME.drops.mostShown)) {
+        const { x, y } = toLocal(this.origin, drop.lat, drop.lng);
+        found.push({ drop, away: Math.hypot(x - w.x, y - w.y) });
+      }
+    }
+    return found.sort((a, b) => a.away - b.away).map((f) => f.drop);
+  }
+
+  pickUpDrop(drop) {
+    if (this.onFound && !this.onFound(drop.name)) return say('bagFull');
+    this.removeDrop(drop.id);
+    this.onSound?.('pickup');
+    this.onDropsChanged?.();
+    return say('pickUp', { name: drop.name.toLowerCase() });
+  }
+
+  // How a dropped thing looks on the map, or null until the furniture is here, as it may have a model of its own.
+  dropParts(name) {
+    const key = modelNamed(name);
+    if (!key) return parcelParts();
+    this.loadFurniture();
+    if (!furniture) return null;
+    const model = furniture.models[key];
+    return model ? thingParts(model, (mat) => colourFor(mat, CORE_SCHEME, 1, furniture.colours)) : parcelParts();
+  }
+
   // What could be done from here, to confirm before anything happens: { label, run }, run saying what happened. The nearest things first.
   choices() {
+    if (this.pose) return [];
     const building = this.walker.inside, record = this.room?.furnishing?.record;
-    if (!building?.plan || !record || !furniture || this.pose) return [];
-    const list = [];
+    const list = this.dropsInReach().map((drop) => ({ label: `Pick up the ${drop.name.toLowerCase()}?`, run: () => this.pickUpDrop(drop) }));
+    if (!building?.plan || !record || !furniture) return uniqueChoices(list);
     if (this.switchHere()) list.push({ label: this.roomLightsOn() ? 'Turn off the lights?' : 'Turn on the lights?', run: () => this.useLightSwitch() });
     if (this.outletHere()) list.push({ label: this.charging ? 'Unplug?' : 'Plug in here?', run: () => this.useOutlet() });
     const near = thingsNear(record, buildingFrame(building.pieces, record.axis), furniture.models, this.walker.x, this.walker.y, this.walker.facing);
@@ -290,20 +363,24 @@ export class Foot {
   // Does what was confirmed. Returns what to say.
   useEntry(entry, second) {
     const building = this.walker.inside, { plan } = building, result = useThing(entry, plan, this.level, building.buildingId, second);
-    if (result.pose) return this.takePose(entry, result);
+    if (result.pose) {
+      this.onSound?.(result.sound);
+      return this.takePose(entry, result);
+    }
     if (result.effect) this.onUsed?.(result.effect, result.count);
-    let say = result.say;
     if (result.give && this.onFound && !this.onFound(result.give)) {
       if (result.taken) plan.state[this.level].taken.pop();
+      this.onSound?.('ack');
       return say('bagFull');
     }
+    this.onSound?.(result.sound);
     if (result.taken) {
       const { furnishing } = this.room, gone = entry;
       furnishing.record = { ...furnishing.record, items: furnishing.record.items.filter((other) => other !== gone) };
       this.room.stale = true;
     }
     saved.saveIndex();
-    return say;
+    return result.say;
   }
 
   takePose(entry, result) {
@@ -336,6 +413,7 @@ export class Foot {
   goToFloor(floor) {
     this.level = floor;
     this.picking = null;
+    this.onSound?.('liftDing');
   }
 
   // A digit while choosing a floor: 1 then 0 is the tenth, if it comes quickly and there is a tenth.
@@ -345,6 +423,7 @@ export class Foot {
     const floor = typed >= GROUND_FLOOR && typed <= floors ? typed : Number(digit);
     if (floor >= GROUND_FLOOR && floor <= floors) this.picking.floor = floor;
     this.picking.typedAt = now;
+    this.onSound?.('beep');
   }
 
   // W and S choose a floor in a lift, and nothing else moves until L goes or cancels.
@@ -354,6 +433,7 @@ export class Foot {
     if (!way) this.picking.wait = 0;
     else if (this.picking.wait <= 0) {
       this.picking.floor = Math.max(GROUND_FLOOR, Math.min(floors, this.picking.floor + way * (input.run ? PICK_FAST : 1)));
+      this.onSound?.('beep');
       this.picking.wait = PICK_REPEAT;
     }
     return { ...input, forward: 0, strafe: 0 };
@@ -375,7 +455,11 @@ export class Foot {
       if (input.forward || input.strafe || input.jump) this.standUp();
       else this.walker.yaw += input.lookX || 0;
     }
-    if (!this.pose) stepWalker(this.walker, this.picking ? this.pickFloor(dt, input) : input, dt, this.world);
+    if (!this.pose) {
+      const { phase, rise } = this.walker;
+      stepWalker(this.walker, this.picking ? this.pickFloor(dt, input) : input, dt, this.world);
+      this.soundOfMoving(phase, rise);
+    }
     this.syncPlan();
     this.syncWaiting();
     this.syncRoom();
@@ -440,6 +524,7 @@ export class Foot {
 
   // F at a power point: plugged in until F again or walking away.
   useOutlet() {
+    this.onSound?.('plugIn');
     if (this.charging) {
       this.charging = false;
       return say('unplugged');
@@ -458,6 +543,14 @@ export class Foot {
     return !!this.charging;
   }
 
+  // Feet on the ground, leaving it and coming back to it.
+  soundOfMoving(phase, rise) {
+    const { walker } = this;
+    if (rise <= 0 && walker.rise > 0) this.onSound?.('jump');
+    else if (rise !== 0 && walker.rise === 0) this.onSound?.('land');
+    else if (walker.rise === 0 && walker.speed > MOVING && footfall(phase, walker.phase)) this.onSound?.(stepSound(walker.running, !!walker.inside));
+  }
+
   // What the person is doing, for how fast they tire.
   activity() {
     if (this.pose) return 'sitting';
@@ -467,7 +560,8 @@ export class Foot {
 
   useLightSwitch() {
     const building = this.walker.inside, pieces = building.pieces, footprint = pieces.reduce((sum, p) => sum + (p.maxX - p.minX) * (p.maxY - p.minY), 0);
-    const said = useSwitch(building.plan, this.level, switchNeedsKey(building.plan, footprint, building.buildingId), this.hasKey?.());
+    const needsKey = switchNeedsKey(building.plan, footprint, building.buildingId), said = useSwitch(building.plan, this.level, needsKey, this.hasKey?.());
+    this.onSound?.(needsKey && !building.plan.switchesOn ? 'locked' : 'click');
     saved.saveIndex();
     return said;
   }
@@ -509,10 +603,12 @@ export class Foot {
       const { plan } = this.walker.inside, near = this.coreHere();
       if (near === 'lift') {
         this.picking = { floor: this.level, wait: 0 };
+        this.onSound?.('beep');
         return true;
       }
       if (near === 'stairs') {
         const up = this.level < plan.floors && !down;
+        this.onSound?.('stairs');
         if (up) this.level++;
         else if (this.level > GROUND_FLOOR) this.level--;
         return true;
@@ -520,6 +616,7 @@ export class Foot {
       if (this.level > GROUND_FLOOR) return true; // the only way down is the way the hint says
       const left = leaveBuilding(this.walker, this.world);
       if (left) {
+        this.onSound?.('door');
         this.world.inner = null;
         this.entering = false;
       }
@@ -536,6 +633,7 @@ export class Foot {
     }
     const entered = enterBuilding(this.walker, this.world);
     if (entered) {
+      this.onSound?.('door');
       this.entering = true;
       stepClearOfThings(this.walker, this.world);
     }
@@ -567,7 +665,9 @@ export class Foot {
       if (offered) return `${here}${this.charging ? ' · charging' : ''}${also}`;
       return this.level > GROUND_FLOOR ? `${here} · find the stairs to go down` : `${here} · press L to go back out`;
     }
-    if (this.canGetIn()) return 'Press L to get in';
+    const outside = this.fHint();
+    if (this.canGetIn()) return `Press L to get in${outside ? ` · ${outside}` : ''}`;
+    if (outside) return outside;
     const near = buildingWithin(this.walker, this.world);
     if (near) return near.building.plan && isLocked(near.building.plan) ? `${typeName(near.building.plan) || 'This building'} · locked` : this.waiting ? 'Checking this building…' : 'Press L to go inside';
     const { metres, direction } = wayToCar(this.walker);

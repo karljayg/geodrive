@@ -1,7 +1,7 @@
 // Loads roads into a RoadNet around the car from OpenFreeMap's vector tiles. Any failure is tolerated:
 // without a tile the car drives freely until a retry works.
 import { move } from './camera.js';
-import { roadsFromTile, vectorTileAt } from './vector.js';
+import { namesFromTile, roadsFromTile, VECTOR_ZOOM, vectorTileAt } from './vector.js';
 
 const TILEJSON = 'https://tiles.openfreemap.org/planet';
 const RETRY_AFTER = 15000; // ms before a tile that failed is tried again
@@ -10,6 +10,7 @@ const RING = 2500;         // m out from the car that should always be loaded
 const MAX_TILES = 60;      // road tiles kept before the furthest are released
 const EVICT_PER_CHECK = 3; // tiles released at once, so it never costs more than a frame can absorb
 const LOOK = 20;           // seconds of driving ahead to load
+const MAX_NAME_TILES = 40; // tiles of street names kept before the oldest are released
 
 export class RoadTiles {
   constructor(net) {
@@ -20,6 +21,9 @@ export class RoadTiles {
     this.template = null;
     this.waysOf = new Map(); // tile key -> its ways, so one tile can be released
     this.onWork = null;      // called with the ms each tile cost the main thread
+    this.namesOf = new Map(); // tile key -> its named roads
+    this.namesFailedAt = new Map();
+    this.namesLoading = false;
   }
 
   keyAt(lat, lng) {
@@ -75,6 +79,41 @@ export class RoadTiles {
     const ways = roadsFromTile(bytes, x, y);
     this.onWork?.(performance.now() - began);
     return ways;
+  }
+
+  // Street names within reach of a point, for the phone's Map. They aren't needed to drive, so they're read only when asked for
+  // and a tile at a time, nearest first: what's here now comes back, and the rest turns up on later calls.
+  streetNames(lat, lng, reach) {
+    const here = vectorTileAt(lat, lng), tileSize = (40075000 * Math.cos((lat * Math.PI) / 180)) / 2 ** VECTOR_ZOOM;
+    const span = Math.ceil(reach / tileSize), wanted = [];
+    for (let dy = -span; dy <= span; dy++) for (let dx = -span; dx <= span; dx++) wanted.push({ key: `${here.x + dx}_${here.y + dy}`, away: Math.hypot(dx, dy) });
+    wanted.sort((a, b) => a.away - b.away);
+    const lines = [];
+    let next = null;
+    for (const { key } of wanted) {
+      const held = this.namesOf.get(key);
+      if (held) lines.push(...held);
+      else if (!next && Date.now() - (this.namesFailedAt.get(key) || 0) > RETRY_AFTER) next = key;
+    }
+    if (next && !this.namesLoading) this.loadNames(next, new Set(wanted.map((tile) => tile.key)));
+    return lines;
+  }
+
+  async loadNames(key, wanted) {
+    this.namesLoading = true;
+    try {
+      const [x, y] = key.split('_').map(Number);
+      const bytes = await this.tileBytes(x, y);
+      this.namesOf.set(key, bytes ? namesFromTile(bytes, x, y) : []);
+      for (const old of this.namesOf.keys()) {
+        if (this.namesOf.size <= MAX_NAME_TILES) break;
+        if (!wanted.has(old)) this.namesOf.delete(old);
+      }
+    } catch (err) {
+      console.warn(`street names ${key}:`, err.message);
+      this.namesFailedAt.set(key, Date.now());
+    }
+    this.namesLoading = false;
   }
 
   // Everything near a point, for finding its nearest road. True if the tile under the point itself arrived.

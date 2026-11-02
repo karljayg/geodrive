@@ -111,14 +111,38 @@ export function decodeLines(commands) {
   return lines;
 }
 
+const tileToGeo = (tx, ty, extent, zoom) => {
+  const n = 2 ** zoom;
+  return {
+    toLng: (px) => (((tx + px / extent) / n) * 360) - 180,
+    toLat: (py) => (Math.atan(Math.sinh(Math.PI * (1 - (2 * (ty + py / extent)) / n))) * 180) / Math.PI,
+  };
+};
+
+// The named roads in one tile as [{ name, rank, c: [lat, lng, ...] }], lower ranks being bigger roads. Only roads the maps draw.
+const NAME_RANKS = ['motorway', 'trunk', 'primary', 'secondary', 'tertiary', 'minor', 'service'];
+export const SERVICE_RANK = NAME_RANKS.indexOf('service');
+export function namesFromTile(bytes, tx, ty, zoom = VECTOR_ZOOM) {
+  const layer = readLayer(bytes, 'transportation_name');
+  if (!layer) return [];
+  const { toLat, toLng } = tileToGeo(tx, ty, layer.extent, zoom), lines = [];
+  for (const feature of layer.features) {
+    const { tags } = feature, name = tags.name || tags.ref;
+    if (feature.type !== 2 || !name || !DRIVABLE.has(tags.class) || tags.indoor) continue;
+    for (const line of decodeLines(feature.geometry)) {
+      if (line.length > 1) lines.push({ name, rank: NAME_RANKS.indexOf(tags.class), c: line.flatMap(([x, y]) => [toLat(y), toLng(x)]) });
+    }
+  }
+  return lines;
+}
+
 // The roads in one tile. Lines joining at a junction share a pixel, and
 // that shared pixel is their node id. Roads are cut at tile edges; road.js carries the look-ahead over the cut.
 export function roadsFromTile(bytes, tx, ty, zoom = VECTOR_ZOOM) {
   const layer = readLayer(bytes, 'transportation');
   if (!layer) return [];
-  const { extent } = layer, n = 2 ** zoom, ways = [];
-  const toLng = (px) => (((tx + px / extent) / n) * 360) - 180;
-  const toLat = (py) => (Math.atan(Math.sinh(Math.PI * (1 - (2 * (ty + py / extent)) / n))) * 180) / Math.PI;
+  const { extent } = layer, ways = [];
+  const { toLat, toLng } = tileToGeo(tx, ty, extent, zoom);
   let serial = 0;
   for (const feature of layer.features) {
     const { tags } = feature;

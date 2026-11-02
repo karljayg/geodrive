@@ -2,10 +2,12 @@
 // with a limiter. Browsers only allow audio after a click or key press, so start() is called from those.
 import { AUDIO_PRESETS, engineCutoff, engineIntensity, layerMix, roadLevel, windLevel } from './engineMix.js';
 import { SynthEngine } from './synthEngine.js';
+import { bakeOrder, lengthOf, play, SOUNDS, takesOf } from './sounds.js';
 
 const UPDATE_EVERY = 0.03; // s; the audio engine smooths in between, so this needn't match the frame rate
 const ATTACK = 0.03, RELEASE = 0.08, RATE_GLIDE = 0.05, BLEND_GLIDE = 0.08;
 const ENGINE_TRIM = 4;     // loops are normalised quiet, this brings them up to the mix
+const KEEP_AWAKE = 0.0004; // about -68 dB of high hiss, which nobody hears: headphones, speakers and displays can doze in true silence and take a second or two to wake
 
 export class EngineAudio {
   constructor() {
@@ -16,16 +18,19 @@ export class EngineAudio {
     this.layers = {};
     this.lastUpdate = 0;
     this.status = 'not started';
+    this.baked = new Map();   // sound name -> buffers ready to play
+    this.onState = null;      // told when the browser starts or stops the audio
   }
 
   start() {
     if (this.ctx) {
-      if (this.ctx.state === 'suspended') this.ctx.resume();
+      if (this.ctx.state !== 'running') this.ctx.resume(); // Safari also has 'interrupted'
       return;
     }
     const AudioCtx = window.AudioContext || window.webkitAudioContext;
     if (!AudioCtx) return;
-    const ctx = (this.ctx = new AudioCtx());
+    const ctx = (this.ctx = new AudioCtx({ latencyHint: 'interactive' }));
+    ctx.onstatechange = () => this.onState?.(ctx.state);
     const limiter = ctx.createDynamicsCompressor();
     limiter.threshold.value = -6;
     limiter.ratio.value = 12;
@@ -64,6 +69,8 @@ export class EngineAudio {
     };
     this.road = hiss('lowpass', 420, 0.5, this.roadBus);
     this.wind = hiss('bandpass', 750, 0.4, this.windBus);
+    hiss('highpass', 9000, 0.5, this.master).gain.value = KEEP_AWAKE;
+    this.bakeSounds();
     if (this.settings) this.applySettings(this.settings);
   }
 
@@ -171,6 +178,43 @@ export class EngineAudio {
     gain.gain.setTargetAtTime(0, now, 0.015);
     for (const osc of oscillators) osc.stop(now + 0.1);
     setTimeout(() => { filter.disconnect(); gain.disconnect(); }, 200);
+  }
+
+  // Renders every sound to a buffer as soon as there's audio, each on its own, so none waits for one being played and using one is a single node.
+  async bakeSounds() {
+    const Offline = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+    if (!Offline) return;
+    const rate = this.ctx.sampleRate;
+    for (const name of bakeOrder()) {
+      const takes = [];
+      for (let i = 0; i < takesOf(name); i++) {
+        const offline = new Offline(1, Math.ceil((lengthOf(name) + 0.02) * rate), rate);
+        play(offline, offline.destination, name, Math.random, 0);
+        takes.push(await offline.startRendering());
+      }
+      this.baked.set(name, takes);
+    }
+  }
+
+  // The sound of doing something (sounds.js), playing at once. Nearly always follows a key press or click, so audio is allowed to start.
+  effect(name) {
+    this.start();
+    if (!this.ctx) return;
+    const takes = this.baked.get(SOUNDS[name] ? name : 'ack');
+    if (!takes) return play(this.ctx, this.fxBus, name);
+    const source = this.ctx.createBufferSource();
+    source.buffer = takes[Math.floor(Math.random() * takes.length)];
+    source.playbackRate.value = 0.96 + Math.random() * 0.08;
+    source.onended = () => source.disconnect();
+    source.connect(this.fxBus);
+    source.start();
+  }
+
+  // How far behind the audio output is, in seconds, for the performance log.
+  timing() {
+    if (!this.ctx) return null;
+    const stamp = this.ctx.getOutputTimestamp?.();
+    return { state: this.ctx.state, at: this.ctx.currentTime, base: this.ctx.baseLatency, output: this.ctx.outputLatency, behind: stamp ? this.ctx.currentTime - stamp.contextTime : undefined };
   }
 
   // One tick of the turn signal.

@@ -1,0 +1,14 @@
+<!doctype html><meta charset="utf-8"><title>sounds</title><style>body{margin:0;background:#2a1c13;color:#eee;font:14px system-ui}div{display:flex;flex-wrap:wrap;gap:6px;padding:12px}button{padding:8px 12px;font:inherit}</style><div id="a"></div>
+<script type="module">
+import { SOUNDS, play } from './js/sounds.js';
+let ctx;
+const box = document.getElementById('a');
+box.innerHTML = Object.keys(SOUNDS).map((name) => `<button data-sound="${name}">${name}</button>`).join('');
+box.addEventListener('click', (event) => {
+  const name = event.target.dataset.sound;
+  if (!name) return;
+  ctx ||= new AudioContext();
+  ctx.resume();
+  play(ctx, ctx.destination, name);
+});
+</script>

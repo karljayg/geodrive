@@ -82,6 +82,7 @@ The header, nav screen and tab title show the current town (`refreshTown`: a bil
 - `public/js/road.js`: road network, matching, look-ahead, next turn. Pure, tested.
 - `public/js/route.js`: `Path`, a line to drive with safe speeds. Pure, tested.
 - `public/js/tiles.js`: loads road tiles around the car. `public/js/vector.js`: reads roads out of vector tiles. Pure, tested.
+- `public/js/streets.js`: where street names go on the phone's Map, only where they fit. Pure, tested. The names are the same free tiles' `transportation_name` layer, read only while that app is open (`RoadTiles.streetNames`), so driving doesn't pay for them.
 - `public/js/terrain.js`: ground height from free terrain tiles. Pure apart from loading a tile, tested.
 - `public/js/physics.js`: bicycle-model car. Pure, tested. Tune `CAR` here.
 - `public/js/camera.js`: geo and camera maths. Pure, tested.
@@ -90,10 +91,12 @@ The header, nav screen and tab title show the current town (`refreshTown`: a bil
 - `public/js/settings.js`: preferences saved in the browser. The panel is in `index.html`; new settings (the owner plans a choice of cars) go in `DEFAULTS` plus a `<section>` there. The car's `scale` is 1 for real size, 0.9 by default.
 - `public/js/main.js`: input, game loop, map setup, HUD. Tune cameras, zoom and the start point here.
 - `public/js/carModel.js`: the low-poly cars, built from code so there is no asset licence.
+- `public/js/drops.js`: things left behind, saved per browser in `geodrive_drops_v1`, indoors in the building's frame and outdoors by lat/lng, shown in `roomMesh` and as `Model3DElement`s by `syncDrops`. No Google cost: moving nothing and adding models to the loaded map isn't billed. Pure, tested.
 - `public/js/itemArt.js`: a picture for each thing in the bag or car. A new item needs one, and a test checks that. Pure, tested.
 - `public/js/pocket.js`: the phone, compass, notepad and bag on foot, and `pocketData.js` (pure, tested) and `pocketArt.js`. To add one: an entry in `TRAY` or `APPS`, a picture in `ART`, and for an app a render function.
 - `public/js/footActions.js`: what F does to things, and what they hold. Pure, tested. What has happened is in `plan.state` by floor, not the saved layout.
 - `public/js/roomLight.js`: light in a room from its windows and the sun, and what a carried light reaches. Pure, tested.
+- `public/js/sounds.js`: the sound of using each thing, made from tones and filtered noise, and which sound goes with what (`USED`, `SWITCHED`, `BAG_ITEMS`); anything unlisted plays `ack`. Pure apart from `play`, tested. They go through `engine.effect`, on the same bus and volume as the signal tick, played from buffers `bakeSounds` renders as soon as audio starts. `sfx` in `main.js` is the way to play one and logs a `sound` event every 30 s (`outputMs`, `behindMs`, and `clockMs` against `wallMs`, which shows a stalled audio clock). `audio` events mark the browser stopping or starting audio. `public/_sounds.html` (not deployed) has a button for each. Nothing here can hear them, so check by ear after changing one.
 - `public/js/sayingsConfig.js`: everything the game says, several ways for the common ones; `public/js/sayings.js` takes turns through them. Pure, tested. A `say` in the config is a key there or plain text. New common messages go there rather than in code.
 - `public/js/gameConfig.js`: every survival number. `public/js/vitals.js`: the person's needs. Pure, tested.
 - `public/js/buildings.js`: what a building is, its floors and the saved record. Pure, tested.

@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { actionsOf, questionsFor, thingsNear, uniqueChoices, usableNear, useThing, withoutTaken, switchNeedsKey, switchSpots, useSwitch } from '../public/js/footActions.js';
 import { SAYINGS } from '../public/js/sayingsConfig.js';
+import { SOUNDS, bagSound, bakeOrder, footfall, lengthOf, play, stepSound, takesOf, useSound } from '../public/js/sounds.js';
+import { GAME } from '../public/js/gameConfig.js';
 import { ITEMS, parseFurniture } from '../public/js/furniture.js';
 import { frameOf } from '../public/js/furnish.js';
 import { SIT_FRAME, personParts, poseAt } from '../public/js/footPerson.js';
@@ -124,4 +126,92 @@ test('what is in reach comes nearest first, and F offers no question twice nor m
   const many = Array.from({ length: 20 }, (_, i) => ({ label: `Thing ${i % 12}?` }));
   assert.equal(uniqueChoices(many).length, 9);
   assert.equal(new Set(uniqueChoices(many).map((c) => c.label)).size, 9);
+});
+
+test('every use of every thing has a sound that exists, and only what has no sound yet gets the acknowledgement', () => {
+  const plan = {}, ack = [];
+  for (const item of Object.keys(ITEMS)) for (const [i] of actionsOf(item).slice(0, 2).entries()) {
+    const { sound } = useThing(entry(item), plan, 0, `b${item}`, i === 1);
+    assert.ok(SOUNDS[sound], `${item}: ${sound}`);
+    if (sound === 'ack') ack.push(item);
+  }
+  for (const item of ack) assert.ok(['barrierGate', 'tellerCounter', 'till', 'vendingMachine', 'coffeeMachine'].includes(item), `${item} has only the acknowledgement`);
+});
+
+test('a used thing sounds different when it had nothing to give', () => {
+  assert.equal(useSound('sink', 'use', { dry: true }), 'dryTap');
+  assert.equal(useSound('sink', 'use', { effect: {} }), 'water');
+  assert.equal(useSound('vendingMachine', 'use', { give: 'Candy bar' }), 'vend');
+  assert.equal(useSound('vendingMachine', 'use', { empty: true }), 'ack');
+  assert.equal(useSound('fridge', 'open', {}), 'open');
+  assert.equal(useSound('fridge', 'open', { give: 'Milk' }), 'found');
+  assert.equal(useSound('bookcase', 'search', {}), 'search');
+  assert.equal(useSound('somethingNew', 'use', {}), 'ack');
+});
+
+test('all food, drink and medicine has a sound of its own', () => {
+  for (const [name, { kind }] of Object.entries(GAME.consumables)) assert.notEqual(bagSound(name, kind), 'ack', name);
+  assert.equal(bagSound('Old jacket'), 'ack');
+});
+
+test('sounds are short enough to act on, and their layers are ones play can make', () => {
+  for (const [name, layers] of Object.entries(SOUNDS)) {
+    assert.ok(lengthOf(name) > 0 && lengthOf(name) <= 1.5, `${name} lasts ${lengthOf(name)}`);
+    for (const layer of layers) {
+      assert.ok(layer.from > 0 && layer.to > 0, `${name}: frequencies have to be above 0 to ramp`);
+      assert.ok(layer.level > 0 && layer.level <= 1, name);
+      assert.ok(layer.noise || layer.wave, name);
+    }
+  }
+});
+
+test('playing a sound makes every layer and frees it afterwards', () => {
+  const param = () => ({ setValueAtTime() {}, exponentialRampToValueAtTime() {}, value: 0 }), started = [], node = (extra = {}) => ({ connect: (next) => next, disconnect() {}, start: (at) => started.push(at), stop() {}, gain: param(), frequency: param(), Q: param(), ...extra });
+  const ctx = { currentTime: 1, sampleRate: 100, createGain: node, createOscillator: node, createBiquadFilter: node, createBufferSource: node, createBuffer: () => ({ getChannelData: () => new Float32Array(200) }) };
+  play(ctx, node(), 'found', () => 0.5);
+  assert.equal(started.length, SOUNDS.found.length);
+  assert.ok(started.every((at) => at >= 1));
+  started.length = 0;
+  play(ctx, node(), 'nothing such', () => 0.5);
+  assert.equal(started.length, SOUNDS.ack.length, 'an unknown name gets the acknowledgement');
+});
+
+test('every sound gets baked once, the common ones first and in several takes', () => {
+  const order = bakeOrder();
+  assert.equal(new Set(order).size, order.length);
+  assert.deepEqual([...order].sort(), Object.keys(SOUNDS).sort());
+  for (const name of ['stepOut', 'stepIn', 'runOut', 'runIn', 'click']) {
+    assert.ok(order.indexOf(name) < 8, `${name} bakes early`);
+    assert.ok(takesOf(name) > 1, `${name} has more than one take`);
+  }
+  assert.equal(takesOf('flush'), 1);
+});
+
+test('each cycle of walking has two footfalls, when a leg is furthest forward, however the frames fall', () => {
+  for (const dt of [0.003, 0.016, 0.1]) {
+    let phase = 0, steps = 0, at = [];
+    while (phase < 3) {
+      const next = phase + dt;
+      if (footfall(phase, next)) { steps++; at.push(next % 1); }
+      phase = next;
+    }
+    assert.equal(steps, 6, `at ${dt}`);
+    for (const p of at) assert.ok(Math.abs(p - 0.25) <= dt || Math.abs(p - 0.75) <= dt, `footfall at ${p}`);
+  }
+  assert.equal(footfall(0.3, 0.3), false, 'standing still takes no steps');
+});
+
+test('steps sound of where and how fast', () => {
+  assert.equal(stepSound(false, false), 'stepOut');
+  assert.equal(stepSound(true, true), 'runIn');
+});
+
+test('sitting and lying down are soft: a slow swell of low air, with nothing that knocks', () => {
+  assert.equal(useSound('sofa', 'sit', { pose: 'sit' }), 'sit');
+  assert.equal(useSound('bed', 'sleep', { pose: 'sleep' }), 'bed');
+  for (const name of ['sit', 'bed']) for (const layer of SOUNDS[name]) {
+    assert.equal(layer.noise, 'lowpass', name);
+    assert.ok(layer.attack >= 0.05, `${name} swells rather than hits`);
+    assert.ok(layer.level <= 0.16, `${name} is quiet`);
+  }
 });

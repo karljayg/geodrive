@@ -1,4 +1,5 @@
 // Drawing for the dashboard: round gauges and the navigation screen, both on canvas.
+import { placeStreetLabels } from './streets.js';
 
 // The speedometer's top mark: 200 until past 150, then larger so the needle stays at or under 3/4 of the dial.
 // It only comes back down once the needle is well under the smaller dial, so it doesn't flicker.
@@ -45,7 +46,7 @@ function fit(canvas) {
 export function drawGauge(canvas, { value, max, step, scale = 1, redFrom = null, big, small }) {
   const { ctx, w, h } = fit(canvas);
   ctx.clearRect(0, 0, w, h);
-  const cx = w / 2, cy = h / 2, r = Math.min(w, h) / 2 - 3;
+  const cx = w / 2, cy = h / 2, r = Math.max(1, Math.min(w, h) / 2 - 3); // a hidden dashboard measures 0
   const from = Math.PI * 0.75, sweep = Math.PI * 1.5;
   const angle = (v) => from + sweep * Math.min(1, Math.max(0, v / max));
 
@@ -128,8 +129,9 @@ function roadLayer(roads, pos, { radius, scale, half, margin, dpr }) {
 export const navBehind = (roads) => !!layer && layer.changes !== roads.changes;
 
 // The navigation screen: a map from very high up, drawn from the road data already loaded, so it adds no map charges.
-// options: { roads, pos, heading, route, routeIndex, radius (m from the car to the top of the screen), parked (where the car is while on foot) }
-export function drawNav(canvas, { roads, pos, heading, parked, route, routeIndex, radius, hour, clock }) {
+// options: { roads, pos, heading, route, routeIndex, radius (m from the car to the top of the screen), parked (where the car is while on foot),
+// streets (names to show as { lines, avoid: [{ fromRight, y, r }] }, for spots the page covers) }
+export function drawNav(canvas, { roads, pos, heading, parked, route, routeIndex, radius, hour, clock, streets }) {
   const { ctx, w, h } = fit(canvas);
   if (!w || !h) return; // a layout with no room for the screen
   ctx.fillStyle = '#0a1420';
@@ -188,6 +190,31 @@ export function drawNav(canvas, { roads, pos, heading, parked, route, routeIndex
   ctx.textAlign = 'left';
   ctx.textBaseline = 'middle';
   ctx.fillText(clock, fx + faceR + 8, fy);
+
+  if (streets) {
+    const clockWidth = ctx.measureText(clock).width;
+    const avoid = [
+      { x: carX, y: carY, r: 12 }, { x: w - 15, y: 15, r: 14 }, { x: fx, y: fy, r: faceR + 3 },
+      { x: fx + faceR + 8 + clockWidth / 2, y: fy, r: clockWidth / 2 + 3 },
+      ...streets.avoid.map(({ fromRight, y, r }) => ({ x: w - fromRight, y, r })),
+    ];
+    if (parked) avoid.push({ x: toScreen(parked.lat, parked.lng)[0], y: toScreen(parked.lat, parked.lng)[1], r: 6 });
+    ctx.font = '600 10.5px system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    const labels = placeStreetLabels(streets.lines, { w, h, toScreen, avoid, measure: (text) => ctx.measureText(text).width });
+    ctx.lineJoin = 'round';
+    for (const { text, x, y, angle } of labels) {
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(angle);
+      ctx.strokeStyle = '#0a1420';
+      ctx.lineWidth = 3;
+      ctx.strokeText(text, 0, 0);
+      ctx.fillStyle = '#c8d6e0';
+      ctx.fillText(text, 0, 0);
+      ctx.restore();
+    }
+  }
 
   if (parked) {
     const [px, py] = toScreen(parked.lat, parked.lng);

@@ -1,6 +1,6 @@
 // The things in rooms: the catalogue, and the models in furniture.bin, which scripts/build-furniture.mjs makes from Kenney's
 // Furniture Kit (CC0). Pure, tested in node. A model stands on z = 0, centred on x and y, with its front towards +y.
-const MM = 1000;
+export const MM = 1000;
 
 export const KIT_SCALE = 2; // the kit is about half real size
 // Where twice the kit's size would be wrong.
