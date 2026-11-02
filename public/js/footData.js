@@ -6,6 +6,8 @@ export const CELL = 80;         // m a side of one chunk of the world
 export const LOW_ENOUGH = 2.2;  // m; a building part lifted higher than this is overhead, and you walk under it
 const EARTH = 6371000;
 const MIN_BUILDING = 6;         // m² of footprint
+const UNMAPPED_HEIGHT = 5;      // m
+const SEAM_MATCH = 0.01;        // m; pieces of one building cut by a tile edge lie on the same line
 const ROAD_PAD = 6;    // m around a road that its cells also list it, for checks just beside it
 const TREE_STEP = { dense: 8, sparse: 18 }; // m between trees
 export const TRUNK_RADIUS = 0.3;
@@ -197,45 +199,59 @@ export function parseTile(bytes, tx, ty, origin, zoom = VECTOR_ZOOM) {
     const layer = readLayer(bytes, name);
     if (layer) for (const feature of layer.features) use(feature, decodeLines(feature.geometry), layer.extent, place(layer.extent));
   };
-  const out = { buildings: [], lands: [], waters: [], roads: [] };
+  const out = { buildings: [], lands: [], waters: [], roads: [], pois: [] };
 
   // Winding flips between tile pixels and metres, so each ring is reversed here and comes out with outer rings anticlockwise.
   features('building', ({ tags, type }, lines, extent, toMetres) => {
     if (type !== 3 || tags.hide_3d) return;
     const lift = Math.max(0, tags.render_min_height || 0);
     for (const polygon of polygonsOf(lines)) {
-      const rings = [];
+      const rings = [], across = new Set();
       for (const raw of polygon) {
         const cut = clipRing(raw, extent).reverse();
         if (cut.length < 3) continue;
-        rings.push({ pts: cut.map(toMetres), seam: cut.map((p, i) => onSeam(p, cut[(i + 1) % cut.length], extent)) });
+        const seam = cut.map((p, i) => onSeam(p, cut[(i + 1) % cut.length], extent));
+        seam.forEach((cutHere, i) => {
+          if (!cutHere) return;
+          const p = cut[i], q = cut[(i + 1) % cut.length], sideways = p[0] === q[0];
+          const edge = sideways ? p[0] : p[1], step = edge === 0 ? -1 : 1;
+          across.add(sideways ? `${tx + step}_${ty}` : `${tx}_${ty + step}`);
+        });
+        rings.push({ pts: cut.map(toMetres), seam });
       }
       if (!rings.length) continue;
       const area = Math.abs(signedArea(rings[0].pts));
       if (area < MIN_BUILDING) continue;
       const height = tags.render_height > 0 ? tags.render_height : area < 150 ? 6 : 10;
-      out.buildings.push({ rings, lift, height: Math.max(height, lift + 2.5), colour: hexColour(tags.colour, '#c9c2b6'), ground: lift <= LOW_ENOUGH, objects: [], ...boundsOf(rings[0].pts) });
+      // A render_height of 5 is what the tiles say when nobody has mapped the height, so it says nothing.
+      const known = tags.render_height > 0 && tags.render_height !== UNMAPPED_HEIGHT;
+      out.buildings.push({ rings, lift, height: Math.max(height, lift + 2.5), known, across: [...across], colour: hexColour(tags.colour, '#c9c2b6'), ground: lift <= LOW_ENOUGH, objects: [], ...boundsOf(rings[0].pts) });
     }
   });
 
-  const addLand = (kind) => (lines, toMetres) => {
+  features('poi', ({ tags, type }, lines, extent, toMetres) => {
+    if (type !== 1) return;
+    for (const line of lines) for (const p of line) out.pois.push({ ...toMetres(p), cls: tags.class, sub: tags.subclass });
+  });
+
+  const addLand = (kind, name) => (lines, toMetres) => {
     for (const polygon of polygonsOf(lines)) {
       const rings = polygon.map((ring) => ring.map(toMetres));
-      out.lands.push({ rings, colour: kind[0], rank: kind[1], trees: kind[2], ...boundsOf(rings[0]) });
+      out.lands.push({ rings, name, colour: kind[0], rank: kind[1], trees: kind[2], ...boundsOf(rings[0]) });
     }
   };
   for (const name of ['landcover', 'landuse']) {
     features(name, ({ tags, type }, lines, extent, toMetres) => {
       const kind = LAND[tags.class];
-      if (type === 3 && kind) addLand(kind)(lines, toMetres);
+      if (type === 3 && kind) addLand(kind, tags.class)(lines, toMetres);
     });
   }
   features('park', ({ tags, type }, lines, extent, toMetres) => {
-    if (type === 3 && tags.class !== 'marine') addLand(PARK)(lines, toMetres);
+    if (type === 3 && tags.class !== 'marine') addLand(PARK, 'park')(lines, toMetres);
   });
   features('aeroway', ({ tags, type }, lines, extent, toMetres) => {
     const kind = AEROWAY[tags.class];
-    if (type === 3 && kind) addLand(kind)(lines, toMetres);
+    if (type === 3 && kind) addLand(kind, tags.class)(lines, toMetres);
     if (type === 2 && AEROWAY_WIDTH[tags.class]) for (const line of lines) out.roads.push({ line: line.map(toMetres), width: AEROWAY_WIDTH[tags.class], colour: kind[0], kerb: false });
   });
   features('water', ({ tags, type }, lines, extent, toMetres) => {
@@ -254,6 +270,19 @@ export function parseTile(bytes, tx, ty, origin, zoom = VECTOR_ZOOM) {
 }
 
 // --- The place ------------------------------------------------------------------------------------------------
+
+const seamEdges = (building) => building.rings.flatMap(({ pts, seam }) => pts.flatMap((a, i) => (seam[i] ? [[a, pts[(i + 1) % pts.length]]] : [])));
+
+const overlap = (a0, a1, b0, b1) => Math.min(Math.max(a0, a1), Math.max(b0, b1)) - Math.max(Math.min(a0, a1), Math.min(b0, b1)) > SEAM_MATCH;
+
+// True if two pieces meet along an edge that a tile cut. A tile edge is a straight line north-south or east-west in metres.
+function cutFrom(p, q) {
+  const near = (a, b) => Math.abs(a - b) < SEAM_MATCH, theirs = seamEdges(q);
+  return seamEdges(p).some(([a, b]) => theirs.some(([c, d]) => (
+    (near(a.x, b.x) && near(a.x, c.x) && near(c.x, d.x) && overlap(a.y, b.y, c.y, d.y))
+    || (near(a.y, b.y) && near(a.y, c.y) && near(c.y, d.y) && overlap(a.x, b.x, c.x, d.x))
+  )));
+}
 
 function hash(a, b) {
   let h = Math.imul(a | 0, 374761393) + Math.imul(b | 0, 668265263);
@@ -274,7 +303,7 @@ export class Place {
   cell(cx, cy) {
     const key = `${cx}_${cy}`;
     let cell = this.cells.get(key);
-    if (!cell) this.cells.set(key, cell = { buildings: [], lands: [], waters: [], roads: [], trees: null, treesAt: -1 });
+    if (!cell) this.cells.set(key, cell = { buildings: [], lands: [], waters: [], roads: [], pois: [], trees: null, treesAt: -1 });
     return cell;
   }
 
@@ -298,6 +327,7 @@ export class Place {
     }
     for (const land of parsed.lands) this.file('lands', land, land);
     for (const water of parsed.waters) this.file('waters', water, water);
+    for (const poi of parsed.pois || []) this.file('pois', poi, { minX: poi.x, maxX: poi.x, minY: poi.y, maxY: poi.y });
     for (const road of parsed.roads) {
       for (let i = 1; i < road.line.length; i++) {
         const a = road.line[i - 1], b = road.line[i];
@@ -330,6 +360,50 @@ export class Place {
       }
     }
     return building.wallList = list;
+  }
+
+  // Every cell a box touches.
+  cellsOver(b) {
+    const cells = [];
+    for (let cx = Math.floor(b.minX / CELL); cx <= Math.floor(b.maxX / CELL); cx++) {
+      for (let cy = Math.floor(b.minY / CELL); cy <= Math.floor(b.maxY / CELL); cy++) cells.push(this.cell(cx, cy));
+    }
+    return cells;
+  }
+
+  // All the pieces of the building this one belongs to, as a tile edge can cut one in two, and the tiles still to come that may hold more.
+  wholeOf(piece) {
+    const pieces = [piece], missing = new Set();
+    for (let i = 0; i < pieces.length; i++) {
+      const p = pieces[i];
+      for (const key of p.across || []) if (!this.tiles.has(key)) missing.add(key);
+      for (const cell of this.cellsOver(p)) {
+        for (const other of cell.buildings) {
+          if (other.ground && !pieces.includes(other) && cutFrom(p, other)) pieces.push(other);
+        }
+      }
+    }
+    return { pieces, missing: [...missing] };
+  }
+
+  // What the map says about a whole building, for working out what it is. typeOf turns a point of interest into a building type, or null.
+  cluesFor(pieces, bounds, typeOf) {
+    const pois = [], seen = new Set();
+    for (const piece of pieces) {
+      const rings = piece.rings.map((r) => r.pts);
+      for (const cell of this.cellsOver(piece)) {
+        for (const poi of cell.pois) {
+          if (seen.has(poi) || !within(piece, poi.x, poi.y) || !inRings(rings, poi.x, poi.y)) continue;
+          seen.add(poi);
+          const type = typeOf(poi);
+          if (type) pois.push(type);
+        }
+      }
+    }
+    const x = (bounds.minX + bounds.maxX) / 2, y = (bounds.minY + bounds.maxY) / 2;
+    const lands = this.cellAt(x, y).lands.filter((land) => within(land, x, y) && inRings(land.rings, x, y)).map((land) => land.name);
+    const tallest = pieces.reduce((best, p) => (p.height > best.height ? p : best));
+    return { area: pieces.reduce((sum, p) => sum + Math.abs(signedArea(p.rings[0].pts)), 0), height: tallest.height, known: !!tallest.known, pois, lands };
   }
 
   // Trees for a chunk, placed from a hash of where they stand, so they don't move when more tiles arrive; a tree only goes if something now covers its spot.

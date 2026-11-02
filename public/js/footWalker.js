@@ -13,6 +13,7 @@ export const ROOM_HEIGHT = 3;    // m
 const ENTER_REACH = 1;           // m from a wall that L takes you through it
 const STEP_INSIDE = 1;           // m past the wall that you end up, either way
 const SUB_STEP = 0.2;            // m, less than the person is wide, so a run can't pass through a wall
+const CLEAR_STEP = 0.25, CLEAR_REACH = 8, CLEAR_DIRECTIONS = 16; // m, m, and how many ways to look for a clear spot
 const clamp = (n, a, b) => Math.max(a, Math.min(b, n));
 
 export function newWalker(x, y, yaw) {
@@ -53,6 +54,7 @@ function pushClear(x, y, world) {
       moved = true;
     };
     for (const wall of world.carWalls) away(wall);
+    for (const wall of world.inner?.walls || []) away(wall);
     const cell = world.place.cellAt(x, y);
     for (const building of cell.buildings) {
       if (x < building.minX - 1 || x > building.maxX + 1 || y < building.minY - 1 || y > building.maxY + 1) continue;
@@ -111,6 +113,29 @@ export function leaveBuilding(walker, world) {
   walker.outside = null;
   walker.inside = null;
   return true;
+}
+
+const inBox = (box, x, y, pad) => {
+  const dx = x - box.x, dy = y - box.y;
+  return Math.abs(dx * box.c - dy * box.s) < box.hw + pad && Math.abs(dx * box.s + dy * box.c) < box.hd + pad;
+};
+
+// Someone who arrives where a thing stands moves to the nearest place that's clear, or they'd be stuck inside its outline.
+export function stepClearOfThings(walker, world) {
+  const boxes = world.inner?.boxes || [];
+  const clear = (x, y) => !boxes.some((box) => inBox(box, x, y, RADIUS));
+  if (clear(walker.x, walker.y)) return false;
+  for (let distance = CLEAR_STEP; distance <= CLEAR_REACH; distance += CLEAR_STEP) {
+    for (let k = 0; k < CLEAR_DIRECTIONS; k++) {
+      const a = (k / CLEAR_DIRECTIONS) * Math.PI * 2, x = walker.x + Math.sin(a) * distance, y = walker.y + Math.cos(a) * distance;
+      if (clear(x, y) && world.place.footprintAt(x, y) === walker.inside) {
+        walker.x = x;
+        walker.y = y;
+        return true;
+      }
+    }
+  }
+  return false;
 }
 
 export const frameOf = (walker) => frameFor(walker.speed, walker.running, walker.phase);

@@ -17,6 +17,7 @@ A plain static website with no framework and no build step. All game logic runs 
 | Service | Used for | Key | Cost |
 | --- | --- | --- | --- |
 | Google Maps JavaScript, 3D Maps (Immersive Maps SKU) | The 3D map | Yes | Per map load, so per page load: $7 per 1,000 after 5,000 free a month. Moving the camera isn't a billable event |
+| Kenney Furniture Kit (kenney.nl) | Furniture in rooms; the source models are in `assets/kenney-furniture`, built into `public/furniture.bin` (365 KB, fetched at the first furnished building) | No | Free, CC0. Credit is optional, given here |
 | Terrain Tiles on AWS Open Data (Mapzen) | Ground height for the camera pivot, and the ground when walking | No | Free. Attribution on the HUD; full list at https://github.com/tilezen/joerd/blob/master/docs/attribution.md |
 | Google Elevation API | Fallback for the first height only, if terrain tiles aren't answering | Yes | $5 per 1,000 after 5,000 free a month |
 | Google Geocoding API | Addresses, the current town, and the state for the radio | Yes | $5 per 1,000 after 10,000 free a month |
@@ -56,6 +57,12 @@ Google usage and spend can only be seen in Google Cloud Console; the API key can
 | `foot.js` | Walking: loads and drops chunks around the person | Browser |
 | `footData.js` | Buildings, land, water, roads, trees and doors from tiles | Yes |
 | `footWalker.js` | The person: movement, what blocks them, camera | Yes |
+| `pocket.js` | The tray and the phone's apps on foot | Browser |
+| `pocketData.js` | Notes, messages, the bag, the way to the car | Yes |
+| `pocketArt.js` | The pictures of what you carry, as vector art | Yes |
+| `buildings.js` | A building's type, floors and style, and saving them | Yes |
+| `furnish.js` | One floor's rooms, inner walls, doorways and what stands in them | Yes |
+| `furniture.js` | The item catalogue, and reading and drawing the models in `furniture.bin` | Yes |
 | `footScene.js` | Meshes and ground pictures for walking | Yes |
 | `footGl.js` | WebGL2 renderer | Matrices yes, drawing browser |
 

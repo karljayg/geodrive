@@ -46,9 +46,11 @@ export function inBand(stations, band) {
 export const frequencyText = (s) => (s.frequency ? `${s.band === 'FM' ? s.frequency.toFixed(1) : s.frequency} ${s.band}` : s.band);
 
 // The song from a stream's metadata, or null for an advert, silence or a station that sends nothing useful.
-// Mostly StreamTitle='Artist - Title'; iHeart's is Artist - text="Title" song_spot="M" ... with M for music.
+// Mostly StreamTitle='Artist - Title'; iHeart's is Artist - text="Title" song_spot="M" ... with M for music, or title="Title",artist="Artist",url="...".
 export function songFrom(metadata) {
   let song = /StreamTitle='(.*?)'(?:;|$)/s.exec(metadata || '')?.[1] || '';
+  const labelled = /^title="([^"]*)",\s*artist="([^"]*)"/.exec(song);
+  if (labelled) song = labelled[2] ? `${labelled[2]} - ${labelled[1]}` : labelled[1];
   const tagged = /^(.*?)\s*-\s*text="([^"]*)"(.*)$/s.exec(song);
   if (tagged) {
     const spot = /song_spot="(\w*)"/.exec(tagged[3])?.[1];
@@ -196,6 +198,27 @@ export class Radio {
     this.audio.removeAttribute('src');
     this.audio.load();
     this.say('Off');
+  }
+
+  // What the car's radio was doing, to go back to after the phone has used the same player.
+  snapshot() {
+    return { on: this.on, band: this.band, current: this.current };
+  }
+
+  putBack({ on, band, current }) {
+    if (this.on) this.setPower(false);
+    this.band = band;
+    this.current = current;
+    if (current && !this.stations.some((s) => s.id === current.id)) this.stations.unshift(current);
+    if (on) this.setPower(true);
+    else this.onChange();
+  }
+
+  // Plays this band, staying on the current station if it's on it.
+  playBand(band) {
+    this.band = band;
+    if (this.current?.band !== band) this.current = this.firstStation() || null;
+    this.setPower(true);
   }
 
   // Stops sound without turning the radio off, for the pause screen. Leaves the station and UI as they were.

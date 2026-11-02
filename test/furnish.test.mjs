@@ -1,0 +1,522 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { BuildingStore, dice, hashText } from '../public/js/buildings.js';
+import { Place, inRings } from '../public/js/footData.js';
+import { Mesh, clipToRect, lowWall, roomMesh } from '../public/js/footScene.js';
+import { FLOOR_VERSION, axisOf, colourFor, coreNear, coreOf, frameOf, layoutFloor, plainFloor, solidsOf, worldBearing } from '../public/js/furnish.js';
+import { ITEMS, bake, isSolid, parseFurniture, triangleCount, usedModels } from '../public/js/furniture.js';
+import { newWalker, stepClearOfThings, stepWalker } from '../public/js/footWalker.js';
+
+const bytes = readFileSync(new URL('../public/furniture.bin', import.meta.url));
+const { models, colours } = parseFurniture(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.length));
+const ORIGIN = { lat: 38.9, lng: -77 };
+
+const boundsOf = (pts) => ({ minX: Math.min(...pts.map((p) => p.x)), maxX: Math.max(...pts.map((p) => p.x)), minY: Math.min(...pts.map((p) => p.y)), maxY: Math.max(...pts.map((p) => p.y)) });
+const piece = (pts, holes = []) => {
+  const rings = [pts, ...holes].map((ring) => ({ pts: ring, seam: ring.map(() => false) }));
+  return { rings, height: 6, known: false, ground: true, ...boundsOf(pts) };
+};
+const rectangle = (w, d) => piece([{ x: 0, y: 0 }, { x: w, y: 0 }, { x: w, y: d }, { x: 0, y: d }]);
+const turned = (w, d, degrees) => {
+  const a = (degrees * Math.PI) / 180, at = (x, y) => ({ x: x * Math.cos(a) - y * Math.sin(a), y: x * Math.sin(a) + y * Math.cos(a) });
+  return piece([at(0, 0), at(w, 0), at(w, d), at(0, d)]);
+};
+const lShape = piece([{ x: 0, y: 0 }, { x: 18, y: 0 }, { x: 18, y: 7 }, { x: 8, y: 7 }, { x: 8, y: 16 }, { x: 0, y: 16 }]);
+const SHAPES = { small: rectangle(6, 5), house: rectangle(13, 9), big: rectangle(20, 14), turned: turned(14, 10, 33), lShape };
+const lay = (p, seed = 1, plan = { floors: 1, style: 'modern' }, floor = 1) => layoutFloor([p], { type: 'home', ...plan }, floor, models, dice(seed));
+
+const reachableArea = (p, walls) => {
+  // Walks a fine grid by real geometry: what a person of this width can reach from the largest clear area.
+  // The points sit off any round number, so none lands exactly on a wall.
+  const step = 0.25, off = 0.0917, cells = new Map(), key = (i, j) => `${i},${j}`, rings = p.rings.map((r) => r.pts), segs = walls;
+  const hitsWall = (ax, ay, bx, by) => segs.some((w) => {
+    const d = (w.bx - w.ax) * (by - ay) - (w.by - w.ay) * (bx - ax);
+    if (Math.abs(d) < 1e-9) return false;
+    const t = ((ax - w.ax) * (by - ay) - (ay - w.ay) * (bx - ax)) / d, u = ((ax - w.ax) * (w.by - w.ay) - (ay - w.ay) * (w.bx - w.ax)) / d;
+    return t >= 0 && t <= 1 && u >= 0 && u <= 1;
+  });
+  for (let i = Math.floor(p.minX / step); i <= Math.ceil(p.maxX / step); i++) for (let j = Math.floor(p.minY / step); j <= Math.ceil(p.maxY / step); j++) {
+    if (inRings(rings, i * step + off, j * step + off)) cells.set(key(i, j), [i, j]);
+  }
+  const seen = new Set(), first = [...cells.keys()][0], stack = [first];
+  seen.add(first);
+  while (stack.length) {
+    const [i, j] = cells.get(stack.pop());
+    for (const [di, dj] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const k = key(i + di, j + dj);
+      if (!cells.has(k) || seen.has(k) || hitsWall(i * step + off, j * step + off, (i + di) * step + off, (j + dj) * step + off)) continue;
+      seen.add(k);
+      stack.push(k);
+    }
+  }
+  return seen.size / cells.size;
+};
+
+test('the furniture file holds every model the catalogue names, at a sensible size, standing on the floor', () => {
+  for (const name of usedModels()) assert.ok(models[name], name);
+  assert.ok(models.chair.h > 0.8 && models.chair.h < 1.1, `a chair is ${models.chair.h} m tall`);
+  assert.ok(models.bedDouble.d > 1.9 && models.bedDouble.d < 2.4, `a bed is ${models.bedDouble.d} m long`);
+  assert.ok(models.kitchenFridge.h > 1.6 && models.kitchenFridge.h < 2.1);
+  assert.ok(models.bathtub.w < 2, 'not the 2.4 m bath twice the kit would give');
+  for (const [name, model] of Object.entries(models)) assert.ok(triangleCount(model) > 0, name);
+});
+
+test('faces point outwards and models are not mirrored: a chair\'s back is behind it, and its seat faces +y', () => {
+  // The back is where the top of a chair is, and the front of a model is +y.
+  const { parts } = models.chair, top = [];
+  for (const { points } of parts) for (let i = 0; i < points.length; i += 3) if (points[i + 2] > 800) top.push(points[i + 1]);
+  assert.ok(top.reduce((a, b) => a + b, 0) / top.length < -100, 'the top of the chair is at its back, towards -y');
+  // A closed model has positive volume only if its triangles wind the right way.
+  for (const name of ['kitchenCabinet', 'kitchenFridge', 'bedDouble', 'loungeSofa', 'desk']) {
+    let volume = 0;
+    for (const { points: p } of models[name].parts) {
+      for (let i = 0; i < p.length; i += 9) {
+        const [ax, ay, az, bx, by, bz, cx, cy, cz] = p.slice(i, i + 9);
+        volume += ax * (by * cz - bz * cy) + ay * (bz * cx - bx * cz) + az * (bx * cy - by * cx);
+      }
+    }
+    assert.ok(volume > 0, name);
+  }
+});
+
+test('turning a model is a compass bearing: at 90 degrees its front is east', () => {
+  const mesh = new Mesh();
+  bake(mesh, models.chair, 10, 20, 0, Math.PI / 2, () => [1, 1, 1]);
+  const xs = [], at = mesh.data;
+  for (let i = 0; i < at.length; i += 9) if (at[i + 2] > 0.8) xs.push(at[i]);
+  assert.ok(xs.reduce((a, b) => a + b, 0) / xs.length < 10 - 0.1, 'facing east, its back is to the west');
+});
+
+test('a colour comes from the room for wood and fabric, and the kit for the rest', () => {
+  const scheme = { wood: '808080', fabric: 'ff0000', accent: '00ff00', floor: '000000' };
+  assert.deepEqual(colourFor('carpet', scheme, 1, colours), [1, 0, 0]);
+  assert.deepEqual(colourFor('carpetBlue', scheme, 1, colours), [0, 1, 0]);
+  assert.ok(colourFor('wood', scheme, 1, colours)[0] > 0.49);
+  assert.ok(colourFor('woodDark', scheme, 1, colours)[0] < colourFor('wood', scheme, 1, colours)[0]);
+  assert.deepEqual(colourFor('glass', scheme, 1, colours), colours.glass);
+});
+
+test('the frame runs along the longest wall, and turns back exactly', () => {
+  const p = turned(14, 10, 33), axis = axisOf([p]);
+  assert.ok(Math.abs(axis - (33 * Math.PI) / 180) < 1e-4);
+  const frame = frameOf([p], axis), { u, v } = frame.toFrame(3, 7), back = frame.toWorld(u, v);
+  assert.ok(Math.abs(back.x - 3) < 1e-9 && Math.abs(back.y - 7) < 1e-9);
+  // In the frame, a thing facing north (bearing 0, +v) must face along +v in the world too.
+  const b = worldBearing(0, axis), inWorld = { x: Math.sin(b), y: Math.cos(b) }, vDir = { x: frame.toWorld(0, 1).x - frame.toWorld(0, 0).x, y: frame.toWorld(0, 1).y - frame.toWorld(0, 0).y };
+  assert.ok(Math.abs(inWorld.x - vDir.x) < 1e-6 && Math.abs(inWorld.y - vDir.y) < 1e-6);
+});
+
+test('the same building and seed lay out the same, and other seeds differ', () => {
+  assert.deepEqual(lay(SHAPES.house, 5), lay(SHAPES.house, 5));
+  assert.notDeepEqual(lay(SHAPES.house, 5).items, lay(SHAPES.house, 6).items);
+});
+
+test('a layout survives being saved as text, at a sensible size', () => {
+  const record = lay(SHAPES.big, 3);
+  assert.deepEqual(JSON.parse(JSON.stringify(record)), record);
+  assert.ok(JSON.stringify(record).length < 15000, `${JSON.stringify(record).length} characters`);
+});
+
+test('every home has the basics, whatever its shape', () => {
+  for (const [name, p] of Object.entries(SHAPES)) {
+    for (let seed = 0; seed < 25; seed++) {
+      const record = lay(p, hashText(`${name}${seed}`)), zones = record.zones.map((z) => z[0]), items = record.items.map((i) => i[0]);
+      assert.ok(zones.includes('living'), `${name} ${seed} rooms ${zones}`);
+      if (name !== 'small') for (const wanted of ['kitchen', 'bathroom']) assert.ok(zones.includes(wanted), `${name} ${seed} rooms ${zones}`);
+      assert.ok(items.includes('sofa') || items.includes('tvStand'), `${name} ${seed}: ${items}`);
+      if (zones.includes('bathroom')) assert.ok(items.includes('toilet'), `${name} ${seed}: no toilet in ${items}`);
+      if (zones.includes('kitchen')) assert.ok(items.includes('stove') || items.includes('fridge'), `${name} ${seed}: no kitchen in ${items}`);
+      if (zones.includes('bedroom')) assert.ok(items.includes('bed'), `${name} ${seed}: no bed in ${items}`);
+    }
+  }
+});
+
+test('each room gets about its share of the floor, whichever end it lands at', () => {
+  for (let seed = 0; seed < 60; seed++) {
+    const { zones } = lay(SHAPES.big, hashText(`share${seed}`)), areaOf = (name) => zones.filter((z) => z[0] === name).map((z) => (z[3] - z[1]) * (z[4] - z[2]));
+    assert.ok(Math.max(...areaOf('living')) > Math.max(...areaOf('bathroom')), `seed ${seed}: living ${areaOf('living')} bathroom ${areaOf('bathroom')}`);
+    assert.ok(Math.max(...areaOf('kitchen')) < 45, `seed ${seed}: a kitchen of ${areaOf('kitchen')} m²`);
+  }
+});
+
+test('a house with an upstairs keeps its beds there', () => {
+  const ground = lay(SHAPES.house, 2, { floors: 2, style: 'luxury' }, 1), upper = lay(SHAPES.house, 2, { floors: 2, style: 'luxury' }, 2);
+  assert.ok(!ground.zones.some((z) => z[0] === 'bedroom'));
+  assert.ok(upper.zones.some((z) => z[0] === 'bedroom'));
+  assert.ok(!upper.zones.some((z) => z[0] === 'kitchen'));
+});
+
+test('solid things never overlap, stay inside the walls and keep out of doorways, in every shape', () => {
+  for (const [name, p] of Object.entries(SHAPES)) {
+    for (let seed = 0; seed < 25; seed++) {
+      const record = lay(p, hashText(`solid${name}${seed}`)), frame = frameOf([p], record.axis), rings = p.rings.map((r) => r.pts);
+      const boxes = record.items.filter(([item]) => isSolid(item)).map(([item, model, u, v, , rot]) => {
+        const m = models[model], quarter = Math.round(rot / 90) % 2 === 0;
+        return { item, u0: u - (quarter ? m.w : m.d) / 2, u1: u + (quarter ? m.w : m.d) / 2, v0: v - (quarter ? m.d : m.w) / 2, v1: v + (quarter ? m.d : m.w) / 2 };
+      });
+      boxes.forEach((a, i) => {
+        for (const b of boxes.slice(i + 1)) {
+          const across = Math.min(a.u1, b.u1) - Math.max(a.u0, b.u0), along = Math.min(a.v1, b.v1) - Math.max(a.v0, b.v0);
+          assert.ok(across <= 0.02 || along <= 0.02, `${name} ${seed}: ${a.item} on ${b.item}`);
+        }
+        for (const [u, v] of [[a.u0, a.v0], [a.u1, a.v0], [a.u1, a.v1], [a.u0, a.v1]]) {
+          const { x, y } = frame.toWorld(u, v);
+          assert.ok(inRings(rings, x, y), `${name} ${seed}: ${a.item} through the wall`);
+        }
+      });
+    }
+  }
+});
+
+test('things stand with their backs to a wall and their fronts to the room', () => {
+  const record = lay(SHAPES.house, 11);
+  const bed = record.items.find(([item]) => item === 'bed') || lay(SHAPES.big, 12).items.find(([item]) => item === 'bed');
+  assert.ok(bed, 'a bed');
+  const [, model, u, v, , rot] = bed, room = (record.items.includes(bed) ? record : lay(SHAPES.big, 12)).zones[bed[6]];
+  const [, u0, v0, u1, v1] = room, m = models[model];
+  const gapBehind = { 0: v - m.d / 2 - v0, 180: v1 - (v + m.d / 2), 90: u - m.d / 2 - u0, 270: u1 - (u + m.d / 2) }[Math.round(rot)];
+  assert.ok(gapBehind >= -0.01 && gapBehind < 0.7, `${gapBehind} m behind the bed`);
+});
+
+test('every room can be reached through doorways, in every shape', () => {
+  for (const [name, p] of Object.entries(SHAPES)) {
+    for (let seed = 0; seed < 25; seed++) {
+      const record = lay(p, hashText(`reach${name}${seed}`)), frame = frameOf([p], record.axis);
+      const walls = record.walls.map(([u0, v0, u1, v1]) => {
+        const a = frame.toWorld(u0, v0), b = frame.toWorld(u1, v1);
+        return { ax: a.x, ay: a.y, bx: b.x, by: b.y };
+      });
+      assert.ok(reachableArea(p, walls) > 0.99, `${name} ${seed} shuts off part of the floor`);
+      if (record.zones.length > 1) assert.ok(walls.length, `${name} ${seed} has no walls`);
+    }
+  }
+});
+
+const worldFor = (p, record) => {
+  const place = new Place(ORIGIN);
+  place.addTile('t', { buildings: [p], lands: [], waters: [], roads: [] });
+  return { place, carWalls: [], height: () => 0, floor: () => 0, inner: solidsOf(record, frameOf([p], record.axis), models) };
+};
+
+test('a thing stops you, and a wall does, but not a doorway', () => {
+  const p = rectangle(13, 9), record = lay(p, 21), world = worldFor(p, record);
+  const sofa = record.items.find(([item]) => item === 'sofa'), frame = frameOf([p], record.axis);
+  const { x, y } = frame.toWorld(sofa[2], sofa[3]), start = frame.toWorld(sofa[2], sofa[3]);
+  // From in front of the sofa, walk straight at it.
+  const b = worldBearing(sofa[5], record.axis), walker = newWalker(start.x + Math.sin(b) * 1.6, start.y + Math.cos(b) * 1.6, b + Math.PI);
+  walker.inside = p;
+  for (let t = 0; t < 2; t += 1 / 60) stepWalker(walker, { forward: 1 }, 1 / 60, world);
+  assert.ok(Math.hypot(walker.x - x, walker.y - y) > models[sofa[1]].d / 2 + 0.2, `got ${Math.hypot(walker.x - x, walker.y - y)} m from the middle of it`);
+});
+
+test('arriving where a thing stands moves you beside it', () => {
+  const p = rectangle(13, 9), record = lay(p, 21), world = worldFor(p, record), sofa = record.items.find(([item]) => item === 'sofa');
+  const { x, y } = frameOf([p], record.axis).toWorld(sofa[2], sofa[3]), walker = newWalker(x, y, 0);
+  walker.inside = p;
+  assert.equal(stepClearOfThings(walker, world), true);
+  assert.equal(stepClearOfThings(walker, world), false, 'and then it is clear');
+  assert.ok(world.place.footprintAt(walker.x, walker.y) === p);
+});
+
+test('a room mesh holds its furniture, and things no longer in the catalogue are left out', () => {
+  const p = rectangle(13, 9), record = lay(p, 8), place = new Place(ORIGIN);
+  place.addTile('t', { buildings: [p], lands: [], waters: [], roads: [] });
+  const empty = roomMesh(place, p, 0).length, full = roomMesh(place, p, 0, { record, furniture: { models, colours } }).length;
+  assert.ok(full > empty * 10);
+  const fewer = { ...record, items: record.items.map((i) => ['gone', ...i.slice(1)]) };
+  assert.ok(roomMesh(place, p, 0, { record: fewer, furniture: { models, colours } }).length < full);
+  assert.ok(full / 9 / 3 < 30000, `${full / 27} triangles`);
+});
+
+test('a low wall\'s faces point outwards and it is below the person\'s view', () => {
+  const mesh = new Mesh();
+  lowWall(mesh, 0, 0, 5, 0, [1, 1, 1]);
+  for (let i = 0; i < mesh.data.length; i += 9) {
+    const [x, y, z, nx, ny, nz] = mesh.data.slice(i, i + 6);
+    assert.ok(z <= 1.5);
+    assert.ok(nz >= 0, 'nothing faces down');
+    if (nz === 0 && Math.abs(ny) > 0.5) assert.ok(y * ny > 0, 'the sides face away from the middle');
+    void x; void nx;
+  }
+});
+
+test('a triangle cut to a rectangle keeps only what is inside', () => {
+  const tri = [{ u: 0, v: 0 }, { u: 10, v: 0 }, { u: 0, v: 10 }], area = (ps) => Math.abs(ps.reduce((sum, a, i) => sum + a.u * ps[(i + 1) % ps.length].v - ps[(i + 1) % ps.length].u * a.v, 0)) / 2;
+  assert.ok(Math.abs(area(clipToRect(tri, { u0: 0, v0: 0, u1: 5, v1: 5 })) - 25) < 1e-9);
+  assert.equal(clipToRect(tri, { u0: 20, v0: 20, u1: 30, v1: 30 }).length, 0);
+  assert.ok(Math.abs(area(clipToRect(tri, { u0: -5, v0: -5, u1: 50, v1: 50 })) - 50) < 1e-9);
+});
+
+const memory = () => {
+  const items = new Map();
+  return { getItem: (k) => items.get(k) ?? null, setItem: (k, v) => items.set(k, v), removeItem: (k) => items.delete(k), items };
+};
+
+test('a floor is saved and comes back as it was', () => {
+  const storage = memory(), store = new BuildingStore(storage), record = lay(SHAPES.house, 4);
+  store.remember('b', { type: 'home', floors: 1, style: 'cheap' }, 1);
+  assert.equal(store.floor('b', 1), null);
+  store.saveFloor('b', 1, record);
+  assert.deepEqual(new BuildingStore(storage).floor('b', 1), record);
+});
+
+test('over the limit, the buildings seen longest ago lose their floors but not what they are', () => {
+  const storage = memory(), store = new BuildingStore(storage), big = { axis: 0, zones: [], walls: [], items: 'x'.repeat(600000) };
+  store.remember('old', { type: 'home', floors: 1, style: 'cheap' }, 1);
+  store.remember('mid', { type: 'home', floors: 1, style: 'cheap' }, 2);
+  store.remember('new', { type: 'home', floors: 1, style: 'cheap' }, 3);
+  store.saveFloor('old', 1, big);
+  store.saveFloor('mid', 1, big);
+  store.saveFloor('new', 1, big);
+  assert.equal(store.floor('old', 1), null);
+  assert.ok(store.floor('mid', 1));
+  assert.ok(store.floor('new', 1));
+  assert.equal(new BuildingStore(storage).get('old').type, 'home');
+});
+
+test('forgetting clears the lot, and full storage only loses the saving', () => {
+  const storage = memory(), store = new BuildingStore(storage);
+  store.remember('b', { type: 'home', floors: 1, style: 'cheap' }, 1);
+  store.saveFloor('b', 1, { axis: 0, zones: [], walls: [], items: [] });
+  store.forget();
+  assert.equal(storage.items.size, 0);
+  assert.equal(new BuildingStore(storage).get('b'), null);
+  const full = { getItem: () => null, setItem: () => { throw new Error('full'); }, removeItem: () => {} }, tight = new BuildingStore(full);
+  tight.remember('b', { type: 'home', floors: 1, style: 'cheap' }, 1);
+  tight.saveFloor('b', 1, { axis: 0, zones: [], walls: [], items: [] });
+  assert.equal(tight.floor('b', 1), null);
+});
+
+test('everything in the catalogue says what it could do, or nothing, and every shape exists', () => {
+  for (const [name, item] of Object.entries(ITEMS)) {
+    assert.ok(item.models.length, name);
+    if (item.use) assert.ok(item.use.length, name);
+  }
+});
+
+const withCore = (p, floors, seed = 1) => {
+  const plan = { type: 'home', floors, style: 'modern' };
+  plan.core = coreOf([p], plan, models, dice(seed));
+  return plan;
+};
+const coreIn = (record) => record.items.filter(([item]) => ['stairs', 'stairwell', 'lift'].includes(item));
+
+test('you walk up the stairs from their front: the low end is towards +y and the high end away', () => {
+  const low = [], high = [], { parts, h } = models.stairs;
+  for (const { points } of parts) {
+    for (let i = 0; i < points.length; i += 3) {
+      if (points[i + 2] > h * 800) high.push(points[i + 1]);
+      if (points[i + 2] < h * 150) low.push(points[i + 1]);
+    }
+  }
+  const mean = (list) => list.reduce((a, b) => a + b, 0) / list.length;
+  assert.ok(mean(low) > 300 && mean(high) < -300, `low ${mean(low)}, high ${mean(high)}`);
+  assert.ok(models.stairs.d > models.stairs.w, 'the flight runs front to back');
+  assert.equal(models.stairwell.d, models.stairs.d, 'and the head of them above is the same size');
+});
+
+test('stairs stand in the same place on every floor, with their head on the top one', () => {
+  for (const [name, p] of Object.entries(SHAPES)) {
+    const plan = withCore(p, 3);
+    if (!plan.core) { assert.equal(name, 'small'); continue; }
+    const floors = [1, 2, 3].map((floor) => lay(p, 40 + floor, plan, floor));
+    assert.deepEqual(coreIn(floors[0]).map((i) => i[0]), ['stairs']);
+    assert.deepEqual(coreIn(floors[1]).map((i) => i[0]), ['stairs']);
+    assert.deepEqual(coreIn(floors[2]).map((i) => i[0]), ['stairwell']);
+    const where = (record) => coreIn(record)[0].slice(2, 6);
+    assert.deepEqual(where(floors[0]), where(floors[1]));
+    assert.deepEqual(where(floors[0]), where(floors[2]));
+    for (const record of floors) assert.equal(record.v, FLOOR_VERSION);
+  }
+});
+
+test('only a building of 5 floors or more has a lift, beside the stairs and clear of them', () => {
+  const p = rectangle(30, 20);
+  assert.equal(withCore(p, 4).core.parts.length, 1);
+  const { core } = withCore(p, 5);
+  assert.deepEqual(core.parts.map((part) => part.item), ['stairs', 'lift']);
+  const [a, b] = core.parts;
+  assert.equal(a.rot, b.rot);
+  assert.ok(Math.hypot(a.u - b.u, a.v - b.v) > models.lift.w / 2 + models.stairs.w / 2, 'not overlapping');
+  assert.ok(Math.hypot(a.u - b.u, a.v - b.v) < 3);
+});
+
+test('nothing stands in the way to the stairs, no wall crosses it, and the stairs can be reached', () => {
+  for (const [name, p] of Object.entries(SHAPES)) {
+    for (let seed = 0; seed < 25; seed++) {
+      const plan = withCore(p, 2, hashText(`core${name}${seed}`));
+      if (!plan.core) continue;
+      const record = lay(p, hashText(`corefloor${name}${seed}`), plan, 1), [u0, v0, u1, v1] = plan.core.clear, stairs = plan.core.parts[0];
+      const m = models.stairs, q = stairs.rot % 180 === 0, box = { u0: stairs.u - (q ? m.w : m.d) / 2, u1: stairs.u + (q ? m.w : m.d) / 2, v0: stairs.v - (q ? m.d : m.w) / 2, v1: stairs.v + (q ? m.d : m.w) / 2 };
+      for (const [item, model, u, v, , rot] of record.items) {
+        if (!isSolid(item) || coreIn({ items: [[item]] }).length) continue;
+        const r = Math.round(rot / 90) % 2 === 0, hu = (r ? models[model].w : models[model].d) / 2, hv = (r ? models[model].d : models[model].w) / 2;
+        const inWay = (b) => u - hu < b.u1 - 0.01 && u + hu > b.u0 + 0.01 && v - hv < b.v1 - 0.01 && v + hv > b.v0 + 0.01;
+        assert.ok(!inWay({ u0, v0, u1, v1 }) && !inWay(box), `${name} ${seed}: ${item} in the way of the stairs`);
+      }
+      for (const [a0, b0, a1, b1] of record.walls) {
+        const crosses = Math.min(a0, a1) < box.u1 - 0.01 && Math.max(a0, a1) > box.u0 + 0.01 && Math.min(b0, b1) < box.v1 - 0.01 && Math.max(b0, b1) > box.v0 + 0.01;
+        assert.ok(!crosses, `${name} ${seed}: a wall through the stairs`);
+      }
+    }
+  }
+});
+
+test('a building too narrow for stairs has none, and L only uses them from close by', () => {
+  const plan = { type: 'home', floors: 2, style: 'modern' };
+  assert.equal(coreOf([rectangle(2.5, 3)], plan, models, dice(1)), null);
+  const p = rectangle(20, 14), withStairs = withCore(p, 8), frame = frameOf([p], withStairs.core.axis), [stairs, lift] = withStairs.core.parts;
+  const at = ({ u, v }, by = 0) => frame.toWorld(u + by, v);
+  assert.equal(coreNear(withStairs, frame, models, at(lift).x, at(lift).y), 'lift');
+  assert.equal(coreNear(withStairs, frame, models, at(stairs).x, at(stairs).y), 'stairs');
+  assert.equal(coreNear(withStairs, frame, models, at(stairs, 9).x + 40, at(stairs).y + 40), null);
+});
+
+test('a type with no furniture yet still has its stairs and lift on every floor, and they block', () => {
+  const p = rectangle(30, 20), plan = { type: 'office', floors: 12, style: 'modern' };
+  plan.core = coreOf([p], plan, models, dice(3));
+  const middle = plainFloor(plan, 6), top = plainFloor(plan, 12), frame = frameOf([p], middle.axis);
+  assert.deepEqual(coreIn(middle).map((i) => i[0]), ['stairs', 'lift']);
+  assert.deepEqual(coreIn(top).map((i) => i[0]), ['stairwell', 'lift']);
+  assert.ok(solidsOf(middle, frame, models).boxes.length === 2);
+  const place = new Place(ORIGIN);
+  place.addTile('t', { buildings: [p], lands: [], waters: [], roads: [] });
+  assert.ok(roomMesh(place, p, 0, { record: top, furniture: { models, colours } }).length > roomMesh(place, p, 0).length, 'and they are drawn, with no room to take a colour from');
+});
+
+const TYPE_MUST = {
+  shed: 'workbench', apartments: 'frontDesk', hotel: 'frontDesk', office: 'frontDesk', bank: 'tellerCounter', restaurant: 'diningTable', cafe: 'barCounter', shop: 'clothesRack', supermarket: 'storeShelf',
+  mall: 'barCounter', school: 'schoolDesk', hospital: 'hospitalBed', worship: 'pew', museum: 'displayCase', warehouse: 'palletRack', factory: 'machine', hangar: 'plane', terminal: 'checkInDesk',
+};
+const typeShape = (type) => ({ shed: rectangle(6, 5), cafe: rectangle(13, 9), restaurant: rectangle(16, 12), bank: rectangle(16, 14), shop: rectangle(14, 10), apartments: rectangle(24, 16), hotel: rectangle(30, 20), office: rectangle(30, 22) }[type] ?? rectangle(45, 30));
+const solidsClear = (record, label) => {
+  const boxes = record.items.filter(([item]) => isSolid(item) && !['stairs', 'lift', 'stairwell'].includes(item)).map(([item, model, u, v, , rot]) => {
+    const m = models[model], q = Math.round(rot / 90) % 2 === 0;
+    return { item, u0: u - (q ? m.w : m.d) / 2, u1: u + (q ? m.w : m.d) / 2, v0: v - (q ? m.d : m.w) / 2, v1: v + (q ? m.d : m.w) / 2 };
+  });
+  boxes.forEach((a, i) => {
+    for (const b of boxes.slice(i + 1)) assert.ok(Math.min(a.u1, b.u1) - Math.max(a.u0, b.u0) <= 0.03 || Math.min(a.v1, b.v1) - Math.max(a.v0, b.v0) <= 0.03, `${label}: ${a.item} on ${b.item}`);
+  });
+};
+
+test('every code-made model is real, and its faces point outwards', () => {
+  for (const [item, spec] of Object.entries(ITEMS)) {
+    for (const name of spec.models) {
+      const model = models[name];
+      assert.ok(model && model.w > 0 && model.d > 0 && model.h > 0, `${item}: ${name}`);
+      if (!spec.built) continue;
+      for (const { points: p } of model.parts) {
+        for (let i = 0; i < p.length; i += 9) {
+          const nz = (p[i + 3] - p[i]) * (p[i + 7] - p[i + 1]) - (p[i + 4] - p[i + 1]) * (p[i + 6] - p[i]);
+          assert.ok(nz >= 0, `${name}: a face pointing down`);
+        }
+      }
+    }
+  }
+});
+
+test('every type of building is furnished with what it should have, in rooms that can be reached', () => {
+  for (const [type, wanted] of Object.entries(TYPE_MUST)) {
+    const p = typeShape(type);
+    let found = 0;
+    for (let seed = 0; seed < 12; seed++) {
+      const record = layoutFloor([p], { type, floors: 1, style: 'modern' }, 1, models, dice(hashText(`${type}${seed}`)));
+      assert.ok(record.zones.length >= 1, type);
+      if (record.items.some(([item]) => item === wanted)) found++;
+      solidsClear(record, `${type} ${seed}`);
+      const frame = frameOf([p], record.axis), walls = record.walls.map(([u0, v0, u1, v1]) => {
+        const a = frame.toWorld(u0, v0), b = frame.toWorld(u1, v1);
+        return { ax: a.x, ay: a.y, bx: b.x, by: b.y };
+      });
+      assert.ok(reachableArea(p, walls) > 0.99, `${type} ${seed} shuts off part of the floor`);
+      assert.deepEqual(JSON.parse(JSON.stringify(record)), record);
+    }
+    assert.ok(found >= 10, `${type}: ${wanted} in only ${found} of 12`);
+  }
+});
+
+test('a bank in a tower is a bank downstairs and offices above', () => {
+  const p = rectangle(30, 22), plan = { type: 'office', ground: 'bank', floors: 12, style: 'luxury' };
+  plan.core = coreOf([p], plan, models, dice(2));
+  const down = layoutFloor([p], plan, 1, models, dice(3)), up = layoutFloor([p], plan, 5, models, dice(4));
+  assert.ok(down.items.some(([item]) => item === 'tellerCounter'));
+  assert.ok(down.zones.some((z) => z[0] === 'vault'));
+  assert.ok(up.items.some(([item]) => item === 'desk'));
+  assert.ok(!up.items.some(([item]) => item === 'tellerCounter'));
+  assert.ok(up.items.some(([item]) => item === 'lift'));
+});
+
+test('a huge floor stays cheap: limits on how much it holds and how long it takes', () => {
+  const p = rectangle(300, 200), plan = { type: 'warehouse', floors: 1, style: 'cheap' }, began = performance.now();
+  const record = layoutFloor([p], plan, 1, models, dice(9)), took = performance.now() - began;
+  assert.ok(took < 3000, `${took} ms`);
+  assert.ok(record.items.filter(([item]) => isSolid(item)).length <= 200);
+  assert.ok(JSON.stringify(record).length < 30000, `${JSON.stringify(record).length} characters`);
+  const place = new Place(ORIGIN);
+  place.addTile('t', { buildings: [p], lands: [], waters: [], roads: [] });
+  const triangles = roomMesh(place, p, 0, { record, furniture: { models, colours } }).length / 27;
+  assert.ok(triangles < 40000, `${triangles} triangles`);
+});
+
+const flatFloor = (p, floor, seed, floors = 5) => {
+  const plan = { type: 'apartments', floors, style: 'modern' };
+  plan.core = coreOf([p], plan, models, dice(seed));
+  return { plan, record: layoutFloor([p], plan, floor, models, dice(hashText(`flat${seed}:${floor}`))) };
+};
+const FLAT_SHAPES = { block: rectangle(24, 16), long: rectangle(40, 18), deep: rectangle(40, 40), bent: piece([{ x: 0, y: 0 }, { x: 40, y: 0 }, { x: 40, y: 16 }, { x: 18, y: 16 }, { x: 18, y: 40 }, { x: 0, y: 40 }]) };
+
+test('upstairs in an apartment building, each flat has a front door and its own kitchen, bathroom, living room and bedroom', () => {
+  for (const [name, p] of Object.entries(FLAT_SHAPES)) {
+    for (let seed = 0; seed < 10; seed++) {
+      const { record } = flatFloor(p, 3, seed), zones = record.zones.map((z) => z[0]), count = (zone) => zones.filter((z) => z === zone).length;
+      assert.ok(count('corridor') >= 1 && count('landing') === 1, `${name} ${seed}: ${zones}`);
+      const flats = count('kitchen');
+      assert.ok(flats >= 2 && flats <= 12, `${name} ${seed}: ${flats} flats`);
+      for (const zone of ['bathroom', 'living', 'bedroom']) assert.equal(count(zone), flats, `${name} ${seed}: ${zone}`);
+      assert.equal(record.items.filter(([item]) => item === 'frontDoor').length, flats, `${name} ${seed}: front doors`);
+      const inRoom = (zone, item) => record.items.filter((i) => i[0] === item && record.zones[i[6]]?.[0] === zone).length;
+      assert.ok(inRoom('bathroom', 'toilet') >= flats - 1, `${name} ${seed}: toilets`);
+      assert.ok(inRoom('bedroom', 'bed') >= flats - 2, `${name} ${seed}: beds ${inRoom('bedroom', 'bed')} of ${flats}`);
+      solidsClear(record, `${name} ${seed}`);
+    }
+  }
+});
+
+test('the ground floor of an apartment building has a lobby and mailboxes, and every room can be reached on every floor', () => {
+  for (const [name, p] of Object.entries(FLAT_SHAPES)) {
+    for (let seed = 0; seed < 8; seed++) {
+      const ground = flatFloor(p, 1, seed).record;
+      for (const [zone, item] of [['lobby', 'frontDesk'], ['mailroom', 'mailboxes']]) {
+        assert.ok(ground.zones.some((z) => z[0] === zone), `${name} ${seed}: ${zone}`);
+        assert.ok(ground.items.some((i) => i[0] === item), `${name} ${seed}: ${item}`);
+      }
+      for (const record of [ground, flatFloor(p, 3, seed).record]) {
+        const frame = frameOf([p], record.axis), walls = record.walls.map(([u0, v0, u1, v1]) => {
+          const a = frame.toWorld(u0, v0), b = frame.toWorld(u1, v1);
+          return { ax: a.x, ay: a.y, bx: b.x, by: b.y };
+        });
+        assert.ok(reachableArea(p, walls) > 0.99, `${name} ${seed} shuts off part of the floor`);
+      }
+    }
+  }
+});
+
+test('a front door stands in the corridor wall, with its open leaf inside the flat', () => {
+  const p = rectangle(24, 16), { record } = flatFloor(p, 3, 1);
+  for (const [, , u, v, , rot] of record.items.filter(([item]) => item === 'frontDoor')) {
+    const kitchen = record.zones.find((z) => z[0] === 'kitchen' && u >= z[1] && u <= z[3] && v >= z[2] - 0.01 && v <= z[4] + 0.01);
+    assert.ok(kitchen, 'it leads into a kitchen');
+    const back = { 0: [0, -1], 180: [0, 1], 90: [-1, 0], 270: [1, 0] }[rot], leafU = u + back[0] * 0.5, leafV = v + back[1] * 0.5;
+    assert.ok(leafU >= kitchen[1] && leafU <= kitchen[3] && leafV >= kitchen[2] && leafV <= kitchen[4], 'and swings into it, not the corridor');
+  }
+});
+
+test('stairs and lift are clear on an apartment floor, in the landing, and a narrow building is still divided somehow', () => {
+  const p = rectangle(40, 18), { plan, record } = flatFloor(p, 3, 2), [u0, v0, u1, v1] = plan.core.clear, stairs = plan.core.parts[0];
+  const landing = record.zones.find((z) => z[0] === 'landing');
+  assert.ok(stairs.u >= landing[1] - 3 && stairs.u <= landing[3] + 3 && stairs.v >= landing[2] - 3 && stairs.v <= landing[4] + 3);
+  for (const [a0, b0, a1, b1] of record.walls) assert.ok(!(Math.min(a0, a1) < u1 - 0.01 && Math.max(a0, a1) > u0 + 0.01 && Math.min(b0, b1) < v1 - 0.01 && Math.max(b0, b1) > v0 + 0.01), 'a wall across the way to the stairs');
+  const narrow = layoutFloor([rectangle(14, 6)], { type: 'apartments', floors: 1, style: 'cheap' }, 1, models, dice(4));
+  assert.ok(narrow.zones.length >= 1);
+});

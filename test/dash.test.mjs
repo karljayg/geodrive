@@ -144,6 +144,7 @@ test('fuel lasts 4 hours and the ETA counts route time', () => {
 
 test('the song comes out of what stations really send', () => {
   assert.equal(songFrom("StreamTitle='TY MYERS - ENDS OF THE EARTH';"), 'TY MYERS - ENDS OF THE EARTH');
+  assert.equal(songFrom(`StreamTitle='title="On My Mama",artist="VICTORIA MONET",url="song_spot="F" MediaBaseId="0"';`), 'VICTORIA MONET - On My Mama');
   assert.equal(songFrom("StreamTitle='Doesn't He - Chris Tomlin';"), "Doesn't He - Chris Tomlin");
   assert.equal(songFrom(`StreamTitle='Sombr - text="My Body Isn't Ready" song_spot="M" MediaBaseId="3238238" itunesTrackId="0"';`), "Sombr - My Body Isn't Ready");
   assert.equal(songFrom("StreamTitle='Muse                          - Cryogen                     ';"), 'Muse - Cryogen');

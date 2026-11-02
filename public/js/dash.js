@@ -131,6 +131,7 @@ export const navBehind = (roads) => !!layer && layer.changes !== roads.changes;
 // options: { roads, pos, heading, route, routeIndex, radius (m from the car to the top of the screen), parked (where the car is while on foot) }
 export function drawNav(canvas, { roads, pos, heading, parked, route, routeIndex, radius, hour, clock }) {
   const { ctx, w, h } = fit(canvas);
+  if (!w || !h) return; // a layout with no room for the screen
   ctx.fillStyle = '#0a1420';
   ctx.fillRect(0, 0, w, h);
   const carX = w / 2, carY = h * 0.68;

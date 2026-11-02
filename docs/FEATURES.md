@@ -3,14 +3,14 @@
 The record of what the game does and why. Update it when behaviour changes.
 
 ## Walking (L)
-With the car stopped (under 1 mph), L gets out. A person stands on a clear side of the car. You stay on the driving map, so buildings, streets and everything else look the same and nothing loads again. FSD and signals turn off, so the car can't drive away on return. L is refused on a bridge, where the ground is the valley floor. The radio keeps playing; the engine goes quiet. Trip miles and the trip clock stop.
+With the car stopped (under 1 mph), L gets out. A person stands on a clear side of the car. You stay on the driving map, so buildings, streets and everything else look the same and nothing loads again. FSD and signals turn off, so the car can't drive away on return. L is refused on a bridge, where the ground is the valley floor. The dashboard goes, and the radio, road and wind noise and the horn stay in the car. Back in the car, the radio is as it was: same station, on or off, whatever the phone played. The engine keeps idling, full within about 3 m of the car and fading to silence at 40 m. Trip miles and the trip clock stop.
 
 - **Moving:** the same angle as the closest driving camera (CHASE) at half its distance, with the person where the car would be on screen. Q and E turn the view left and right while held, which is how to see round a building; walls don't move the camera. The mouse also turns it after a click (Esc frees the mouse and leaves you on foot). WASD moves relative to the view, Shift runs. Walking and running speeds are in Settings, 3 and 8.4 m/s to start. On a touch screen, drag to turn and use the arrow buttons. The figure has knees, elbows and a torso that leans and twists, with an 8-frame walk and an 8-frame run, and stands when still.
 - **The place:** the driving map itself. Real building footprints and water from the road map's tiles are invisible walls, so they can differ a little from the buildings you see. Trees and anything else the map only shows in its picture don't stop you. A tile that hasn't arrived never stops you.
 - **What stops you:** building walls, water and the car, and any rise steeper than about 30°. A low step is fine, as is walking under a part of a building raised overhead.
-- **Buildings:** there are no doors to find. Next to a wall, the hint says "Press L to go inside", and L puts you just inside, in a ground-floor room of that footprint, 3 m high and empty, seen from above. L inside returns you to where you went in. Next to the car as well, L gets in the car.
-- **Back to the car:** the label at the bottom of the view gives the distance and direction to the car, and the nav screen marks it with a yellow dot. Within about 3 m of the car, press L.
-- **While on foot:** Destination asks you to get back in first. Start and Reset put you back in the car. Time of day, radio, pause and settings all still work. A refresh puts you back in the driver's seat.
+- **Buildings:** there are no doors to find. Next to a wall, the hint says "Press L to go inside", and L puts you just inside, unless that type of building has nothing inside yet: then a big message says "Sorry you can't get in. It's locked." and names the type (the queue is in `docs/INTERIORS.md`). Otherwise you are on the ground floor of that footprint, seen from above with the camera closer than outdoors. The hint names what the building is and its floors, such as "Bank · Floor 1 of 5", worked out from the map on your first visit and saved in the browser so it stays the same (`docs/INTERIORS.md`). Every building has rooms with waist-high walls and doorways, and things in them that suit its type and block you, such as desks in an office, tellers and a vault in a bank, racking in a warehouse. Colours and shapes differ building to building but stay the same on every visit. Past 45 m from the middle, a huge building is an open hall. Buildings of 2 or more floors have stairs and from 5 floors a lift, in the same place on every floor: the hint says when you're beside them. L goes upstairs, or down from the top floor, and Shift+L goes down from a floor between. In a lift, L opens the choice, W and S pick a floor (Shift for 10), and L goes. You can only leave from the ground floor. Settings has "Forget building interiors" to start over. L inside returns you to where you went in. Next to the car as well, L gets in the car.
+- **Back to the car:** the label at the bottom of the view gives the distance and direction to the car, Within about 3 m of the car, press L.
+- **While on foot:** Destination asks you to get back in first. Start and Reset put you back in the car. Time of day, pause and settings all still work. A refresh puts you back in the driver's seat.
 
 ## Driving
 - Top speed 500 mph, reached in about 30 seconds. A stopped car can't turn, and reverse steers the other way.
@@ -110,3 +110,13 @@ Escape or a click outside closes every popup: start, destination, pause, setting
 | L | Get out of a stopped car, or back in when beside it |
 
 Start (change start point) and Reset (back to the start) are header buttons only, not keys.
+
+## What you carry on foot
+Out of the car, the dashboard is replaced by a tray at the bottom left: Phone (I), Compass (J), Notepad (U) and Bag (Y). Opening any of them frees the mouse so you can click. Esc puts everything away. The tray's compass is live, its card turning as you do.
+- **Phone:** a home screen of apps, with room for more. Click one, or press its number, shown on each icon (1 to 6, from anywhere on foot). 0, ‹ Home or the bar at the bottom go back.
+- **Music:** a music player that plays live FM, so there are no playlists to make. It starts when opened, on the car's station if that's FM. Back and forward change station ([ and ]), play/pause is N, and it shows the current song and what played earlier on that station. A station that sends no titles shows its own name.
+- **Compass:** a large dial with the car marked on its rim, plus your heading and how far and which way the car is.
+- **Notes:** as many as you like, saved in the browser. The Notepad in the tray opens this too.
+- **Phone app and Messages:** dial or pick a contact, or text one. The contacts are made up and nothing leaves the game: a call rings and nobody answers, and a text gets a stock reply.
+- **Map:** the nav screen's map with your heading up, the car as a yellow dot and zoom buttons.
+- **Bag:** 12 slots for what you collect, saved in the browser. Nothing can be picked up yet (`PocketData.addToBag` is ready).

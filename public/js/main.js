@@ -3,6 +3,7 @@ import { distance, easeAngle, leadDistance, move } from './camera.js';
 import { FLAG_ONEWAY, RoadNet } from './road.js';
 import { Path, brakeFor, pursuitYaw, rerouteWait } from './route.js';
 import { CAR_PROFILES, hornFor, profileFor } from './cars.js';
+import { engineFadeAt } from './engineMix.js';
 import { BODY_SHAPES, buildCarGlb, buildPersonGlb, carPicture } from './carModel.js';
 import { beamPools, brakeLit, drawDots, drawPools, tailDots } from './headlights.js';
 import { clockText, darknessAt, tintAt } from './daylight.js';
@@ -102,6 +103,10 @@ const perfLog = new PerfLog(logStore());
 tiles.onWork = (ms) => perfLog.spend('tile', ms);
 let lineVertices = 0, lineAlong = 0, navVertices = 0;
 let hudTextAt = 0, startLabel = '', town = null, townAt = null, townAsked = -Infinity, townBusy = false;
+let lockedTimer = 0;
+const LOCKED_TIME = 2800; // ms
+let carRadio = null; // what the car's radio was doing when they got out
+let pocket = null; // the phone, compass, notepad and bag, made the first time someone gets out
 let people = null, foot = null, footLoading = false, lookX = 0, lookY = 0, touchLook = null; // the walk in progress, while out of the car
 const debug = { hold: false, car, pos, keys, roads, tiles, perfLog }; // window.__geodrive, for checks from the console
 
@@ -590,7 +595,7 @@ async function refreshStations() {
 }
 
 function renderRadio() {
-  if (radio.current && radio.current.id !== settings.radioStation?.id) {
+  if (!foot && radio.current && radio.current.id !== settings.radioStation?.id) {
     settings.radioStation = radio.current; // the driver's own choice replaces the default
     saveSettings();
   }
@@ -706,7 +711,7 @@ function frame(t) {
     perfLog.spend('scene', dashBegan - sceneBegan);
     updateHud(t);
     perfLog.spend('dash', performance.now() - dashBegan);
-  } else if (map) {
+  } else if (map && !foot) {
     // Paused or in a dialog: the engine goes quiet. Pause also holds the radio (see setPaused).
     const profile = profileFor(settings.carProfile);
     if (!previewing()) engine.update({ rpm: gearbox.rpm, load: 0, speedMph: 0, car: profile, running: false });
@@ -775,9 +780,14 @@ function runFoot(t, dt) {
   const began = performance.now(), live = !debug.hold && !dialogOpen && !paused;
   foot.update(live ? dt : 0, live ? footInput(dt) : {}, settings.hour);
   syncFootScene(dt);
+  // The radio, road and wind stay in the car, though the phone can play music. The engine idles on, fading with distance.
+  const profile = profileFor(settings.carProfile);
+  if (!previewing()) engine.update({ rpm: profile.idle, load: 0, speedMph: 0, car: profile, running: live, outside: true, reach: engineFadeAt(foot.distanceToCar()) });
   perfLog.spend('drive', performance.now() - began);
   if (!live) return;
   if (radio.on) refreshStations();
+  const walker = foot.walker;
+  pocket.update(t, { x: walker.x, y: walker.y, facing: foot.compass(), where: foot.where() }, { roads, parked: pos, hour: settings.hour });
   if (t - tilesCheckedAt > 1000) {
     tilesCheckedAt = t;
     const at = foot.where();
@@ -799,8 +809,23 @@ async function getOut() {
   if (onBridge) return notice('There is nothing to stand on here. Get off the bridge first.', 3000);
   footLoading = true;
   try {
-    const { Foot, PERSON_SIZE: personSize } = await import('./foot.js'); // only those who walk load any of this
+    const [{ Foot, PERSON_SIZE: personSize }, { Pocket }] = await Promise.all([import('./foot.js'), import('./pocket.js')]); // only those who walk load any of this
     await makePeople();
+    pocket ||= new Pocket(el('pockets'), radio, {
+      music: (on) => {
+        engine.start();
+        applySound();
+        if (on) {
+          radio.playBand('FM');
+          refreshStations();
+        } else radio.setPower(false);
+      },
+      setRadioVolume: (value) => { settings.radioVolume = value; applySound(); saveSettings(); },
+      radioVolume: () => settings.radioVolume,
+      muted: () => settings.muted,
+      onOpen: releaseMouse, // the mouse is needed to use them
+      onTyping: () => keys.clear(), // or a key held down would keep walking
+    });
     foot = new Foot({ canvas: el('foot'), origin: { lat: pos.lat, lng: pos.lng }, heading: car.heading, profile: settings.carProfile, scale: settings.carScale, tiles, view: { tilt: CAMERAS[0].tilt, range: CAMERAS[0].range * FOOT_RANGE_SHARE, fov: FOV_Y, below: CAR_BELOW_CENTRE } });
     showPerson(personSize);
   } catch (err) {
@@ -809,6 +834,10 @@ async function getOut() {
   } finally {
     footLoading = false;
   }
+  // The car's radio stays in the car, as it was, and the phone's Music uses the same player until they're back.
+  carRadio = radio.snapshot();
+  if (radio.on) radio.setPower(false);
+  pocket.start();
   // Nothing is left running that would drive off on return.
   car.speed = 0;
   setFsd(false);
@@ -818,6 +847,8 @@ async function getOut() {
   keys.clear();
   lightKey = '';
   document.body.classList.add('onFoot');
+  applySound();
+  mapBox = null;
   navDrawnAt = 0;
   perfLog.event('foot', { on: true });
   notice('WASD walks, Shift runs. Q and E turn the view, to see round a building.', 5000);
@@ -827,12 +858,16 @@ function stopFoot() {
   if (!foot) return;
   foot.stop();
   foot = null;
+  pocket?.close();
+  if (carRadio) radio.putBack(carRadio);
+  carRadio = null;
   for (const p of people || []) { p.scale = HIDDEN_PERSON; p.remove(); }
   shownFrame = -1;
   releaseMouse();
   keys.clear();
   lookX = lookY = 0;
   document.body.classList.remove('onFoot');
+  applySound();
   show('cam', CAMERAS[camIndex].name);
   navDrawnAt = 0;
   mapBox = null;
@@ -841,10 +876,22 @@ function stopFoot() {
   perfLog.event('foot', { on: false });
 }
 
+// The big message for a building with nothing inside yet.
+function showLocked(type) {
+  el('lockedType').textContent = type;
+  const box = el('locked');
+  box.classList.add('show');
+  clearTimeout(lockedTimer);
+  lockedTimer = setTimeout(() => box.classList.remove('show'), LOCKED_TIME);
+}
+
 function pressL() {
   if (!foot) return getOut();
   if (foot.canGetIn()) return stopFoot();
-  if (foot.pressBuilding()) return;
+  const done = foot.pressBuilding(keys.has('shift'));
+  if (done?.locked) return showLocked(done.locked);
+  if (done?.waiting) return notice('Just a moment, the map of this building is still loading.', 2000);
+  if (done) return;
   notice('Walk up to a building, or back to the car, then press L.', 2500);
 }
 
@@ -1478,6 +1525,11 @@ el('settingsReset').addEventListener('click', () => {
   showSettings();
   saveSettings();
 });
+el('forgetBuildings').addEventListener('click', async () => {
+  const { forgetBuildings } = await import('./foot.js');
+  forgetBuildings();
+  notice('Buildings forgotten. They will be furnished afresh the next time you get out of the car.', 3000);
+});
 el('settingsDone').addEventListener('click', closeSettings);
 el('openSettings').addEventListener('click', () => {
   if (el('settings').classList.contains('open')) closeSettings();
@@ -1590,11 +1642,16 @@ el('settingsCopy').addEventListener('click', async () => {
 // --- Input ----------------------------------------------------------------------------------------------------
 
 const DRIVE_KEYS = new Set(['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', ' ', 'z', 'shift']);
-const DRIVING_ONLY = new Set(['c', 'g', 'q', 'e', 'f', '=', '+', '-']);
+const DRIVING_ONLY = new Set(['b', 'c', 'g', 'q', 'e', 'f', '=', '+', '-']);
 document.addEventListener('keydown', (e) => {
   if (el('settings').classList.contains('open') && (e.key === 'Escape' || e.key.toLowerCase() === 'o')) { e.preventDefault(); return closeSettings(); }
   if (e.key === 'Escape' && dismissPopup()) { e.preventDefault(); return; }
   if (dialogOpen) return; // the keys belong to the open dialog
+  if (e.target.matches?.('#pockets textarea, #pockets input[type=text]')) { // typing a note or a message
+    if (e.key === 'Escape') e.target.blur();
+    return;
+  }
+  if (foot && e.key === 'Escape' && pocket?.close()) { e.preventDefault(); return; }
   const k = e.key.toLowerCase();
   if (e.metaKey || e.ctrlKey || e.altKey) return;
   if (paused) {
@@ -1603,6 +1660,7 @@ document.addEventListener('keydown', (e) => {
   }
   if (k === 'p' && !e.repeat) { e.preventDefault(); return setPaused(true); }
   if (k === 'l' && !e.repeat) { e.preventDefault(); return pressL(); }
+  if (foot && !e.repeat && pocket?.pressKey(k)) { e.preventDefault(); return; }
   if (foot && (k === 'q' || k === 'e')) keys.add(k);
   if (DRIVE_KEYS.has(k)) { keys.add(k); e.preventDefault(); e.stopPropagation(); }
   if (e.repeat || (foot && DRIVING_ONLY.has(k))) return;
