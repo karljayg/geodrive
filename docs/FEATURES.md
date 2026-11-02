@@ -40,7 +40,7 @@ One press takes the next non-service road on that side, far enough ahead to brak
 A full-width panel below the map, which is sized to end above it.
 - Left: speedometer, tachometer with gear, fuel bar, lights and horn. The speedometer tops out at 200 until past 150 mph, then steps to 300, 400 and 500, keeping the needle at or under 3/4 of the dial. Tachometers end at the round thousand above each car's redline. Electric cars show battery charge instead.
 - Fuel and charge are placeholders: 4 hours of running from full to empty, saved with the trip, with no effect on the car. A new start refills.
-- The nav screen carries FSD status and destination top left, and at the bottom left a muted analog clock with a labelled digital time: ETA, the arrival time, when there's a destination, and NOW, the game's time of day, when there isn't.
+- The nav screen carries FSD status and destination top left, and at the bottom left a muted analog clock with digital time labelled NOW, always the game's time of day. The arrival time is only in the ETA above the screen.
 - Centre: the game clock labelled NOW, ETA with time and miles left when there's a destination (from Google's route times, assuming FSD cruise), trip figures, and the navigation screen. ELAPSED in the trip figures is time since the trip's first movement, stops included, and stops while you're out of the car.
 - Right: radio with an LCD, PWR, bands, and volume and tune knobs (drag or scroll). Clicking the LCD opens the station list.
 - Navigation screen: heading-up view from very high: the arrow points up and the map turns under it. It's drawn from the road data already loaded rather than a second Google map, which would add map charges. Click it to change the range.

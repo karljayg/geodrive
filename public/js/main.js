@@ -559,24 +559,20 @@ function drawDash(t) {
     navDrawnAt = t;
     const navRoute = fsd || destination ? route : null;
     const navPos = foot ? foot.where() : pos, navHeading = foot ? foot.compass() : car.heading;
-    // The nav screen's clock is the arrival time on a trip and the time now otherwise, and says which.
-    const toGo = destination && route ? route.secondsToEnd[routeIndex ?? 0] : null;
-    const arrival = toGo === null ? null : (settings.hour + toGo / 3600) % 24;
     const now = `NOW ${clockText(settings.hour)}`;
-    const navClock = arrival === null ? now : `ETA ${clockText(arrival)}`;
-    const navKey = `${navPos.lat.toFixed(6)}|${navPos.lng.toFixed(6)}|${navHeading.toFixed(1)}|${navRadius}|${navRoute?.length}|${routeIndex}|${navClock}|${roads.changes}`;
+    const navKey = `${navPos.lat.toFixed(6)}|${navPos.lng.toFixed(6)}|${navHeading.toFixed(1)}|${navRadius}|${navRoute?.length}|${routeIndex}|${now}|${roads.changes}`;
     if (navKey !== navShown || navBehind(roads)) { // parked, nothing on it has changed
       navShown = navKey;
       const navBegan = performance.now();
-      navVertices = drawNav(el('navScreen'), { roads, pos: navPos, heading: navHeading, parked: foot ? pos : null, route: navRoute, routeIndex, radius: navRadius, hour: arrival ?? settings.hour, clock: navClock });
+      navVertices = drawNav(el('navScreen'), { roads, pos: navPos, heading: navHeading, parked: foot ? pos : null, route: navRoute, routeIndex, radius: navRadius, hour: settings.hour, clock: now });
       perfLog.spend('nav', performance.now() - navBegan);
     }
     show('clock', now);
     let eta = '';
-    if (arrival !== null) {
-      const miles = (route.length - route.cum[routeIndex ?? 0]) / 1609.344;
-      const left = toGo < 3600 ? `${Math.max(1, Math.round(toGo / 60))} min` : `${Math.floor(toGo / 3600)} h ${Math.round((toGo % 3600) / 60)} min`;
-      eta = `${navClock} · ${left} left · ${miles.toFixed(1)} mi`;
+    if (destination && route) {
+      const at = routeIndex ?? 0, seconds = route.secondsToEnd[at], miles = (route.length - route.cum[at]) / 1609.344;
+      const left = seconds < 3600 ? `${Math.max(1, Math.round(seconds / 60))} min` : `${Math.floor(seconds / 3600)} h ${Math.round((seconds % 3600) / 60)} min`;
+      eta = `ETA ${clockText((settings.hour + seconds / 3600) % 24)} · ${left} · ${miles.toFixed(1)} mi`;
     }
     show('eta', eta);
   }
