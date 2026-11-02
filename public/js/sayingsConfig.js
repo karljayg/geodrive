@@ -40,7 +40,7 @@ export const SAYINGS = {
   charged: ['{name} fully charged.', '{name} is at 100%.', '{name} is full. Off you go.'],
 
   // Carried lights
-  flashlightOn: ['Flashlight on. V turns it off.', 'Flashlight on.', 'Click. Now you can see what you were missing.'],
+  flashlightOn: ['Flashlight on. G turns it off.', 'Flashlight on.', 'Click. Now you can see what you were missing.'],
   phoneLightOn: ['Phone light on.', 'Phone light on. It\'s trying its best.', 'Phone light on. About as far as your feet.'],
   lightOff: ['Light off.', 'Click. Off.', 'Saving the battery.'],
   flashlightNotInBag: ['Your flashlight isn\'t in your bag. It may be in the car.', 'No flashlight in the bag. Did it stay in the car?', 'You pat your bag. No flashlight.'],
@@ -72,7 +72,7 @@ export const SAYINGS = {
   walkUpFirst: ['Walk up to a building, or back to the car, then press L.', 'There\'s nothing to go into here. Try a building or the car.', 'L works by a building or the car. This is neither.'],
   backInCar: ['Get back in the car first.', 'That one\'s for the car. Get back in first.', 'You\'d need the car for that.'],
   locked: ['Sorry you can\'t get in. It\'s locked.', 'Locked. You rattle the door anyway.', 'Locked. Nobody\'s coming to let you in.', 'It\'s locked, and it means it.', 'The door has other plans. Locked.'],
-  lightsAreOff: ['The lights are off. Look for a switch by a door and press F, or use your flashlight with V.'],
+  lightsAreOff: ['The lights are off. Look for a switch by a door and press F, or use your flashlight with G.'],
   slept: ['You sleep for {hours} hours.', 'You sleep {hours} hours, and don\'t remember your dreams.', '{hours} hours later, you wake up.', 'Out like a light for {hours} hours.'],
 
   // Needs getting low

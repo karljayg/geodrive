@@ -532,6 +532,8 @@ function updateHud(t) {
   signalWasLit = lit;
   drawDash(t);
 
+  el('fsdButton').setAttribute('aria-pressed', String(fsd));
+  el('muteButton').setAttribute('aria-pressed', String(!!settings.muted));
   const nav = el('nav');
   nav.classList.toggle('active', !!destination);
   nav.classList.toggle('engaged', fsd);
@@ -585,7 +587,7 @@ function drawDash(t) {
       navVertices = drawNav(el('navScreen'), { roads, pos: navPos, heading: navHeading, parked: foot ? pos : null, route: navRoute, routeIndex, radius: navRadius, hour: settings.hour, clock: now });
       perfLog.spend('nav', performance.now() - navBegan);
     }
-    show('clock', now);
+    show('navRangeValue', `${(navRadius / 1609.344).toFixed(1)} mi`);
     let eta = '';
     if (destination && route) {
       const at = routeIndex ?? 0, seconds = route.secondsToEnd[at], miles = (route.length - route.cum[at]) / 1609.344;
@@ -977,7 +979,7 @@ function pressUse() {
   asking = { choices, x: foot.walker.x, y: foot.walker.y, level: foot.level, inside: foot.walker.inside };
   const many = choices.length > 1, box = el('asking');
   box.innerHTML = `${choices.map(({ label }, i) => `<button data-answer="${i}">${many ? `<kbd>${i + 1}</kbd> ` : ''}${label}</button>`).join('')}
-    <small>${many ? 'Press a number, or walk away' : 'F for yes, or walk away'}</small>`;
+    <small>${many ? 'Press a number, walk away or Esc' : 'F for yes, walk away or Esc'}</small>`;
   box.classList.toggle('many', many);
   document.body.classList.add('asked');
 }
@@ -1084,6 +1086,7 @@ async function pocketReady() {
     flashlight: () => carryLight('flash'),
     phoneLight: () => carryLight('phone'),
     stowed: () => { if (foot?.light === 'flash') carryLight('flash'); }, // it can't stay on in the car
+    flashlightOn: () => foot?.light === 'flash',
   });
   return pocket;
 }
@@ -1455,7 +1458,7 @@ el('resetDefault').addEventListener('click', () => {
 el('startForm').addEventListener('submit', async (e) => {
   e.preventDefault();
   const address = el('startAddress').value.trim();
-  if (!address) return setStatus('start', 'Enter an address first.', true);
+  if (!address) return el('useDefault').click(); // Enter on an empty box takes the default, as the button says
   el('startGo').disabled = el('useDefault').disabled = true;
   setStatus('start', 'Looking up the address…');
   try {
@@ -1529,7 +1532,7 @@ function setPaused(on) {
   keys.clear();
   if (on) releaseMouse();
   el('pause').classList.toggle('open', on);
-  el('pauseButton').textContent = on ? 'Resume' : 'Pause';
+  el('pauseButton').innerHTML = on ? 'Resume <span class="keyHint">(P)</span>' : '<u>P</u>ause';
   if (on) {
     renderTrip();
     // Mute the radio while paused, but remember it so resume can bring it back.
@@ -1926,10 +1929,45 @@ knob(el('tuneKnob'), (pixels) => {
     tunePixels -= Math.sign(tunePixels) * TUNE_STEP;
   }
 });
-el('navScreen').addEventListener('click', () => {
+function nextNavRange() {
   navRadius = NAV_RANGES[(NAV_RANGES.indexOf(navRadius) + 1) % NAV_RANGES.length];
   navDrawnAt = 0;
-});
+}
+el('navScreen').addEventListener('click', nextNavRange);
+
+const VOLUME_STEP = 0.05, BANDS = ['FM', 'AM', 'WEB'];
+function turnVolume(change) {
+  settings.radioVolume = clamp(settings.radioVolume + change, 0, 1);
+  applySound();
+  saveSettings();
+}
+function nextBand() {
+  radio.setBand(BANDS[(BANDS.indexOf(radio.band) + 1) % BANDS.length]);
+}
+function openStations() {
+  const list = el('radioList');
+  list.focus();
+  try { list.showPicker(); } catch (err) { /* older browsers: arrow keys still choose from the focused list */ }
+}
+function addHour() {
+  settings.hour = (settings.hour + 1) % 24;
+  applyDaylight();
+  saveSettings();
+  notice(clockText(settings.hour), 1500);
+}
+function toggleMute() {
+  settings.muted = !settings.muted;
+  applySound();
+  saveSettings();
+  notice(settings.muted ? 'Sound muted. Press M to turn it back on.' : 'Sound on.', 2000);
+}
+// Pressed once, by mouse: left focused, Space or Enter would press it again.
+const onClick = (id, run) => el(id).addEventListener('click', (e) => { e.currentTarget.blur(); run(); });
+onClick('leaveButton', pressL);
+onClick('fsdButton', () => setFsd(!fsd));
+onClick('muteButton', toggleMute);
+onClick('timeButton', addHour);
+onClick('camButton', switchCamera);
 el('shareButton').addEventListener('click', shareDrive);
 el('sendLog').addEventListener('click', sendLog);
 // A link opened in a tab already on the game changes only the # part, which wouldn't otherwise reload the page.
@@ -2004,8 +2042,12 @@ el('settingsCopy').addEventListener('click', async () => {
 // --- Input ----------------------------------------------------------------------------------------------------
 
 const DRIVE_KEYS = new Set(['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', ' ', 'z', 'shift']);
-const DRIVING_ONLY = new Set(['b', 'c', 'g', 'q', 'e', 'f', '=', '+', '-']);
+const DRIVING_ONLY = new Set(['b', 'c', 'g', 'q', 'e', 'f', 'h', 'r', 'v', '/', '\\', ',', '.', '=', '+', '-']);
 document.addEventListener('keydown', (e) => {
+  if (e.target === el('radioList')) { // the station list: its own keys while open, and gone once a key means something else
+    if (['ArrowUp', 'ArrowDown', 'Enter'].includes(e.key)) return;
+    e.target.blur();
+  }
   if (e.target.matches?.('#pockets textarea, #pockets input[type=text]')) { // typing a note or a message
     if (e.key === 'Escape') e.target.blur();
     return;
@@ -2023,17 +2065,17 @@ document.addEventListener('keydown', (e) => {
   const k = e.key.toLowerCase();
   if (e.metaKey || e.ctrlKey || e.altKey) return;
   if (paused) {
-    if (k === 'p' && !e.repeat) { e.preventDefault(); setPaused(false); }
+    if ((k === 'p' || k === 'r') && !e.repeat) { e.preventDefault(); setPaused(false); }
+    if (k === 't' && !e.repeat) { e.preventDefault(); el('tripReset').click(); }
     return;
   }
   if (k === 'p' && !e.repeat) { e.preventDefault(); return setPaused(true); }
   if (k === 'l' && !e.repeat) { e.preventDefault(); return pressL(); }
   if (asking && /^[1-9]$/.test(k)) { e.preventDefault(); if (!e.repeat) answer(Number(k) - 1); return; }
   if (pocket?.bagOpen && e.shiftKey && !e.repeat && /^Digit\d$/.test(e.code)) { e.preventDefault(); return pocket.dropNumber(e.code.slice(5)); }
-  if ((foot || (pocket?.bagOpen && /^[0-9]$/.test(k))) && !e.repeat && pocket?.pressKey(k)) { e.preventDefault(); return; }
+  if ((foot || (pocket?.bagOpen && /^[0-9z]$/.test(k))) && !e.repeat && pocket?.pressKey(k)) { e.preventDefault(); return; }
   if (foot && k === 'f' && !e.repeat) { e.preventDefault(); return pressUse(); }
-  if (foot && k === 'v' && !e.repeat) { e.preventDefault(); return carryLight('flash'); }
-  if (!foot && k === 'y' && !e.repeat) { e.preventDefault(); return openStorage(); }
+  if (!foot && k === 'r' && !e.repeat) { e.preventDefault(); return openStorage(); }
   if (foot && k === ' ') jumpPressed = true; // a quick tap can come and go between two frames
   if (foot && (k === 'q' || k === 'e')) keys.add(k);
   if (DRIVE_KEYS.has(k)) { keys.add(k); e.preventDefault(); e.stopPropagation(); }
@@ -2044,16 +2086,17 @@ document.addEventListener('keydown', (e) => {
   if (k === 'n') setRadioPower(!radio.on);
   if (k === 'h') setHeadlights(!settings.headlights);
   if (k === 'b') hornDown();
-  if (k === 't') {
-    settings.hour = (settings.hour + 1) % 24;
-    applyDaylight();
-    saveSettings();
-    notice(clockText(settings.hour), 1500);
-  }
+  if (k === 't') addHour();
+  if (k === 'j') shareDrive();
+  if (k === 'v') nextNavRange();
+  if (k === '/') { e.preventDefault(); nextBand(); }
+  if (k === '\\') openStations();
+  if (k === ',') turnVolume(-VOLUME_STEP);
+  if (k === '.') turnVolume(VOLUME_STEP);
   if (k === '[') radio.seek(-1);
   if (k === ']') radio.seek(1);
   if (k === 'k' || k === '?') toggleKeys();
-  if (k === 'm') { settings.muted = !settings.muted; applySound(); saveSettings(); notice(settings.muted ? 'Sound muted. Press M to turn it back on.' : 'Sound on.', 2000); }
+  if (k === 'm') toggleMute();
   if (k === 'q') pressSignal(-1);
   if (k === 'e') pressSignal(1);
   if (k === 'f') setFsd(!fsd);

@@ -10,10 +10,11 @@ import { frequencyText } from './radio.js';
 import { SERVICE_RANK } from './vector.js';
 
 const TRAY = [
-  { id: 'phone', label: 'Phone', key: 'i', art: 'phone' },
-  { id: 'compass', label: 'Compass', key: 'j', art: 'compass' },
-  { id: 'notepad', label: 'Notepad', key: 'u', art: 'notepad' },
-  { id: 'bag', label: 'Bag', key: 'y', art: 'bag' },
+  { id: 'phone', label: 'Phone', html: 'P<u>h</u>one', key: 'h', art: 'phone' },
+  { id: 'compass', label: 'Compass', html: '<u>C</u>ompass', key: 'c', art: 'compass' },
+  { id: 'notepad', label: 'Notepad', html: 'Notepad <span class="keyHint">(U)</span>', key: 'u', art: 'notepad' },
+  { id: 'bag', label: 'Bag', html: '<u>B</u>ag', key: 'b', art: 'bag' },
+  { id: 'flash', label: 'Flashlight', html: 'Flashli<u>g</u>ht', key: 'g', art: 'torch' },
 ];
 const APPS = [
   { id: 'music', label: 'Music', art: 'music' },
@@ -54,10 +55,10 @@ export class Pocket {
     this.recentStation = null;
     this.shown = {};       // what the live figures last said, so nothing is written that hasn't changed
     root.innerHTML = `
-      <div class="tray"><div class="trayClock" title="The time here"><div class="trayDial"><i class="hour"></i><i class="minute"></i></div><span class="trayLabel" data-tray-clock></span></div>${TRAY.map((item) => `<button class="trayItem" data-tray="${item.id}" title="${item.label} (${item.key.toUpperCase()})"><span class="trayArt">${picture(item.art)}</span><span class="trayLabel">${item.label}</span><kbd>${item.key.toUpperCase()}</kbd></button>`).join('')}</div>
+      <div class="tray"><div class="trayClock" title="The time here"><div class="trayDial"><i class="hour"></i><i class="minute"></i></div><span class="trayLabel" data-tray-clock></span></div>${TRAY.map((item) => `<button class="trayItem" data-tray="${item.id}" title="${item.label} (${item.key.toUpperCase()})"><span class="trayArt">${picture(item.art)}</span><span class="trayLabel">${item.html}</span></button>`).join('')}</div>
       <div class="device" hidden>
         <div class="screen">
-          <div class="statusBar"><span data-clock></span><span class="island"></span><button data-close aria-label="Put the phone away">✕</button></div>
+          <div class="statusBar"><span data-clock></span><span class="island"></span><button data-close aria-label="Put the phone away" title="Put the phone away (Esc)">✕</button></div>
           <div class="appArea"></div>
           <button class="homeBar" data-home aria-label="Home screen"></button>
         </div>
@@ -67,6 +68,7 @@ export class Pocket {
     this.area = root.querySelector('.appArea');
     this.bagPanel = root.querySelector('.bagPanel');
     this.card = root.querySelector('[data-tray="compass"] [data-card]');
+    this.flashTray = root.querySelector('[data-tray="flash"]');
     root.addEventListener('click', (e) => this.onClick(e));
     root.addEventListener('focusin', (e) => { if (e.target.matches('textarea, input[type=text]')) calls.onTyping(); });
     // Keys and pointers on the phone don't reach the game underneath.
@@ -132,11 +134,12 @@ export class Pocket {
     if (id === 'phone' && this.app) this.calls.sound('tap');
     if (id === 'phone') return this.app ? this.closePhone() : this.openApp('home');
     if (id === 'bag') return this.toggleBag();
+    if (id === 'flash') return this.calls.flashlight();
     const app = id === 'notepad' ? 'notes' : id;
     return this.app === app ? this.closePhone() : this.openApp(app);
   }
 
-  // A number with the bag open: the thing in that slot. The flashlight turns on and the bag closes, so Y then a number is all it takes while walking.
+  // A number with the bag open: the thing in that slot. The flashlight turns on and the bag closes, so B then a number is all it takes while walking.
   pressBagNumber(key) {
     const item = this.data.bag[key === '0' ? 9 : Number(key) - 1];
     if (!item) return;
@@ -170,7 +173,7 @@ export class Pocket {
     this.dropped = { id: item.id, name: item.name, side, world: this.calls.dropped(item.name) };
     if (id === 'Flashlight' && !this.data.bagHas(id)) this.calls.stowed();
     this.renderBag();
-    this.bagPanel.querySelector('.empty').innerHTML = `You dropped the ${esc(item.name.toLowerCase())}. It's where you left it. <button class="undoDrop" data-undo-drop>Undo</button>`;
+    this.bagPanel.querySelector('.empty').innerHTML = `You dropped the ${esc(item.name.toLowerCase())}. It's where you left it. <button class="undoDrop" data-undo-drop>Undo <span class="keyHint">(Z)</span></button>`;
   }
 
   undoDrop() {
@@ -209,6 +212,21 @@ export class Pocket {
       this.pressBagNumber(key);
       return true;
     }
+    if (key === 'z') {
+      if (!this.bagOpen || !this.dropped) return false;
+      this.undoDrop();
+      return true;
+    }
+    if (this.app === 'call' && this.pressDialKey(key)) return true;
+    if (this.app === 'notes' && !this.note && key === 'n') {
+      this.calls.sound('paper');
+      this.openNote(this.data.addNote().id);
+      return true;
+    }
+    if (this.app === 'map' && (key === '-' || key === '=' || key === '+')) {
+      this.zoomMap(key === '-' ? 1 : -1);
+      return true;
+    }
     if (key === 'n') {
       this.toggleMusic();
       return true;
@@ -225,6 +243,26 @@ export class Pocket {
     const item = TRAY.find((t) => t.key === key);
     if (item) this.press(item.id);
     return !!item;
+  }
+
+  // In the Phone app, the keyboard is its dial pad. True if it used the key.
+  pressDialKey(key) {
+    if (this.calling) {
+      if (key !== 'enter') return false;
+      this.endCall();
+      this.renderCall();
+      return true;
+    }
+    if (/^[0-9*#]$/.test(key)) this.dial(key);
+    else if (key === 'backspace') { this.dialled = (this.dialled || '').slice(0, -1); this.renderCall(); }
+    else if (key === 'enter') this.startCall(this.dialled);
+    else return false;
+    return true;
+  }
+
+  zoomMap(change) {
+    this.mapRadius = Math.max(0, Math.min(MAP_RADII.length - 1, this.mapRadius + change));
+    this.mapDrawn = 0;
   }
 
   // --- Clicks ---------------------------------------------------------------------------------------------------
@@ -260,7 +298,7 @@ export class Pocket {
     else if ('dialGo' in button.dataset) this.startCall(this.dialled);
     else if (dialContact) this.startCall(dialContact);
     else if ('hangUp' in button.dataset) { this.endCall(); this.renderCall(); }
-    else if (radius) { this.mapRadius = Math.max(0, Math.min(MAP_RADII.length - 1, this.mapRadius + Number(radius))); this.mapDrawn = 0; }
+    else if (radius) this.zoomMap(Number(radius));
     if (button.tagName === 'BUTTON' && document.contains(button)) button.blur(); // or Space and Enter would press it again
   }
 
@@ -278,8 +316,8 @@ export class Pocket {
     else if (app === 'health') this.renderHealth();
   }
 
-  title(text, extra = '') {
-    return `<button class="appBack homeLink" data-home>‹ Home <kbd>0</kbd></button><div class="appTitle"><h2>${esc(text)}</h2>${extra}</div>`;
+  title(text, extra = '', zeroGoesHome = true) {
+    return `<button class="appBack homeLink" data-home>‹ Home${zeroGoesHome ? ' <kbd>0</kbd>' : ''}</button><div class="appTitle"><h2>${esc(text)}</h2>${extra}</div>`;
   }
 
   // Room for two more rows of apps, for what comes later.
@@ -337,7 +375,7 @@ export class Pocket {
 
   renderNotes() {
     const { notes } = this.data;
-    this.area.innerHTML = `${this.title('Notes', '<button class="appAction" data-new-note>+ New</button>')}<div class="list">${notes.length
+    this.area.innerHTML = `${this.title('Notes', '<button class="appAction" data-new-note>+ <u>N</u>ew</button>')}<div class="list">${notes.length
       ? notes.map((n) => `<button class="row" data-open-note="${esc(n.id)}"><b>${esc(noteTitle(n))}</b><small>${esc(new Date(n.at).toLocaleDateString())}</small></button>`).join('')
       : '<p class="empty">No notes yet. Press + New to write one.</p>'}</div>`;
   }
@@ -415,7 +453,7 @@ export class Pocket {
       return;
     }
     const keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '*', '0', '#'];
-    this.area.innerHTML = `${this.title('Phone')}<div class="dialled">${esc(this.dialled || '') || '&nbsp;'}</div>
+    this.area.innerHTML = `${this.title('Phone', '', false)}<div class="dialled">${esc(this.dialled || '') || '&nbsp;'}</div>
       <div class="dialPad">${keys.map((k) => `<button data-digit="${k}">${k}</button>`).join('')}</div>
       <div class="dialActions"><button class="dialGo" data-dial-go aria-label="Call">${picture('call')}</button><button class="dialClear" data-dial-clear aria-label="Delete a digit">⌫</button></div>
       <div class="list short">${CONTACTS.map((c) => `<button class="row" data-dial-contact="${c.number}"><b>${esc(c.name)}</b><small>${c.number}</small></button>`).join('')}</div>`;
@@ -423,9 +461,9 @@ export class Pocket {
 
   renderMap() {
     this.area.innerHTML = `${this.title('Map')}<div class="mapApp"><canvas data-map></canvas>
-      <div class="mapZoom"><button data-radius="1" aria-label="Zoom out">−</button><button data-radius="-1" aria-label="Zoom in">+</button></div></div>
+      <div class="mapZoom"><button data-radius="1" aria-label="Zoom out" title="Zoom out (-)">−</button><button data-radius="-1" aria-label="Zoom in" title="Zoom in (=)">+</button></div></div>
       <div class="carLine" data-car-line></div>
-      <p class="small"><i class="dot"></i> your car · ▲ you</p>`;
+      <p class="small"><i class="dot"></i> your car · ▲ you · zoom (- =)</p>`;
     this.mapDrawn = 0;
   }
 
@@ -436,13 +474,13 @@ export class Pocket {
       : '<div class="bagSlot"></div>')).join('');
     this.nearShown = near;
     this.bagPanel.classList.toggle('withCar', near);
-    this.bagPanel.innerHTML = `<div class="bagHead"><span class="bagArt">${picture('bag')}</span><h2>Bag</h2><small>${bag.length} of ${BAG_SLOTS}</small><button data-close-bag aria-label="Close">✕</button></div>
+    this.bagPanel.innerHTML = `<div class="bagHead"><span class="bagArt">${picture('bag')}</span><h2>Bag</h2><small>${bag.length} of ${BAG_SLOTS}</small><button data-close-bag aria-label="Close" title="Close (Esc)">✕</button></div>
       <div class="bagGrid">${slots(bag, BAG_SLOTS, 'bag')}</div>
-      <p class="empty">${near ? 'Click something, or press its number, to move it between your bag and the car.' : 'Stand next to the car to reach its storage.'}${this.data.bagHas('Flashlight') ? ` Press ${(this.data.bag.findIndex((i) => i.id === 'Flashlight') + 1) % 10} or V to turn on the flashlight.` : ''} A number eats, drinks or uses what's in that slot.</p>
+      <p class="empty">${near ? 'Click something, or press its number, to move it between your bag and the car.' : 'Stand next to the car to reach its storage.'}${this.data.bagHas('Flashlight') ? ` Press ${(this.data.bag.findIndex((i) => i.id === 'Flashlight') + 1) % 10} or G to turn on the flashlight.` : ''} A number eats, drinks or uses what's in that slot.</p>
       ${near ? `<div class="bagHead carHead"><h2>Car storage</h2><small>${car.length} of ${CAR_SLOTS}</small></div><div class="bagGrid carGrid">${slots(car, CAR_SLOTS, 'car')}</div>` : ''}`;
   }
 
-  // From the dash in the car, or Y.
+  // From the dash in the car, or R.
   openStorage() {
     this.root.classList.add('storageOnly');
     if (!this.bagOpen) this.toggleBag();
@@ -464,6 +502,7 @@ export class Pocket {
   update(now, on, at) {
     if (now - this.lastUpdate < REFRESH) return;
     this.lastUpdate = now;
+    this.flashTray.classList.toggle('on', this.calls.flashlightOn());
     const facing = Math.round(on.facing);
     if (this.shown.tray !== facing) {
       this.shown.tray = facing;

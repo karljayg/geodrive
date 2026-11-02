@@ -17,13 +17,13 @@
   <div id="vitals"></div>
   <header>
     <div class="brand">GEO<b>DRIVE</b></div>
-    <button id="changeDest">Destination</button>
-    <button id="changeStartHeader">Start</button>
-    <button id="resetButton">Reset</button>
-    <button id="openSettings">Settings</button>
-    <button id="shareButton">Share</button>
-    <button id="pauseButton">Pause</button>
-    <button id="helpButton">Keys</button>
+    <button id="changeDest" title="Pick a destination. Only from the car."><u>G</u>o to</button>
+    <button id="changeStartHeader" title="Choose a new start, which begins a new trip">New start</button>
+    <button id="resetButton" title="Put the car back at your start, which begins a new trip">Back to start</button>
+    <button id="openSettings">Settings <span class="keyHint">(O)</span></button>
+    <button id="shareButton">Share <span class="keyHint">(J)</span></button>
+    <button id="pauseButton"><u>P</u>ause</button>
+    <button id="helpButton"><u>K</u>eys</button>
     <button id="sendLog" title="Sends the performance log to the server for review, including where the car has been">Send log</button>
     <div class="where" id="where"></div>
   </header>
@@ -31,7 +31,7 @@
   <div id="asking"></div>
   <div id="footHint"></div>
   <div id="locked" role="status"><b id="lockedSay"></b><span id="lockedType"></span></div>
-  <div id="liftPanel" role="dialog" aria-label="Lift"><div class="liftHead"><b>Lift</b><button id="liftClose" type="button" aria-label="Stay on this floor">✕</button></div><div id="liftFloors"></div></div>
+  <div id="liftPanel" role="dialog" aria-label="Lift"><div class="liftHead"><b>Lift</b><button id="liftClose" type="button" aria-label="Stay on this floor" title="Stay on this floor (Esc)">✕</button></div><div id="liftFloors"></div></div>
   <div id="pockets"></div>
   <div id="signalLeft">◀</div>
   <div id="signalRight">▶</div>
@@ -49,9 +49,12 @@
       <div id="fuel"><span id="fuelLabel">FUEL</span><i><b id="fuelBar"></b></i><span id="fuelValue">100%</span></div>
     </div>
     <div class="carButtons">
-      <button id="lightsButton" aria-pressed="false">Lights</button>
-      <button id="hornButton">Horn</button>
-      <button id="storageButton" title="What's in the car, and your bag (Y)">Storage</button>
+      <button id="lightsButton" aria-pressed="false"><u>H</u>eadlights</button>
+      <button id="hornButton"><u>B</u>eep</button>
+      <button id="storageButton" title="What's in the car, and your bag">Sto<u>r</u>age</button>
+      <button id="leaveButton" title="Get out, once the car has stopped"><u>L</u>eave car</button>
+      <button id="fsdButton" aria-pressed="false" title="Self-driving, once you have a destination"><u>F</u>SD</button>
+      <button id="muteButton" aria-pressed="false" title="Mute all sound"><u>M</u>ute</button>
     </div>
   </div>
   <div class="centre">
@@ -64,38 +67,42 @@
         </div>
         <span id="perf" title="Frames per second, the slowest frame in the last second, and JavaScript memory"></span>
       </div>
-      <span id="clock" title="The time now in the game"></span>
+      <span class="navKeys">Signal <span class="keyHint">(Q E)</span> · <u>Z</u>oom <span class="keyHint">(Space)</span> · FSD speed <span class="keyHint">(- =)</span></span>
+      <button id="timeButton" title="Move the time on an hour"><u>T</u>ime +1h</button>
     </div>
     <div class="navBox">
       <canvas id="navScreen" title="Click to change the range" aria-label="Navigation screen"></canvas>
       <div id="nav"><div id="navState"></div><div id="navWhere"></div></div>
       <div id="navTown"></div>
+      <div id="navRange">Range <b id="navRangeValue"></b> <span class="keyHint">(V)</span></div>
     </div>
     <div class="trip">
-      <span title="Time since this trip's first movement, stops included. It stops while you're out of the car.">ELAPSED <b id="hud-elapsed">0:00</b></span>
-      <span>MILES <b id="hud-miles">0.00 mi</b></span>
+      <span title="Time since this trip's first movement, stops included. It stops while you're out of the car.">TIME <b id="hud-elapsed">0:00</b></span>
+      <span>TRIP <b id="hud-miles">0.00 mi</b></span>
       <span>TOP <b id="hud-top">0 mph</b></span>
       <span>AVG <b id="hud-average">0 mph</b></span>
-      <span>HDG <b id="heading">000°</b></span>
-      <span>ROAD <b id="road">–</b></span>
-      <span>CAM <b id="cam">CHASE</b></span>
-      <span>START <b id="from">0.00 mi</b></span>
+      <span>HEADING <b id="heading">000°</b></span>
+      <span><b id="road">–</b></span>
+      <button id="camButton" title="Change the camera"><u>C</u>AMERA <b id="cam">CHASE</b></button>
+      <span title="Straight-line distance from your start">FROM START <b id="from">0.00 mi</b></span>
     </div>
   </div>
   <section class="radio" aria-label="Radio">
     <div class="lcd">
+      <span class="lcdKey">List <span class="keyHint">(\\)</span></span>
       <span id="radioFreq">– – –</span>
       <span id="radioName">Off</span>
       <span id="radioSong"><span></span></span>
       <select id="radioList" aria-label="Stations"></select>
     </div>
     <div class="radioControls">
-      <div class="knobBox"><div class="knob" id="volumeKnob" role="slider" aria-label="Radio volume" tabindex="-1"><i></i></div><small>VOL</small></div>
+      <div class="knobBox"><div class="knob" id="volumeKnob" role="slider" aria-label="Radio volume" tabindex="-1"><i></i></div><small>VOL (, .)</small></div>
       <div class="radioButtons">
-        <button id="radioPower" aria-pressed="false">PWR</button>
+        <button id="radioPower" aria-pressed="false">PWR (N)</button>
         <div class="bands" role="group" aria-label="Band"><button data-band="FM">FM</button><button data-band="AM">AM</button><button data-band="WEB">NET</button></div>
+        <small class="bandKey">BAND (/)</small>
       </div>
-      <div class="knobBox"><div class="knob" id="tuneKnob" role="slider" aria-label="Tune" tabindex="-1"><i></i></div><small>TUNE</small></div>
+      <div class="knobBox"><div class="knob" id="tuneKnob" role="slider" aria-label="Tune" tabindex="-1"><i></i></div><small>TUNE ([ ])</small></div>
     </div>
   </section>
 </div>
@@ -103,7 +110,7 @@
   <div class="startBox">
     <h1>Where do you want to start?</h1>
     <p>Your default start is <b id="startDefault"></b>.</p>
-    <button class="primary wide" id="useDefault">Start there</button>
+    <button class="primary wide" id="useDefault">Start there <span class="keyHint">(Enter)</span></button>
     <div class="or">Or override it with an address. The car goes on the nearest road, and this becomes your new default.</div>
     <form id="startForm">
       <input id="startAddress" type="text" placeholder="Enter an address" autocomplete="street-address" aria-label="Starting address">
@@ -119,8 +126,8 @@
     <p>Continuing replaces your current trip and settings in this browser with these:</p>
     <dl id="sharedStats"></dl>
     <div class="row">
-      <button class="primary" id="sharedYes" type="button">Start this drive</button>
-      <button class="quiet" id="sharedNo" type="button">No thanks</button>
+      <button class="primary" id="sharedYes" type="button">Start this drive <span class="keyHint">(Enter)</span></button>
+      <button class="quiet" id="sharedNo" type="button">No thanks <span class="keyHint">(Esc)</span></button>
     </div>
   </div>
 </div>
@@ -143,8 +150,8 @@
       <div><dt>Fuel or charge</dt><dd data-stat="fuel"></dd></div>
     </dl>
     <div class="row">
-      <button class="primary" id="resume" type="button">Resume</button>
-      <button class="quiet" id="tripReset" type="button">Reset trip</button>
+      <button class="primary" id="resume" type="button"><u>R</u>esume</button>
+      <button class="quiet" id="tripReset" type="button">Reset <u>t</u>rip</button>
     </div>
   </div>
 </div>
@@ -221,7 +228,7 @@
   </section>
   <button class="link" id="settingsReset" type="button">Reset all to defaults</button>
   <button class="link" id="settingsCopy" type="button">Copy settings (to make them the new-player defaults)</button>
-  <button class="primary wide" id="settingsDone" type="button">Done</button>
+  <button class="primary wide" id="settingsDone" type="button">Done <span class="keyHint">(Esc)</span></button>
 </div>
 <div id="dest">
   <div class="startBox">
@@ -229,11 +236,11 @@
     <p>The car drives itself there in FSD. Steer or brake to take over any time, and press F to hand back.</p>
     <form id="destForm">
       <input id="destAddress" type="text" placeholder="Enter a destination" autocomplete="street-address" aria-label="Destination address">
-      <button class="primary" id="destGo" type="submit">Go</button>
+      <button class="primary" id="destGo" type="submit">Go <span class="keyHint">(Enter)</span></button>
     </form>
     <div id="destStatus"></div>
     <div class="row">
-      <button class="quiet" id="destCancel" type="button">Cancel</button>
+      <button class="quiet" id="destCancel" type="button">Cancel <span class="keyHint">(Esc)</span></button>
       <button class="quiet" id="destClear" type="button">Clear destination</button>
     </div>
   </div>
