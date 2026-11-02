@@ -86,6 +86,28 @@ export const GAME = {
     Banana: { hunger: 12, bowels: -2, say: 'You eat the banana.', kind: 'food' },
     'Candy bar': { hunger: 10, energy: 6, say: 'You eat the candy bar.', kind: 'food' },
     'Dog biscuit': { hunger: 4, thirst: -3, say: 'It tastes as you would expect.', kind: 'food' },
+    Burger: { hunger: 40, thirst: -4, bowels: -9, say: 'You eat the burger. It\'s cold, and still great.', kind: 'food' },
+    'Half a burger': { hunger: 20, bowels: -5, say: 'You finish someone\'s burger. Nobody needs to know.', kind: 'food' },
+    Fries: { hunger: 18, thirst: -7, bowels: -4, say: 'You eat the fries.', kind: 'food' },
+    'Chicken wrap': { hunger: 35, bowels: -7, say: 'You eat the wrap.', kind: 'food' },
+    'Bowl of soup': { hunger: 28, thirst: 12, bowels: -5, say: 'You drink down the soup.', kind: 'food' },
+    'Bread roll': { hunger: 12, thirst: -3, bowels: -3, say: 'You eat the roll.', kind: 'food' },
+    'Slice of pizza': { hunger: 18, thirst: -3, bowels: -4, say: 'You eat the slice.', kind: 'food' },
+    'Slice of cake': { hunger: 16, energy: 6, bowels: -3, say: 'You eat the cake. Happy birthday to someone.', kind: 'food' },
+    Muffin: { hunger: 15, energy: 3, bowels: -3, say: 'You eat the muffin.', kind: 'food' },
+    Donut: { hunger: 12, energy: 6, say: 'You eat the donut.', kind: 'food' },
+    Yogurt: { hunger: 12, thirst: 6, bowels: -3, say: 'You eat the yogurt, no spoon.', kind: 'food' },
+    Cheese: { hunger: 18, thirst: -3, bowels: -3, say: 'You eat the cheese.', kind: 'food' },
+    'Bag of chips': { hunger: 12, thirst: -6, say: 'You eat the chips.', kind: 'food' },
+    'Instant noodles': { hunger: 25, thirst: -4, bowels: -5, say: 'You crunch through the noodles dry.', kind: 'food' },
+    'Peanut butter': { hunger: 30, thirst: -9, bowels: -5, say: 'You eat the peanut butter with a finger.', kind: 'food' },
+    'Granola bar': { hunger: 14, energy: 4, bowels: -2, say: 'You eat the granola bar.', kind: 'food' },
+    'Protein bar': { hunger: 18, energy: 7, bowels: -2, say: 'You eat the protein bar. It\'s chewy.', kind: 'food' },
+    Orange: { hunger: 10, thirst: 9, bowels: -2, say: 'You eat the orange.', kind: 'food' },
+    Grapes: { hunger: 8, thirst: 7, bowels: -2, say: 'You eat the grapes.', kind: 'food' },
+    'Energy drink': { thirst: 15, energy: 24, bladder: -7, say: 'You drink it. Your eyelids reconsider.', kind: 'drink' },
+    'Juice box': { thirst: 18, hunger: 4, bladder: -5, say: 'You finish the juice box, with the noise.', kind: 'drink' },
+    'Glass of water': { thirst: 20, bladder: -5, say: 'You drink the water.', kind: 'drink' },
     Aspirin: { health: 4, say: 'You take an aspirin.', kind: 'medicine' },
     Plasters: { health: 4, say: 'You patch yourself up.', kind: 'medicine' },
     Bandages: { health: 10, say: 'You bandage yourself up.', kind: 'medicine' },
@@ -95,25 +117,26 @@ export const GAME = {
 
   // What opening or searching each thing can turn up. Anything that opens without a list is empty.
   finds: {
-    fridge: ['Milk', 'Leftover pizza', 'Orange juice', 'Cold soda'], counter: ['Can of soup', 'Box of cereal', 'Cutlery'], wardrobe: ['Old jacket', 'Spare keys', 'Shoebox'],
-    nightstand: ['Flashlight', 'Paperback', 'Reading glasses'], sideTable: ['Batteries', 'Pack of cards', 'Old letters'], tvStand: ['TV remote', 'Old DVD'], bathCabinet: ['Toothpaste', 'Plasters', 'Aspirin'],
-    bookcase: ['Novel', 'Atlas', 'Photo album'], desk: ['Stapler', 'Notebook', 'USB stick', 'Building key'], filingCabinet: ['Old invoices', 'Paperclips', 'Sealed envelope', 'Building key'], locker: ['Gym towel', 'Padlock', 'Trainers', 'Building key'],
+    fridge: ['Milk', 'Leftover pizza', 'Orange juice', 'Cold soda', 'Yogurt', 'Cheese', 'Juice box', 'Slice of cake'], counter: ['Can of soup', 'Box of cereal', 'Cutlery', 'Instant noodles', 'Peanut butter', 'Bag of chips', 'Tin of beans'], wardrobe: ['Old jacket', 'Spare keys', 'Shoebox'],
+    nightstand: ['Flashlight', 'Paperback', 'Reading glasses'], sideTable: ['Batteries', 'Pack of cards', 'Old letters', 'Candy bar'], tvStand: ['TV remote', 'Old DVD'], bathCabinet: ['Toothpaste', 'Plasters', 'Aspirin'],
+    bookcase: ['Novel', 'Atlas', 'Photo album'], desk: ['Stapler', 'Notebook', 'USB stick', 'Building key', 'Granola bar', 'Bag of chips'], filingCabinet: ['Old invoices', 'Paperclips', 'Sealed envelope', 'Building key'], locker: ['Gym towel', 'Padlock', 'Trainers', 'Building key', 'Protein bar', 'Energy drink'],
     box: ['Old newspapers', 'Packing tape', 'Holiday lights'], bin: ['Crumpled receipt', 'Empty can'], cashCart: ['Bundle of cash'], toolChest: ['Wrench', 'Screwdriver', 'Tape measure', 'Building key'], medCart: ['Bandages', 'Thermometer'],
-    storeShelf: ['Tin of beans', 'Bottle of water', 'Pack of batteries'], clothesRack: ['Denim jacket', 'Silk scarf'], displayTable: ['Gift card', 'Sunglasses'], displayCase: ['Old coin', 'Museum guide'],
-    palletRack: ['Box of parts', 'Roll of tape'], bookStack: ['Library book', 'Old atlas'], gearRack: ['Fire helmet', 'Gloves'], walkInFridge: ['Tray of steaks', 'Crate of milk'], toyBox: ['Toy car', 'Teddy bear'],
-    produceStand: ['Apple', 'Banana'], fridgeCase: ['Sandwich', 'Cold drink'], breadRack: ['Fresh loaf', 'Croissant'], vendingMachine: ['Candy bar'], petCage: ['Dog biscuit'],
+    storeShelf: ['Tin of beans', 'Bottle of water', 'Pack of batteries', 'Bag of chips', 'Instant noodles', 'Can of soup', 'Box of cereal', 'Granola bar', 'Peanut butter'], clothesRack: ['Denim jacket', 'Silk scarf'], displayTable: ['Gift card', 'Sunglasses'], displayCase: ['Old coin', 'Museum guide'],
+    palletRack: ['Box of parts', 'Roll of tape'], bookStack: ['Library book', 'Old atlas'], gearRack: ['Fire helmet', 'Gloves'], walkInFridge: ['Tray of steaks', 'Crate of milk', 'Cheese', 'Bowl of soup', 'Chicken wrap'], toyBox: ['Toy car', 'Teddy bear'],
+    produceStand: ['Apple', 'Banana', 'Orange', 'Grapes'], fridgeCase: ['Sandwich', 'Cold drink', 'Yogurt', 'Energy drink', 'Juice box', 'Cheese'], breadRack: ['Fresh loaf', 'Croissant', 'Muffin', 'Donut', 'Bread roll', 'Slice of cake'], petCage: ['Dog biscuit'],
+    barCounter: ['Burger', 'Fries', 'Slice of pizza', 'Chicken wrap', 'Glass of water', 'Cold soda'], prepTable: ['Burger', 'Chicken wrap', 'Bowl of soup', 'Bread roll', 'Fries'], diningTable: ['Half a burger', 'Fries', 'Bread roll', 'Glass of water'],
   },
   // The chance of finding anything at all, so food is never a sure thing. Each spot is decided once and stays that way for that building.
   findChance: {
     default: 0.7,
-    fridge: 0.3, counter: 0.2, walkInFridge: 0.35, medCart: 0.4, bathCabinet: 0.4, sideTable: 0.4, desk: 0.3,
-    storeShelf: 0.05, fridgeCase: 0.1, produceStand: 0.1, breadRack: 0.15, // shops have many of these: a big supermarket has about 190
+    fridge: 0.55, counter: 0.4, walkInFridge: 0.7, medCart: 0.4, bathCabinet: 0.4, sideTable: 0.4, desk: 0.3, barCounter: 0.5, prepTable: 0.55,
+    storeShelf: 0.15, fridgeCase: 0.3, produceStand: 0.3, breadRack: 0.4, diningTable: 0.12, // shops have many of these: a big supermarket has about 190 shelves, and a restaurant a dozen tables
   },
 
   // Machines that hand something over, once each, when they have it.
   machines: {
-    vendingMachine: { chance: 0.4, give: 'Candy bar', say: 'vendingGive', empty: 'vendingEmpty' },
-    coffeeMachine: { chance: 0.5, give: 'Cup of coffee', say: 'coffeeGive', empty: 'coffeeEmpty' },
+    vendingMachine: { chance: 0.65, give: ['Candy bar', 'Bag of chips', 'Cold soda', 'Granola bar'], say: 'vendingGive', empty: 'vendingEmpty' },
+    coffeeMachine: { chance: 0.7, give: ['Cup of coffee'], say: 'coffeeGive', empty: 'coffeeEmpty' },
   },
 
   // Stat changes from using things where they stand, without taking them anywhere. works: the chance this one does, decided once.

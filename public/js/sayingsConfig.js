@@ -62,7 +62,7 @@ export const SAYINGS = {
   washHands: ['You wash your hands.', 'Clean hands, at least.'],
   drinkTap: ['You drink from the tap.', 'Tap water. Tastes of pipes.', 'You drink from the tap. Vintage: this morning.', 'Cold, wet and free.'],
   tapDry: ['Nothing comes out of the tap.', 'The tap coughs and gives up.', 'Dry. Not even a drip.', 'The tap has nothing to say.'],
-  vendingGive: ['It drops a candy bar.', 'Clunk. A candy bar.', 'It actually worked. A candy bar.'],
+  vendingGive: ['It drops: {found}.', 'Clunk. Out comes {found}.', 'It actually worked: {found}.'],
   vendingEmpty: ['It\'s sold out.', 'Every row is empty.', 'It hums at you. Sold out.', 'The machine has nothing left to give.'],
   coffeeGive: ['You pour a coffee.', 'Coffee. Not good, but coffee.', 'It\'s been on a while, but it\'s coffee.'],
   coffeeEmpty: ['The coffee machine is out of beans.', 'It gurgles, and nothing comes.', 'No coffee. A dark moment.'],

@@ -189,7 +189,10 @@ function doThing(entry, action, plan, floor, buildingId) {
   if (machine) {
     if (state.opened.includes(id)) return { say: line(machine.empty), empty: true };
     state.opened.push(id);
-    return dice(hashText(`${buildingId}:${floor}:${id}`))() < machine.chance ? { say: line(machine.say), give: machine.give } : { say: line(machine.empty), empty: true };
+    const roll = dice(hashText(`${buildingId}:${floor}:${id}`));
+    if (roll() >= machine.chance) return { say: line(machine.empty), empty: true };
+    const give = machine.give[Math.floor(roll() * machine.give.length)];
+    return { say: line(machine.say, { found: give.toLowerCase() }), give };
   }
   const effect = GAME.uses[item];
   if (effect) {

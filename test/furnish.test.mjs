@@ -898,7 +898,7 @@ test('a mall has a walkway with different shops off it, an airport has security 
   };
   const mall = zones('mall', 100, 60);
   assert.ok(mall.names.includes('corridor') && mall.names.includes('foodCourt'), mall.names.join());
-  assert.ok(new Set(mall.names.filter((n) => ['shopUnit', 'cafe', 'salonFloor', 'pharmacyFloor', 'bakeryShop', 'fastFoodFloor'].includes(n))).size >= 2, 'not all the same shop');
+  assert.ok(new Set(mall.names.filter((n) => ['shopUnit', 'groceryUnit', 'restaurantDining', 'marketHall', 'cafe', 'salonFloor', 'pharmacyFloor', 'bakeryShop', 'fastFoodFloor'].includes(n))).size >= 2, 'not all the same shop');
   const airport = zones('terminal', 200, 80);
   for (const zone of ['checkIn', 'security', 'baggage']) assert.ok(airport.names.includes(zone), airport.names.join());
   assert.ok(airport.items.includes('securityArch') && airport.items.includes('baggageBelt'));

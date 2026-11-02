@@ -144,7 +144,7 @@ test('eating and drinking do what the config says, and other things are not food
 });
 
 test('everything edible that can be found is listed, and every consumable can be found somewhere', () => {
-  const findable = new Set([...Object.values(GAME.finds).flat(), ...Object.values(GAME.machines).map((m) => m.give)]);
+  const findable = new Set([...Object.values(GAME.finds).flat(), ...Object.values(GAME.machines).flatMap((m) => m.give)]);
   for (const name of Object.keys(GAME.consumables)) assert.ok(findable.has(name), name);
   for (const food of ['Milk', 'Leftover pizza', 'Sandwich', 'Apple', 'Candy bar', 'Bottle of water']) assert.ok(GAME.consumables[food], food);
 });
@@ -176,7 +176,7 @@ test('machines give once at most, and a toilet relieves both needs', () => {
     assert.equal(again.give, undefined);
     assert.ok(SAYINGS.vendingEmpty.includes(again.say), again.say);
   }
-  assert.ok(some > 20 && some < 60);
+  assert.ok(some > 40 && some < 85);
   const toilet = useThing(entry('toilet'), {}, 1, 'b');
   assert.ok(toilet.effect.bladder >= 100 && toilet.effect.bowels >= 100);
 });
@@ -223,4 +223,16 @@ test('every say in the config is a real key, and the common ones have several li
   for (const key of ['nothingHere', 'lightsOn', 'lightsOff', 'emptyThing', 'bagFull', 'locked', 'relief']) assert.ok(SAYINGS[key].length >= 3, key);
   assert.ok(SAYINGS.switchLocked.every((l) => /key/i.test(l)), 'every wording says a key is needed');
   assert.ok(SAYINGS.locked.every((l) => /locked/i.test(l)));
+});
+
+test('food turns up often enough in the places you would expect it', () => {
+  const finds = (item, n = 400) => {
+    let food = 0;
+    for (let i = 0; i < n; i++) if (GAME.consumables[useThing(entry(item, i, 0), {}, 1, 'food').give]) food++;
+    return food / n;
+  };
+  assert.ok(finds('fridge') > 0.3, 'a fridge often has something');
+  assert.ok(finds('walkInFridge') > 0.5);
+  assert.ok(finds('barCounter') > 0.3, 'a counter in a restaurant');
+  assert.ok(finds('storeShelf') > 0.05 && finds('storeShelf') < 0.25, 'shelves are many, so each is a long shot');
 });

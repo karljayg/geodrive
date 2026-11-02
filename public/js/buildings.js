@@ -7,6 +7,7 @@ import { CATEGORY_TYPE } from './overture.js';
 const STORE = 'geodrive_rooms_v3'; // this stays v3, so what people have done survives updates; earlier ones held guessed types
 const OLD_STORES = ['geodrive_rooms_v1', 'geodrive_rooms_v2'];
 const TERMINAL_AREA = 5000, MALL_AREA = 3000, MALL_POIS = 3; // m², m², points of interest
+const MIXED_AREA = 1500, MIXED_KINDS = 2; // m², and different kinds of business: too much under one roof to be just one of them
 const WAREHOUSE_AREA = 2000, LOW = 15, BIG_SHOP_AREA = 3000; // m², m, m²
 const SHED_AREA = 40, HOME_AREA = 400, HOME_HEIGHT = 12;     // m², m², m
 const HANGAR_AREA = 300;     // m²; smaller things at an airport could be anything
@@ -145,6 +146,7 @@ export function buildingType(clues) {
   if (pois.includes('mall') && area > MALL_AREA) return 'mall';
   if (airport && area > TERMINAL_AREA) return 'terminal';
   if (area > MALL_AREA && pois.filter((type) => RETAIL.has(type) || type === 'bank').length >= MALL_POIS) return 'mall'; // several tenants under one roof
+  if (area > MIXED_AREA && new Set(pois.filter((type) => RETAIL.has(type))).size >= MIXED_KINDS) return 'mall';
   const named = commonest(pois.filter((type) => type !== 'parking' && type !== 'mall'));
   if (named) return named;
   return airport ? (area >= HANGAR_AREA ? 'hangar' : 'unknown') : typeFromLand(clues);

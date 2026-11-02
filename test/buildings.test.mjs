@@ -304,3 +304,9 @@ test('a part with nothing of its own takes after the bigger building it is joine
   assert.equal(identify(place, part, store).type, 'bank');
   assert.equal(identify(place, apart, store).type, 'unknown');
 });
+
+test('a big building with different kinds of business in it is a shopping centre', () => {
+  assert.equal(buildingType(clues({ area: 2000, pois: ['supermarket', 'restaurant'] })), 'mall');
+  assert.equal(buildingType(clues({ area: 2000, pois: ['shop', 'shop'] })), 'shop', 'one kind stays that kind');
+  assert.equal(buildingType(clues({ area: 800, pois: ['supermarket', 'restaurant'] })), 'supermarket', 'and a small one is what most of it is');
+});

@@ -110,7 +110,7 @@ test('what played earlier: newest first, no repeat of the current one, and a lim
 });
 
 test('everything that can reach the bag has its own picture, and anything new still gets one', () => {
-  const names = new Set([...Object.values(GAME.finds).flat(), ...Object.values(GAME.machines).map((m) => m.give), ...Object.keys(GAME.consumables), 'Flashlight', 'Cash', 'Ticket']);
+  const names = new Set([...Object.values(GAME.finds).flat(), ...Object.values(GAME.machines).flatMap((m) => m.give), ...Object.keys(GAME.consumables), 'Flashlight', 'Cash', 'Ticket']);
   for (const item of Object.keys(ITEMS)) {
     const actions = actionsOf(item);
     if (actions.includes('pick up')) names.add(useThing([item, ITEMS[item].models[0], 0, 0, 0, 0, 0, 1], {}, 1, 'x', actions[1] === 'pick up').give);
