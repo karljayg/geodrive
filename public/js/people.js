@@ -163,6 +163,6 @@ export function statusLine(member, place, me, wallNow) {
   if (!place) return 'Online';
   const flags = place.flags ?? 0;
   if (flags & FLAGS.indoors) return place.floor > 1 ? `In a building, floor ${place.floor}` : 'In a building';
-  const doing = flags & FLAGS.away ? 'Away' : flags & FLAGS.onFoot ? 'On foot' : 'Driving';
+  const doing = flags & FLAGS.away ? 'Away' : flags & FLAGS.onFoot ? 'On foot' : flags & FLAGS.riding ? 'Riding' : 'Driving';
   return me ? `${farText(metresApart(me, place))} ${compassPoint(bearingBetween(me, place))} · ${doing}` : doing;
 }

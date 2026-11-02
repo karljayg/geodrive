@@ -3,7 +3,7 @@ export const PROTOCOL = 1; // raise when either side can't understand the other;
 
 const PRESENCE_TYPE = 1;
 export const PRESENCE_BYTES = 24;
-export const FLAGS = { onFoot: 1, away: 2, indoors: 4, headlights: 8, brake: 16, signalLeft: 32, signalRight: 64, bridge: 128, running: 256, asleep: 512 };
+export const FLAGS = { onFoot: 1, away: 2, indoors: 4, headlights: 8, brake: 16, signalLeft: 32, signalRight: 64, bridge: 128, running: 256, asleep: 512, riding: 1024 };
 const DEGREES = 1e7, HEADING = 100, SPEED = 100, FRAME = 50; // whole numbers per degree, per degree, per m/s and per m (2 cm)
 
 const clampInt = (value, low, high) => Math.max(low, Math.min(high, Math.round(Number.isFinite(value) ? value : 0)));

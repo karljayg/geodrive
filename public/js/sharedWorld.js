@@ -248,8 +248,15 @@ export class SharedCars {
     for (const key of this.plantedTiles.keys()) if (!waysOf.has(key)) this.plantedTiles.delete(key);
   }
 
+  // News can cross: an answer and a later change can arrive together, so only something newer counts.
+  keep(car) {
+    const known = this.records.get(car.id);
+    if (!known || (car.rev ?? 0) >= (known.rev ?? 0)) this.records.set(car.id, car);
+    return this.records.get(car.id);
+  }
+
   heard(car) {
-    this.records.set(car.id, car);
+    this.keep(car);
     this.onChange?.(car);
   }
 
@@ -283,26 +290,33 @@ export class SharedCars {
 
   // The car this person is driving, if any: they may have refreshed the page.
   mine() {
-    for (const car of this.records.values()) if (car.driver === this.me) return car;
+    for (const car of this.records.values()) if (car.driver === this.me || car.seats?.includes(this.me)) return car;
     return null;
+  }
+
+  // Take the wheel, from a seat beside it.
+  async slide(car) {
+    const answer = await this.link.ask({ t: 'slide', car: car.id });
+    if (answer.car) answer.car = this.keep(answer.car);
+    return answer;
   }
 
   async getIn(car) {
     const answer = await this.link.ask({ t: 'getIn', car: car.id, planted: car });
-    if (answer.car) this.records.set(answer.car.id, answer.car);
+    if (answer.car) answer.car = this.keep(answer.car);
     return answer;
   }
 
   async getOut(car, place) {
     const answer = await this.link.ask({ t: 'getOut', car: car.id, ...place });
-    if (answer.car) this.records.set(answer.car.id, answer.car);
+    if (answer.car) answer.car = this.keep(answer.car);
     return answer;
   }
 
   // What's in a car, sent whole. Refused if someone else changed it first, when what's here is put right.
   async setStorage(car, storage) {
     const answer = await this.link.ask({ t: 'carStore', car: car.id, planted: car, storage, version: car.version ?? 0 });
-    if (answer.car) this.records.set(answer.car.id, answer.car);
+    if (answer.car) answer.car = this.keep(answer.car);
     return answer;
   }
 
@@ -310,7 +324,7 @@ export class SharedCars {
   async makeSureOfOne(at, road, config = GAME.worldCars) {
     if (this.around(at, config.rescueWithin).some((car) => car.runs && !car.wrecked)) return null;
     const answer = await this.link.ask({ t: 'plantCar', planted: rescueCar(road.lat, road.lng, road.heading, `${this.me}-${Date.now().toString(36)}`) });
-    if (answer.car) this.records.set(answer.car.id, answer.car);
+    if (answer.car) answer.car = this.keep(answer.car);
     this.onChange?.(answer.car ?? null);
     return answer.car ?? null;
   }

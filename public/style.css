@@ -511,3 +511,11 @@ body:not(.onFoot) #previews { bottom: auto; top: 76px; }
 /* A name over someone indoors. */
 .roomTag { position: absolute; left: 0; top: 0; z-index: 4; padding: 2px 8px; font-size: 14px; font-weight: 600; color: #fff; white-space: nowrap; background: #0000008c; border-radius: 5px; pointer-events: none; }
 .healthLives { margin: 8px 0 0; font-size: 15px; font-weight: 700; color: #fff; }
+
+/* Who's in the car, from above. */
+#carSeats { position: absolute; left: 12px; bottom: calc(var(--dash) + 10px); z-index: 3; display: none; align-items: center; gap: 10px; padding: 8px 12px 8px 8px; color: #fff; background: #0d1621e0; border: 1px solid #ffffff26; border-radius: 12px; pointer-events: none; }
+#carSeats.open { display: flex; }
+#carSeats svg { display: block; width: 58px; height: 96px; }
+#carSeats ul { margin: 0; padding: 0; list-style: none; font-size: 12px; line-height: 1.5; }
+#carSeats li small { color: #9fb0bd; }
+#carSeats .seatBadge.speaking circle { stroke: #fff; stroke-width: 2.5; }

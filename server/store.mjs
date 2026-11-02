@@ -186,7 +186,9 @@ export class WorldStore {
     return parsed(this.db.prepare('SELECT data FROM cars WHERE id = ?').get(id)?.data);
   }
 
+  // Each save counts up, so a browser can tell an older word about a car from a newer one when they cross.
   saveCar(car) {
+    car.rev = (car.rev ?? 0) + 1;
     this.db.prepare('INSERT INTO cars (id, data) VALUES (?, ?) ON CONFLICT (id) DO UPDATE SET data = excluded.data').run(car.id, JSON.stringify(car));
   }
 

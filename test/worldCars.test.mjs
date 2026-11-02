@@ -5,6 +5,7 @@ import { FLAG_BRIDGE } from '../public/js/road.js';
 import { GAME } from '../public/js/gameConfig.js';
 import { SAYINGS } from '../public/js/sayingsConfig.js';
 import { SharedCars } from '../public/js/sharedWorld.js';
+import { seatsPicture } from '../public/js/carSeats.js';
 import { BumpLimit, carTouchesPerson, carsTouch, closingSpeed, firstHit } from '../public/js/collide.js';
 import { metresApart } from '../public/js/protocol.js';
 
@@ -158,4 +159,13 @@ test('bumps between two things come at most once in a while', () => {
   assert.equal(limit.allows('a', 500), false);
   assert.equal(limit.allows('b', 500), true, 'something else is its own');
   assert.equal(limit.allows('a', 1000), true);
+});
+
+test('the seats panel shows who\'s where, and nothing can be written into it', () => {
+  const html = seatsPicture('#123456', [{ id: 'a', name: 'Dana', initials: 'DA', colour: '#ff0000' }, null, { id: 'b', name: '<b>x', initials: 'MO', colour: '#00ff00' }]);
+  assert.ok(html.includes('Dana <small>driving</small>'));
+  assert.ok(html.includes('&lt;b&gt;x') && !html.includes('<b>x'));
+  assert.ok(html.includes('data-seat="b"'));
+  assert.ok(seatsPicture('#123456', [null, { id: 'b', name: 'Mo', initials: 'MO', colour: '#00ff00' }]).includes('Mo'), 'someone can be riding with nobody at the wheel');
+  assert.ok(seatsPicture('#123456', [null]).includes('Nobody at the wheel'));
 });

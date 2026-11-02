@@ -290,11 +290,12 @@ test('the line back says where someone is again, and everything is caught up', (
 const [A_CAR, ANOTHER] = plantCars([{ f: 0, c: [38.9, -77.4, 38.95, -77.4] }]).filter((car) => car.runs).concat(plantCars([{ f: 0, c: [39.9, -77.4, 39.95, -77.4] }]).filter((car) => car.runs));
 const DEAD_CAR = plantCars([{ f: 0, c: [38.9, -77.4, 38.95, -77.4] }]).find((car) => !car.runs);
 
-test('one driver: two people at one car, exactly one gets in', () => pair(async ({ create, join }) => {
+test('one driver: two people at one car, the first takes the wheel and the other rides', () => pair(async ({ create, join }) => {
   const a = await create(), b = await join(a, 'Dana');
   const [first, second] = await Promise.all([a.cars.getIn(A_CAR), b.cars.getIn(A_CAR)]);
-  assert.equal([first, second].filter((answer) => answer.car).length, 1);
-  assert.equal([first, second].find((answer) => answer.why).why, 'carTaken');
+  assert.ok(first.car && second.car, 'both are in');
+  const known = await until(() => { const car = a.cars.records.get(A_CAR.id); return car?.seats?.length === 1 && car; }, 'the seat');
+  assert.deepEqual([known.driver, known.seats[0]].sort(), [a.you.id, b.you.id].sort());
 }));
 
 test('a car that doesn\'t run says why, and can\'t be got into', () => pair(async ({ create }) => {
@@ -323,7 +324,9 @@ test('a driver who drops off keeps the seat for a few seconds, then anyone can h
   await a.cars.getIn(A_CAR);
   a.link.close();
   await until(() => !b.people.member(a.you.id).online, 'them to go');
-  assert.equal((await b.cars.getIn(A_CAR)).why, 'carTaken');
+  const beside = await b.cars.getIn(A_CAR);
+  assert.equal(beside.car.driver, a.you.id, 'someone getting in now rides, as the seat at the wheel is still theirs');
+  assert.deepEqual(beside.car.seats, [b.you.id]);
   const again = await back(a);
   assert.equal(again.cars.mine().id, A_CAR.id, 'and coming back, they\'re still at the wheel');
   assert.equal((await again.cars.getIn(again.cars.mine())).car.driver, again.you.id);
@@ -488,4 +491,63 @@ test('nobody can claim a crash with rubbish', () => pair(async ({ create }) => {
   const a = await create();
   for (const message of [{ kind: 'fall' }, { kind: 'car', closing: 'fast', lat: 1, lng: 2 }, { kind: 'car', closing: 5000, lat: 1, lng: 2 }, { kind: 'car', closing: 5 }]) assert.equal((await a.link.ask({ t: 'crash', ...message })).why, 'bad');
   assert.equal((await a.link.ask({ t: 'crash', kind: 'car', other: 'nobody', closing: 60, lat: 1, lng: 2 })).outcome, 'stop');
+}));
+
+test('four to a car: the first drives, three ride, and a fifth is told it\'s full', () => pair(async ({ create, join }) => {
+  const a = await create(), b = await join(a, 'Dana'), c = await join(a, 'Mo'), d = await join(a, 'Priya'), e = await join(a, 'Sam');
+  const first = await a.cars.getIn(A_CAR);
+  assert.equal(first.car.driver, a.you.id);
+  await until(() => [b, c, d, e].every((w) => w.cars.records.get(A_CAR.id)?.driver === a.you.id), 'all to hear');
+  const rides = await Promise.all([b, c, d].map((w) => w.cars.getIn(w.cars.records.get(A_CAR.id))));
+  for (const answer of rides) assert.equal(answer.car.driver, a.you.id);
+  const seats = await until(() => { const known = a.cars.records.get(A_CAR.id); return known?.seats?.length === 3 && known.seats; }, 'the seats to fill');
+  assert.deepEqual([...seats].sort(), [b.you.id, c.you.id, d.you.id].sort());
+  assert.equal((await e.cars.getIn(e.cars.records.get(A_CAR.id))).why, 'carFull');
+  assert.equal(b.cars.mine().id, A_CAR.id, 'a passenger knows which car they\'re in');
+}));
+
+test('a driver gets out and those riding stay, and one can take the wheel', () => pair(async ({ create, join }) => {
+  const a = await create(), b = await join(a, 'Dana'), c = await join(a, 'Mo');
+  await a.cars.getIn(A_CAR);
+  await until(() => b.cars.records.has(A_CAR.id) && c.cars.records.has(A_CAR.id), 'them to hear');
+  await b.cars.getIn(b.cars.records.get(A_CAR.id));
+  await c.cars.getIn(c.cars.records.get(A_CAR.id));
+  assert.equal((await b.cars.slide(b.cars.records.get(A_CAR.id))).why, 'carTaken', 'not with a driver there');
+  await a.cars.getOut(a.cars.records.get(A_CAR.id), { lat: 38.8, lng: -77.3, heading: 10, fuel: 40 });
+  const parked = await until(() => { const known = b.cars.records.get(A_CAR.id); return known && !known.driver && known; }, 'the driver to go');
+  assert.equal(parked.seats.length, 2);
+  assert.equal(parked.lat, 38.8);
+  const moved = await b.cars.slide(parked);
+  assert.equal(moved.car.driver, b.you.id);
+  assert.deepEqual(moved.car.seats, [c.you.id]);
+  assert.equal((await c.cars.slide(moved.car)).why, 'carTaken', 'and only one can');
+  await c.cars.getOut(moved.car, { lat: 1, lng: 1, heading: 0 });
+  const left = await until(() => { const known = b.cars.records.get(A_CAR.id); return known?.seats?.length === 0 && known; }, 'Mo to get out');
+  assert.equal(left.lat, 38.8, 'a passenger getting out doesn\'t move the car');
+  assert.equal(left.driver, b.you.id);
+}));
+
+test('someone riding who drops off gives up their seat, and comes back in the car only if they still have one', () => pair(async ({ create, join }) => {
+  const a = await create(), b = await join(a, 'Dana');
+  await a.cars.getIn(A_CAR);
+  await until(() => b.cars.records.has(A_CAR.id), 'Dana to hear');
+  await b.cars.getIn(b.cars.records.get(A_CAR.id));
+  await until(() => a.cars.records.get(A_CAR.id)?.seats?.length === 1, 'the seat');
+  b.link.close();
+  await until(() => a.cars.records.get(A_CAR.id)?.seats?.length === 0, 'the seat to free');
+}));
+
+test('a crash takes everyone in the car with it', () => pair(async ({ create, join }) => {
+  const a = await create(), b = await join(a, 'Dana'), died = [];
+  a.on.died = (m) => died.push(m.member);
+  await a.cars.getIn(A_CAR);
+  await until(() => b.cars.records.has(A_CAR.id), 'Dana to hear');
+  await b.cars.getIn(b.cars.records.get(A_CAR.id));
+  placeAt(a, HERE.lat, HERE.lng, 50);
+  await new Promise((r) => setTimeout(r, 40));
+  assert.equal((await a.link.ask({ t: 'crash', kind: 'parked', other: ANOTHER.id, closing: 50, ...HERE, planted: ANOTHER })).outcome, 'dead');
+  await until(() => died.length === 2, 'both');
+  assert.deepEqual([...died].sort(), [a.you.id, b.you.id].sort());
+  const wreck = await until(() => { const known = a.cars.records.get(A_CAR.id); return known?.wrecked && known; }, 'the wreck');
+  assert.deepEqual(wreck.seats, []);
 }));

@@ -9,6 +9,7 @@ export const SAYINGS = {
   carFlatBattery: ['Click. Click. Flat battery.', 'The dash doesn\'t even light up. Dead battery.'],
   carNoFuel: ['It cranks and cranks. Bone dry.', 'The gauge is on empty, and it means it.'],
   carBroken: ['It turns over, coughs and dies. Something\'s broken.', 'A horrible grinding noise, then nothing.'],
+  carFull: ['There\'s no room left in it.', 'It\'s full.'],
   carTaken: ['Someone\'s already in it.', 'That one\'s taken.'],
   carWrecked: ['It\'s burnt out. Nothing here will ever run again.'],
   // F with nothing in reach
