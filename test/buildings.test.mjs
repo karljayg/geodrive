@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { BuildingStore, OPEN_TYPES, TYPES, buildingId, buildingType, dice, hashText, identify, isLocked, planBuilding, planLabel, poiType, typeName } from '../public/js/buildings.js';
 import { FURNISHED } from '../public/js/furnish.js';
+import { CATEGORY_TYPE } from '../public/js/overture.js';
 import { Place, fromLocal } from '../public/js/footData.js';
 
 const ORIGIN = { lat: 38.9, lng: -77 };
@@ -41,18 +42,20 @@ test('a terminal or a mall is not named after one restaurant inside it', () => {
 
 test('with nothing inside, the land and the size decide', () => {
   assert.equal(buildingType(clues({ lands: ['school'] })), 'school');
-  assert.equal(buildingType(clues({ lands: ['commercial'] })), 'office');
+  assert.equal(buildingType(clues({ lands: ['commercial'] })), 'unknown', 'low on commercial land could be anything');
+  assert.equal(buildingType(clues({ known: true, height: 30, lands: ['commercial'] })), 'office', 'a tower on it is offices');
   assert.equal(buildingType(clues({ area: 9000, lands: ['industrial'] })), 'warehouse');
   assert.equal(buildingType(clues({ area: 9000, known: true, height: 40, lands: ['industrial'] })), 'factory');
-  assert.equal(buildingType(clues({ area: 9000, lands: ['retail'] })), 'supermarket');
+  assert.equal(buildingType(clues({ area: 9000, lands: ['retail'] })), 'unknown');
   assert.equal(buildingType(clues({ area: 30 })), 'shed');
   assert.equal(buildingType(clues({ area: 200, lands: ['residential'] })), 'home');
-  assert.equal(buildingType(clues({ area: 900 })), 'office', 'a big building nothing is known about');
-  assert.equal(buildingType(clues({ area: 200, known: true, height: 40 })), 'office');
+  assert.equal(buildingType(clues({ area: 900 })), 'unknown', 'a big building nothing is known about');
+  assert.equal(buildingType(clues({ area: 200, known: true, height: 40 })), 'unknown');
   assert.equal(buildingType(clues({ area: 900, lands: ['residential'] })), 'apartments', 'but on residential land it is flats');
   assert.equal(buildingType(clues({ area: 200, known: true, height: 40, lands: ['residential'] })), 'apartments');
-  assert.equal(buildingType(clues({ area: 9000, lands: ['residential'] })), 'office', 'too big and low for flats');
-  assert.equal(buildingType(clues({ area: 500, lands: ['industrial'] })), 'office', 'not everything on an estate is a factory');
+  assert.equal(buildingType(clues({ area: 9000, lands: ['residential'] })), 'unknown', 'too big and low for flats');
+  assert.equal(buildingType(clues({ area: 500, lands: ['industrial'] })), 'unknown', 'not everything on an estate is a factory, as United Bank showed');
+  assert.equal(isLocked({ type: 'unknown' }), true, 'and what is unknown is locked');
 });
 
 test('a mapped height sets the floors, within what that type can have', () => {
@@ -238,4 +241,55 @@ test('the old saved buildings are cleared away', () => {
   storage.removeItem = (key) => removed.push(key);
   new BuildingStore(storage);
   assert.deepEqual(removed.sort(), ['geodrive_rooms_v1', 'geodrive_rooms_v1_x_1']);
+});
+
+test('Overture knows more than OpenStreetMap, so it decides, and one place is not counted from both', () => {
+  const piece = rect(0, 0, 100, 60), place = placeWith({ buildings: [piece], pois: [{ x: 5, y: 5, cls: 'cafe', sub: 'cafe', name: 'Old Cafe' }, { x: 6, y: 6, cls: 'parking', sub: 'parking', name: '' }] });
+  assert.deepEqual(place.cluesFor([piece], piece, poiType).pois.sort(), ['cafe', 'parking']);
+  assert.equal(place.addPlaces('overture_1', [{ x: 10, y: 10, overture: true, category: 'bank_or_credit_union', name: 'United Bank' }]), true);
+  assert.equal(place.addPlaces('overture_1', []), false, 'once per tile');
+  const clues = place.cluesFor([piece], piece, poiType);
+  assert.deepEqual(clues.pois.sort(), ['bank', 'parking']);
+  assert.equal(clues.names.bank, 'United Bank');
+});
+
+test('United Bank on an industrial estate: a bank with the map data, and locked rather than a factory without it', () => {
+  const lands = [{ name: 'industrial', rings: [[{ x: -500, y: -500 }, { x: 500, y: -500 }, { x: 500, y: 500 }, { x: -500, y: 500 }]], minX: -500, maxX: 500, minY: -500, maxY: 500 }];
+  const without = rect(0, 0, 20, 25), bare = placeWith({ buildings: [without], lands }), plan = identify(bare, without, new BuildingStore(memory()));
+  assert.equal(plan.type, 'unknown');
+  assert.equal(isLocked(plan), true);
+  assert.equal(typeName(plan), '');
+  const known = rect(0, 0, 20, 25), named = placeWith({ buildings: [known], lands });
+  named.addPlaces('o', [{ x: 10, y: 10, overture: true, category: 'bank_or_credit_union', name: 'United Bank' }]);
+  const bank = identify(named, known, new BuildingStore(memory()));
+  assert.equal(bank.type, 'bank');
+  assert.match(planLabel(bank), /^United Bank · /);
+});
+
+test('a business run from a house leaves it a home, but not in a bigger building', () => {
+  assert.equal(buildingType(clues({ area: 180, pois: ['weakOffice'] })), 'home');
+  assert.equal(buildingType(clues({ area: 900, pois: ['weakOffice'] })), 'office');
+  assert.equal(buildingType(clues({ area: 180, lands: ['commercial'], pois: ['weakOffice'] })), 'office');
+  assert.equal(buildingType(clues({ area: 180, pois: ['office'] })), 'office', 'a real office is one whatever its size');
+});
+
+test('a place listed as a mall makes a big building one', () => {
+  assert.equal(buildingType(clues({ area: 9000, pois: ['mall', 'shop'] })), 'mall');
+  assert.equal(buildingType(clues({ area: 500, pois: ['mall', 'shop'] })), 'shop', 'its small part is what is in it');
+});
+
+test('when a source failed, a building that comes out unknown is not saved as unknown, but a known one is', () => {
+  const store = new BuildingStore(memory()), unknown = rect(0, 0, 40, 40), place = placeWith({ buildings: [unknown] });
+  assert.equal(identify(place, unknown, store, 1, false).type, 'unknown');
+  assert.equal(unknown.plan, undefined, 'it can be tried again');
+  assert.equal(store.get(unknown.buildingId || 'x'), null);
+  const bank = rect(100, 0, 120, 20), other = placeWith({ buildings: [bank], pois: [{ x: 110, y: 10, cls: 'bank', sub: 'bank', name: '' }] });
+  assert.equal(identify(other, bank, store, 1, false).type, 'bank');
+  assert.equal(bank.plan.type, 'bank');
+});
+
+test('every type a place can give is a building type', () => {
+  for (const [category, type] of Object.entries(CATEGORY_TYPE)) if (type !== 'weakOffice') assert.ok(TYPES[type], `${category}: ${type}`);
+  assert.equal(poiType({ overture: true, category: 'bank_or_credit_union' }), 'bank');
+  assert.equal(poiType({ overture: true, category: 'park' }), null);
 });

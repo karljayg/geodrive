@@ -350,6 +350,14 @@ export class Place {
     return true;
   }
 
+  // Places from another source, which needs no tile of its own here. True if they were new.
+  addPlaces(key, pois) {
+    if (this.tiles.has(key)) return false;
+    this.tiles.add(key);
+    for (const poi of pois) this.file('pois', poi, { minX: poi.x, maxX: poi.x, minY: poi.y, maxY: poi.y });
+    return true;
+  }
+
   inWater(x, y) {
     return this.cellAt(x, y).waters.some((water) => within(water, x, y) && inRings(water.rings, x, y));
   }
@@ -415,7 +423,7 @@ export class Place {
 
   // What the map says about a whole building, for working out what it is. typeOf turns a point of interest into a building type, or null.
   cluesFor(pieces, bounds, typeOf) {
-    const pois = [], names = {}, seen = new Set(), all = new Set(pieces);
+    const openMap = [], overture = [], names = {}, seen = new Set(), all = new Set(pieces);
     for (const piece of pieces) {
       const box = { minX: piece.minX - POI_REACH, maxX: piece.maxX + POI_REACH, minY: piece.minY - POI_REACH, maxY: piece.maxY + POI_REACH };
       for (const cell of this.cellsOver(box)) {
@@ -424,11 +432,13 @@ export class Place {
           seen.add(poi);
           const type = typeOf(poi);
           if (!type || !all.has(this.footprintOfPlace(poi, type === 'parking'))) continue;
-          pois.push(type);
+          (poi.overture ? overture : openMap).push(type);
           if (poi.name && !names[type]) names[type] = poi.name;
         }
       }
     }
+    // Overture knows far more, and both listing a place would count it twice. OpenStreetMap's parking comes from its roads, so that stays.
+    const pois = overture.length ? [...overture, ...openMap.filter((type) => type === 'parking')] : openMap;
     const x = (bounds.minX + bounds.maxX) / 2, y = (bounds.minY + bounds.maxY) / 2;
     const lands = this.cellAt(x, y).lands.filter((land) => within(land, x, y) && inRings(land.rings, x, y)).map((land) => land.name);
     const tallest = pieces.reduce((best, p) => (p.height > best.height ? p : best));

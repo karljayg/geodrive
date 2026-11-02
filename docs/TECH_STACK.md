@@ -17,6 +17,7 @@ A plain static website with no framework and no build step. All game logic runs 
 | Service | Used for | Key | Cost |
 | --- | --- | --- | --- |
 | Google Maps JavaScript, 3D Maps (Immersive Maps SKU) | The 3D map | Yes | Per map load, so per page load: $7 per 1,000 after 5,000 free a month. Moving the camera isn't a billable event |
+| Overture Maps places (overturemaps.org) | What a building is, and its name. Read directly from its public PMTiles file, a few small range requests when a building is first entered | No | Free, CDLA-Permissive-2.0 and others. Attribution on the HUD. The file's docs say it's for inspection, so if it fails or moves, OpenStreetMap is the fallback; hosting an extract is the sturdier long-term choice |
 | Kenney Furniture Kit (kenney.nl) | Furniture in rooms; the source models are in `assets/kenney-furniture`, built into `public/furniture.bin` (365 KB, fetched at the first furnished building) | No | Free, CC0. Credit is optional, given here |
 | Terrain Tiles on AWS Open Data (Mapzen) | Ground height for the camera pivot, and the ground when walking | No | Free. Attribution on the HUD; full list at https://github.com/tilezen/joerd/blob/master/docs/attribution.md |
 | Google Elevation API | Fallback for the first height only, if terrain tiles aren't answering | Yes | $5 per 1,000 after 5,000 free a month |
@@ -60,6 +61,7 @@ Google usage and spend can only be seen in Google Cloud Console; the API key can
 | `pocket.js` | The tray and the phone's apps on foot | Browser |
 | `pocketData.js` | Notes, messages, the bag, the way to the car | Yes |
 | `pocketArt.js` | The pictures of what you carry, as vector art | Yes |
+| `overture.js` | Reads places from Overture's PMTiles file | Yes |
 | `buildings.js` | A building's type, floors and style, and saving them | Yes |
 | `furnish.js` | One floor's rooms, inner walls, doorways and what stands in them | Yes |
 | `furniture.js` | The item catalogue, and reading and drawing the models in `furniture.bin` | Yes |

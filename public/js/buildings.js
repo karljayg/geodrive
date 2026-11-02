@@ -2,9 +2,10 @@
 // Tiles have no building types, so the type comes from points of interest inside it, the land it stands on, and its size.
 // See docs/INTERIORS.md, whose tables these follow.
 import { fromLocal } from './footData.js';
+import { CATEGORY_TYPE } from './overture.js';
 
-const STORE = 'geodrive_rooms_v2'; // v1 had wrong types from how places were matched, so it's dropped
-const OLD_STORE = 'geodrive_rooms_v1';
+const STORE = 'geodrive_rooms_v3'; // earlier ones hold guessed types, so they're dropped
+const OLD_STORES = ['geodrive_rooms_v1', 'geodrive_rooms_v2'];
 const TERMINAL_AREA = 5000, MALL_AREA = 3000, MALL_POIS = 3; // m², m², points of interest
 const WAREHOUSE_AREA = 2000, LOW = 15, BIG_SHOP_AREA = 3000; // m², m, m²
 const SHED_AREA = 40, HOME_AREA = 400, HOME_HEIGHT = 12;     // m², m², m
@@ -49,6 +50,8 @@ export const TYPES = {
   departmentStore: { name: 'Department store', floor: 5, min: 1, max: 8, unknown: [2, 3] },
   station: { name: 'Station', floor: 6, min: 1, max: 4, unknown: [1, 2] },
   pool: { name: 'Swimming pool', floor: 6, min: 1, max: 2, unknown: [1] },
+  // Nothing says what it is, so it stays locked rather than being shown as something it may not be.
+  unknown: { name: '', floor: 3, min: 1, max: 1, unknown: [1] },
   // Types with no rooms yet, locked until they have some. docs/INTERIORS.md has the queue.
   parking: { name: 'Parking garage', floor: 3, min: 1, max: 12, unknown: [2, 3, 4, 5] },
   gasStation: { name: 'Gas station', floor: 4, min: 1, max: 1, unknown: [1] },
@@ -72,7 +75,7 @@ export const OPEN_TYPES = new Set(['gym', 'pool', 'cinema', 'theatre', 'stadium'
 
 // A building is judged by what's at its door, so a clinic at the foot of an office tower is locked.
 export const isLocked = (plan) => !OPEN_TYPES.has(plan.ground || plan.type);
-export const typeName = (plan) => TYPES[plan.ground || plan.type]?.name || 'Building';
+export const typeName = (plan) => plan.name || TYPES[plan.ground || plan.type]?.name || '';
 
 // The tile's poi class, or its subclass where one class covers different things. Anything else says nothing about the building.
 const POI_CLASS = {
@@ -87,10 +90,10 @@ const POI_CLASS = {
 const POI_SUBCLASS = { kindergarten: 'kindergarten', dormitory: 'dorm', hostel: 'dorm', nursing_home: 'nursingHome', convenience: 'supermarket', department_store: 'departmentStore', station: 'station', halt: 'station', bus_station: 'station', library: 'library', books: 'shop', gallery: 'museum', post_office: 'postOffice', clinic: 'clinic', beauty: 'salon', cosmetics: 'shop' };
 const RETAIL = new Set(['fastFood', 'bar', 'bakery', 'laundromat', 'departmentStore', 'restaurant', 'cafe', 'shop', 'supermarket', 'pharmacy', 'salon']);
 const GROUND_ONLY = new Set([...RETAIL, 'bank', 'clinic', 'pharmacy', 'salon', 'gym', 'postOffice']);
-const ALSO_OFFICES = new Set(['warehouse', 'factory', 'supermarket', 'shop']);
-const LAND_TYPE = { school: 'school', university: 'school', college: 'school', hospital: 'hospital', library: 'library', commercial: 'office' };
+const ALSO_OFFICES = new Set(['warehouse', 'factory', 'unknown']);
+const LAND_TYPE = { school: 'school', university: 'school', college: 'school', hospital: 'hospital', library: 'library' };
 
-export const poiType = ({ cls, sub }) => POI_SUBCLASS[sub] || POI_CLASS[cls] || null;
+export const poiType = ({ overture, category, cls, sub }) => (overture ? CATEGORY_TYPE[category] || null : POI_SUBCLASS[sub] || POI_CLASS[cls] || null);
 
 export function hashText(text) {
   let h = 2166136261;
@@ -112,15 +115,17 @@ export function dice(seed) {
 const pick = (list, roll) => list[Math.floor(roll() * list.length)];
 
 // What the land and size alone say. clues: { area, height, known, pois: [types], lands: [classes] }.
-// When nothing says what a big building is, it's offices. It's only apartments on land mapped as residential.
+// What the land and size say when nothing names the building, or unknown if that would be a guess. Unknown buildings stay
+// locked, as showing nothing is better than showing the wrong thing.
 function typeFromLand({ area, height, known, lands }) {
-  const low = !known || height < LOW;
+  const low = !known || height < LOW, tall = known && height > HOME_HEIGHT, business = ['retail', 'commercial', 'industrial'].some((land) => lands.includes(land));
   for (const land of lands) if (LAND_TYPE[land]) return LAND_TYPE[land];
-  if (lands.includes('industrial')) return area <= WAREHOUSE_AREA ? 'office' : low ? 'warehouse' : 'factory'; // estates are full of small offices
-  if (lands.includes('retail')) return area > BIG_SHOP_AREA ? 'supermarket' : 'shop';
+  if (lands.includes('industrial') && area > WAREHOUSE_AREA) return low ? 'warehouse' : 'factory';
+  if (lands.includes('commercial') && tall) return 'office';
   if (area < SHED_AREA) return 'shed';
-  if (area <= HOME_AREA && !(known && height > HOME_HEIGHT)) return 'home';
-  return lands.includes('residential') && (area <= APARTMENT_AREA || (known && height > HOME_HEIGHT)) ? 'apartments' : 'office';
+  if (business) return 'unknown';
+  if (area <= HOME_AREA && !tall) return 'home';
+  return lands.includes('residential') && (area <= APARTMENT_AREA || tall) ? 'apartments' : 'unknown';
 }
 
 // The most common kind of point of interest inside. A tie goes to the first found.
@@ -131,11 +136,15 @@ function commonest(pois) {
 }
 
 export function buildingType(clues) {
-  const { area, pois, lands } = clues, airport = lands.includes('aerodrome');
+  const { area, lands } = clues, airport = lands.includes('aerodrome');
+  // Businesses like these are often run from a house, so they only say something about a bigger building.
+  const roomy = area > HOME_AREA || lands.includes('commercial') || lands.includes('retail') || lands.includes('industrial');
+  const pois = clues.pois.flatMap((type) => (type !== 'weakOffice' ? [type] : roomy ? ['office'] : []));
   if (pois.length && pois.every((type) => type === 'parking')) return 'parking'; // before the airport, whose garages are huge
+  if (pois.includes('mall') && area > MALL_AREA) return 'mall';
   if (airport && area > TERMINAL_AREA) return 'terminal';
   if (area > MALL_AREA && pois.filter((type) => RETAIL.has(type) || type === 'bank').length >= MALL_POIS) return 'mall'; // several tenants under one roof
-  const named = commonest(pois.filter((type) => type !== 'parking'));
+  const named = commonest(pois.filter((type) => type !== 'parking' && type !== 'mall'));
   if (named) return named;
   return airport ? 'hangar' : typeFromLand(clues);
 }
@@ -174,10 +183,11 @@ export class BuildingStore {
     this.buildings = {};
     try {
       this.storage = storage ?? localStorage;
-      const old = JSON.parse(this.storage.getItem(OLD_STORE));
-      if (old) {
-        for (const [id, building] of Object.entries(old)) for (const floor of Object.keys(building.saved || {})) this.storage.removeItem(`${OLD_STORE}_${id}_${floor}`);
-        this.storage.removeItem(OLD_STORE);
+      for (const name of OLD_STORES) {
+        const old = JSON.parse(this.storage.getItem(name));
+        if (!old) continue;
+        for (const [id, building] of Object.entries(old)) for (const floor of Object.keys(building.saved || {})) this.storage.removeItem(`${name}_${id}_${floor}`);
+        this.storage.removeItem(name);
       }
       this.buildings = JSON.parse(this.storage.getItem(STORE)) || {};
     } catch (err) {
@@ -252,7 +262,8 @@ export class BuildingStore {
 
 // The plan of the building this piece belongs to, saved at the first entry and shared by all its pieces. Null until every
 // tile holding a piece of it has arrived, as its id depends on the whole of it.
-export function identify(place, piece, store, now = Date.now()) {
+// sure: false if a source of clues failed, when a building that comes out unknown isn't saved as unknown, and can be tried again.
+export function identify(place, piece, store, now = Date.now(), sure = true) {
   if (piece.plan) return piece.plan;
   const { pieces, missing } = place.wholeOf(piece);
   if (missing.length) return null;
@@ -262,7 +273,9 @@ export function identify(place, piece, store, now = Date.now()) {
   };
   const id = buildingId(place.origin, bounds);
   const known = store.get(id);
-  const plan = store.remember(id, known || planBuilding(place.cluesFor(pieces, bounds, poiType), dice(hashText(id))), now);
+  const worked = known || planBuilding(place.cluesFor(pieces, bounds, poiType), dice(hashText(id)));
+  if (!sure && !known && isLocked(worked)) return worked;
+  const plan = store.remember(id, worked, now);
   for (const p of pieces) {
     p.buildingId = id;
     p.plan = plan;

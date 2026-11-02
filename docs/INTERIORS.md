@@ -27,7 +27,11 @@ Measured on 2026-11-01 from one zoom-14 OpenFreeMap tile per place, counting foo
 - Footprints can be huge: bounding boxes reach 196,000 m² at Tysons and 100,000 m² at Dulles. Those need a limit on how much gets furnished.
 
 ## Working out the type
-The names on the map come from Google, which is billed per lookup. Building types come from OpenStreetMap, so the two can disagree. A place counts for the footprint it's in, or the nearest within 25 m if it's in none, because 21% of places in six sampled areas lie just outside a footprint. Parking must be inside. A place's name shows in the hint when the map has it.
+The names on the map come from Google. They can't be read: the map's canvas is sealed in a closed shadow root and no API returns its labels, OCR would need a screen-share prompt, and Google's terms forbid extracting them. Places instead come from Overture Maps (`overture.js`), free and with no key, which has far more businesses than OpenStreetMap, and only when Overture has nothing for a building from OpenStreetMap. Parking aisles are also read from OpenStreetMap. A place counts for the footprint it's in, or the nearest within 25 m if it's in none, because many lie just outside a footprint. Parking must be inside. A place's name shows in the hint.
+
+**If nothing identifies a building it's locked,** as the owner prefers that to showing something wrong. If Overture couldn't be reached, that verdict isn't saved, so it's tried again.
+
+Share of buildings locked, measured 2026-11-02 at one tile per area: Dulles 0%, Ashburn under 1%, Sterling 1%, Overland Drive 11%, Tysons 5%, downtown DC 7%, Midtown Manhattan 28%.
 
 First match wins. Rules 1 and 2 come first because a terminal or mall holds many POIs, and it must not become a "restaurant" because of one of them. POIs come before hangars so a café or hotel on airport land is what it says.
 
@@ -38,12 +42,13 @@ First match wins. Rules 1 and 2 come first because a terminal or mall holds many
 | 3 | A POI inside that the table below lists (others, like toilets, are ignored); the commonest wins | Its type |
 | 4 | In `aerodrome` land, smaller | Hangar |
 | 5 | `school`, `university`, `college`, `hospital`, `library` land | That type |
-| 6 | `commercial` land | Office |
-| 7 | `industrial` land: up to 2,000 m², over 2,000 m² and low, otherwise | Office, warehouse, factory |
-| 8 | `retail` land: over 3,000 m², otherwise | Supermarket, otherwise shop |
-| 9 | Anything else: under 40 m², 40 to 400 m² | Shed, home |
-| 10 | Over 400 m² or over 12 m tall, on land mapped as residential, up to 2,500 m² unless tall | Apartments |
-| 11 | Any other big or tall building nothing is known about | Office |
+| 6 | `industrial` land over 2,000 m²: under 15 m or unknown height, otherwise | Warehouse, otherwise factory |
+| 7 | `commercial` land and over 12 m tall | Office |
+| 8 | Under 40 m² | Shed |
+| 9 | Any other building on `retail`, `commercial` or `industrial` land | Unknown, so locked |
+| 10 | Up to 400 m² and not tall | Home |
+| 11 | Over 400 m² or over 12 m tall, on land mapped as residential, up to 2,500 m² unless tall | Apartments |
+| 12 | Anything else | Unknown, so locked |
 
 ### Tried on real buildings
 The classifier run over the tile at each place, with its neighbours loaded, on 2026-11-01. About 0.03 to 0.4 ms a building.
@@ -89,7 +94,7 @@ Known weak spots, all from what the map holds:
 A shop or restaurant POI in a building of 5 or more floors fills the ground floor only, and the floors above follow the land use. A bank in a tower is a bank downstairs and offices upstairs.
 
 ## The queue
-All 45 types are open now, so nothing is locked. The lock is still there for anything new: a type not in `OPEN_TYPES` (`buildings.js`) says "Sorry you can't get in. It's locked." A new type needs a line in `TYPES`, its map clues in `POI_CLASS` or `POI_SUBCLASS`, rooms in `TYPE_ZONES` and `RECIPES` (`furnish.js`), and any new items in `ITEMS` and `BUILT` (`furniture.js`).
+All 45 types have rooms and are open, so only buildings nothing can identify are locked. A type not in `OPEN_TYPES` (`buildings.js`) says "Sorry you can't get in. It's locked." A new type needs a line in `TYPES`, its map clues in `POI_CLASS` or `POI_SUBCLASS`, rooms in `TYPE_ZONES` and `RECIPES` (`furnish.js`), and any new items in `ITEMS` and `BUILT` (`furniture.js`).
 
 Tried on 3,576 floors of real footprints from Dulles, Ashburn, Tysons, downtown DC and Midtown Manhattan on 2026-11-02: no failures, 95 ms at the slowest, and at most about 60,000 triangles a floor. Hospitals, care homes, stadiums and a few others weren't among those places' buildings, so they have only been tried on rectangles.
 

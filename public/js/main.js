@@ -829,7 +829,7 @@ async function getOut() {
       onOpen: releaseMouse, // the mouse is needed to use them
       onTyping: () => keys.clear(), // or a key held down would keep walking
     });
-    foot = new Foot({ canvas: el('foot'), origin: { lat: pos.lat, lng: pos.lng }, heading: car.heading, profile: settings.carProfile, scale: settings.carScale, tiles, view: { tilt: CAMERAS[0].tilt, range: CAMERAS[0].range * FOOT_RANGE_SHARE, fov: FOV_Y, below: CAR_BELOW_CENTRE } });
+    foot = new Foot({ onLocked: showLocked, canvas: el('foot'), origin: { lat: pos.lat, lng: pos.lng }, heading: car.heading, profile: settings.carProfile, scale: settings.carScale, tiles, view: { tilt: CAMERAS[0].tilt, range: CAMERAS[0].range * FOOT_RANGE_SHARE, fov: FOV_Y, below: CAR_BELOW_CENTRE } });
     showPerson(personSize);
   } catch (err) {
     console.warn('getting out:', err);
@@ -927,9 +927,8 @@ function pressL() {
   if (!foot) return getOut();
   if (foot.canGetIn()) return stopFoot();
   const done = foot.pressBuilding(keys.has('shift'));
-  if (done?.locked) return showLocked(done.locked);
-  if (done?.waiting) return notice('Just a moment, the map of this building is still loading.', 2000);
-  if (done) return;
+  if (done?.locked !== undefined) return showLocked(done.locked);
+  if (done) return; // a building still being looked up goes in by itself, or says it's locked
   notice('Walk up to a building, or back to the car, then press L.', 2500);
 }
 

@@ -347,3 +347,4 @@ body.onFoot #pockets { display: block; }
 #liftFloors button { aspect-ratio: 1; min-width: 0; padding: 0; border-radius: 50%; border: 1px solid #ffffff55; font: 600 12px system-ui, sans-serif; color: #eef3f6; background: #1c2126; cursor: pointer; }
 #liftFloors button:hover { background: #3a424a; }
 #liftFloors button.on { color: #10202f; background: #ffd27a; }
+#locked span:empty { display: none; }

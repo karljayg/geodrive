@@ -5,12 +5,13 @@ import { BuildingStore, dice, floorHeight, hashText, identify, isLocked, planLab
 import { BODY_SHAPES } from './carModel.js';
 import { tintAt } from './daylight.js';
 import { FootGl, bearing, lookAt, multiply, perspective, translate } from './footGl.js';
-import { Place, fromLocal, parseTile } from './footData.js';
+import { Place, fromLocal, parseTile, toLocal } from './footData.js';
 import { personFloats } from './footPerson.js';
 import { roomMesh } from './footScene.js';
 import { FLOOR_VERSION, FURNISHED, coreNear, coreOf, frameOf as buildingFrame, layoutFloor, plainFloor, solidsOf } from './furnish.js';
 import { parseFurniture } from './furniture.js';
 import { buildingWithin, carWalls, distanceToCar, enterBuilding, GET_IN_REACH, leaveBuilding, newWalker, frameOf, placeCamera, spawnSpot, stepClearOfThings, stepWalker, wayToCar } from './footWalker.js';
+import { Overture } from './overture.js';
 import { Terrain } from './terrain.js';
 import { vectorTileAt } from './vector.js';
 
@@ -29,6 +30,7 @@ let furniture = null, furnitureLoading = false, furnitureFailed = -Infinity; // 
 const GROUND_FLOOR = 1;
 const PICK_REPEAT = 0.16;    // s between floors while W or S is held in a lift
 const PICK_FAST = 10;        // floors a press moves with Shift held
+const PLACE_REACH = 30;      // m around a building to ask about places, which can be just outside it
 const TYPE_WINDOW = 1500;    // ms in which a second digit makes a two-figure floor
 
 // The button in Settings. Buildings already identified on this walk stay as they are until the next one.
@@ -36,6 +38,7 @@ export function forgetBuildings() {
   (saved ||= new BuildingStore()).forget();
 }
 const terrain = new Terrain(undefined, TERRAIN_ZOOM);
+const overture = new Overture();
 
 function personMesh(frame) {
   shared ||= [];
@@ -44,10 +47,11 @@ function personMesh(frame) {
 
 export class Foot {
   // tiles: the RoadTiles that fetches the same map tiles for driving. view: the camera to match.
-  constructor({ canvas, origin, heading, profile, scale, tiles, view }) {
+  constructor({ canvas, origin, heading, profile, scale, tiles, view, onLocked }) {
     if (!gl) gl = new FootGl(canvas);
     gl.onRestored = () => this.rebuildAll();
     this.view = view;
+    this.onLocked = onLocked;
     this.origin = origin;
     this.heading = heading;
     this.tiles = tiles;
@@ -131,16 +135,58 @@ export class Foot {
     }
   }
 
-  // Works out what the building being entered is, once every tile holding a piece of it is here.
-  syncPlan() {
-    const building = this.walker.inside;
-    if (!building || building.plan) return;
+  // Asks Overture about the tiles around a building, and files what has come. Returns null until they've all answered,
+  // then whether they all did, as a failed one means the building may be better known than it looks.
+  placesAround(building) {
+    const { pieces } = this.place.wholeOf(building), tiles = new Set();
+    for (const { minX, maxX, minY, maxY } of pieces) {
+      for (const [x, y] of [[minX - PLACE_REACH, minY - PLACE_REACH], [maxX + PLACE_REACH, minY - PLACE_REACH], [minX - PLACE_REACH, maxY + PLACE_REACH], [maxX + PLACE_REACH, maxY + PLACE_REACH]]) {
+        const { lat, lng } = fromLocal(this.origin, x, y), t = vectorTileAt(lat, lng);
+        tiles.add(`${t.x}_${t.y}`);
+      }
+    }
+    let all = true, sure = true;
+    for (const key of tiles) {
+      const [x, y] = key.split('_').map(Number), result = overture.tile(x, y);
+      if (!result) {
+        overture.want(x, y);
+        all = false;
+        continue;
+      }
+      if (result.failed) sure = false;
+      else this.place.addPlaces(`overture_${key}`, result.places.map((p) => ({ ...toLocal(this.origin, p.lat, p.lng), overture: true, category: p.category, name: p.name })));
+    }
+    return all ? { sure } : null;
+  }
+
+  // Works out what a building is, once every tile holding a piece of it and Overture have answered. Null until then.
+  planOf(building) {
+    if (building.plan) return building.plan;
     const { missing } = this.place.wholeOf(building);
     if (missing.length) {
       for (const key of missing) this.loadTile(...key.split('_').map(Number));
+      return null;
+    }
+    const places = this.placesAround(building);
+    return places && identify(this.place, building, saved ||= new BuildingStore(), Date.now(), places.sure);
+  }
+
+  // Someone a building filled in around needs to know what it is too.
+  syncPlan() {
+    if (this.walker.inside) this.planOf(this.walker.inside);
+  }
+
+  // A press of L at a building waits for its answer rather than asking for another press.
+  syncWaiting() {
+    if (!this.waiting) return;
+    if (buildingWithin(this.walker, this.world)?.building !== this.waiting) {
+      this.waiting = null;
       return;
     }
-    identify(this.place, building, saved ||= new BuildingStore());
+    if (!this.planOf(this.waiting)) return;
+    this.waiting = null;
+    const result = this.pressBuilding();
+    if (result?.locked !== undefined) this.onLocked?.(result.locked);
   }
 
   // The models, fetched the first time a furnished building is entered. Until they're here, or if they fail, the room is just empty.
@@ -249,6 +295,7 @@ export class Foot {
     if (this.picking && !this.walker.inside) this.picking = null;
     stepWalker(this.walker, this.picking ? this.pickFloor(dt, input) : input, dt, this.world);
     this.syncPlan();
+    this.syncWaiting();
     this.syncRoom();
     if (this.room) this.renderRoom(hour);
   }
@@ -311,9 +358,9 @@ export class Foot {
     }
     const near = buildingWithin(this.walker, this.world);
     if (near) {
-      const plan = identify(this.place, near.building, saved ||= new BuildingStore());
+      const plan = this.planOf(near.building);
       if (!plan) {
-        for (const key of this.place.wholeOf(near.building).missing) this.loadTile(...key.split('_').map(Number));
+        this.waiting = near.building;
         return { waiting: true };
       }
       if (isLocked(plan)) return { locked: typeName(plan) };
@@ -347,7 +394,7 @@ export class Foot {
     }
     if (this.canGetIn()) return 'Press L to get in';
     const near = buildingWithin(this.walker, this.world);
-    if (near) return near.building.plan && isLocked(near.building.plan) ? `${typeName(near.building.plan)} · locked` : 'Press L to go inside';
+    if (near) return near.building.plan && isLocked(near.building.plan) ? `${typeName(near.building.plan) || 'This building'} · locked` : this.waiting ? 'Checking this building…' : 'Press L to go inside';
     const { metres, direction } = wayToCar(this.walker);
     return `Car ${metres} m ${direction}`;
   }
