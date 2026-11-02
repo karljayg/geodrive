@@ -1,0 +1,39 @@
+<!doctype html><meta charset="utf-8"><title>rooms</title>
+<style>body{margin:0;background:#111;color:#fff;font:12px sans-serif}#g{position:relative}canvas{display:block}span{position:absolute;background:#000a;padding:1px 4px}</style>
+<div id="g"><canvas id="c"></canvas></div>
+<script type="module">
+import { parseFurniture } from './js/furniture.js';
+import { Place } from './js/footData.js';
+import { roomMesh } from './js/footScene.js';
+import { coreOf, layoutFloor } from './js/furnish.js';
+import { dice, hashText } from './js/buildings.js';
+import { FootGl, lookAt, multiply, perspective } from './js/footGl.js';
+const q = new URLSearchParams(location.search), list = (q.get('t') || 'parking:60x34:2').split(','), cols = Number(q.get('cols') || 2), seed = q.get('s') || '1';
+const { models, colours } = parseFurniture(await (await fetch('furniture.bin')).arrayBuffer());
+const W = innerWidth, H = Number(q.get('h') || innerHeight), canvas = document.getElementById('c');
+canvas.style.width = W + 'px'; canvas.style.height = H + 'px'; canvas.width = W; canvas.height = H;
+const fg = new FootGl(canvas), gl = fg.gl, rows = Math.ceil(list.length / cols), cw = W / cols | 0, ch = H / rows | 0;
+gl.clearColor(0.07, 0.08, 0.1, 1); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+gl.uniform3f(fg.u.uTint, 1, 1, 1); gl.uniform3f(fg.u.uSky, 0, 0, 0); gl.uniform2f(fg.u.uFog, 5000, 9000);
+window.report = [];
+list.forEach((entry, n) => {
+  const [type, size, floorText, ground] = entry.split(':'), [w, d] = size.split('x').map(Number), floor = Number(floorText || 1), floors = Math.max(floor, 2);
+  const pts = [{ x: 0, y: 0 }, { x: w, y: 0 }, { x: w, y: d }, { x: 0, y: d }];
+  const b = { rings: [{ pts, seam: pts.map(() => false) }], height: 8, known: false, ground: true, minX: 0, maxX: w, minY: 0, maxY: d, objects: [] };
+  const place = new Place({ lat: 38.9, lng: -77 }); place.addTile('t', { buildings: [b], lands: [], waters: [], roads: [] });
+  const plan = { type, floors, style: q.get('style') || 'modern' }; if (ground) plan.ground = ground;
+  plan.core = coreOf([b], plan, models, dice(hashText(seed + type)));
+  const t0 = performance.now(), record = layoutFloor([b], plan, floor, models, dice(hashText(`${seed}${type}:${floor}`))), ms = performance.now() - t0;
+  const floats = roomMesh(place, b, 0, { record, furniture: { models, colours } }), mesh = fg.mesh(floats);
+  const x = (n % cols) * cw, y = H - (Math.floor(n / cols) + 1) * ch;
+  gl.viewport(x, y, cw, ch); gl.enable(gl.SCISSOR_TEST); gl.scissor(x, y, cw, ch);
+  const r = Math.max(w, d), eye = { x: w / 2, y: d / 2 - r * 0.62, z: r * 1.05 + 8 }, target = { x: w / 2, y: d / 2, z: 0 };
+  gl.uniformMatrix4fv(fg.u.uViewProj, false, multiply(perspective(42, cw / ch, 1, 2000), lookAt(eye, target)));
+  gl.uniform3f(fg.u.uEye, eye.x, eye.y, eye.z);
+  fg.draw(mesh);
+  const c = {}; record.items.forEach((i) => { c[i[0]] = (c[i[0]] || 0) + 1; });
+  window.report.push({ entry, ms: Math.round(ms), tris: floats.length / 27 | 0, zones: record.zones.map((z) => z[0]).join(' '), items: c });
+  const s = document.createElement('span'); s.style.left = x + 'px'; s.style.top = Math.floor(n / cols) * ch + 'px'; s.textContent = `${type} ${size} f${floor} · ${floats.length / 27 | 0} tris`; document.getElementById('g').append(s);
+});
+gl.disable(gl.SCISSOR_TEST);
+</script>

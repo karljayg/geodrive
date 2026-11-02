@@ -55,7 +55,7 @@ export const TYPES = {
 };
 
 // The types you can go into. A type with rooms that aren't good enough yet can be left out too, as hospitals are for now.
-export const OPEN_TYPES = new Set(['home', 'shed', 'apartments', 'hotel', 'office', 'bank', 'restaurant', 'cafe', 'shop', 'supermarket', 'mall', 'school', 'worship', 'museum', 'warehouse', 'factory', 'hangar', 'terminal']);
+export const OPEN_TYPES = new Set(['home', 'shed', 'apartments', 'parking', 'hotel', 'office', 'bank', 'restaurant', 'cafe', 'shop', 'supermarket', 'mall', 'school', 'worship', 'museum', 'warehouse', 'factory', 'hangar', 'terminal']);
 
 // A building is judged by what's at its door, so a clinic at the foot of an office tower is locked.
 export const isLocked = (plan) => !OPEN_TYPES.has(plan.ground || plan.type);

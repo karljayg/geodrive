@@ -12,7 +12,7 @@ SSH=(ssh -i "$KEY" -o BatchMode=yes -o ConnectTimeout=15)
 [ -f "$HERE/public/config.json" ] || { echo "public/config.json is missing (copy config.example.json and set the key)"; exit 1; }
 
 "${SSH[@]}" "$HOST" "mkdir -p '$REMOTE' '$LOGS' && chgrp apache '$LOGS' && chmod 2775 '$LOGS' && echo 'Require all denied' > '$LOGS/.htaccess'"
-rsync -rlt --delete --exclude '.DS_Store' --exclude 'config.example.json' -e "ssh -i '$KEY' -o BatchMode=yes" "$HERE/public/" "$HOST:$REMOTE/"
+rsync -rlt --delete --exclude '.DS_Store' --exclude 'config.example.json' --exclude '_*.html' -e "ssh -i '$KEY' -o BatchMode=yes" "$HERE/public/" "$HOST:$REMOTE/"
 # rsync from the Mac can copy restrictive modes, and the apache user has to be able to read everything.
 "${SSH[@]}" "$HOST" "find '$REMOTE' -type d -exec chmod 755 {} + ; find '$REMOTE' -type f -exec chmod 644 {} +"
 echo "Deployed: https://www.psistorm.com/geodrive/"

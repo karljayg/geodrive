@@ -9,6 +9,11 @@ export const MODEL_SCALE = { bathtub: 1.45, trashcan: 1.3, tableCoffee: 1.7, tab
 // Turned a quarter anticlockwise on the way in, as the kit's stairs climb sideways: this way you walk up from their front.
 export const MODEL_TURNED = new Set(['stairs']);
 
+// Parked cars, in each body and paint. Fabric colours come from the room's scheme, so they vary across a garage.
+const CAR_BODIES = ['Sedan', 'Hatch', 'Suv'], CAR_PAINTS = ['carpet', 'carpetBlue', 'carpetWhite', 'metalLight', 'metalMedium', 'metalDark'];
+const carName = (body, paint) => `car${body}_${paint}`;
+const CAR_MODELS = CAR_BODIES.flatMap((body) => CAR_PAINTS.map((paint) => carName(body, paint)));
+
 // models: the shapes it can be. solid: whether it stops you. flat: lies on the floor, under other things.
 // use: what it could do later; nothing reads this yet, but saved buildings already say what each thing is.
 export const ITEMS = {
@@ -56,6 +61,15 @@ export const ITEMS = {
   lift: { models: ['lift'], built: true, use: ['ride'] },
   // Things the kit doesn't have, made below from boxes.
   whiteboard: { models: ['whiteboard'], built: true, use: ['write'] },
+  parkedCar: { models: CAR_MODELS, built: true, use: ['search'] },
+  bayMark: { models: ['bayMark'], built: true, solid: false, flat: true },
+  laneArrow: { models: ['laneArrow'], built: true, solid: false, flat: true },
+  pillar: { models: ['pillar'], built: true },
+  carRamp: { models: ['carRamp'], built: true },
+  rampTop: { models: ['rampTop'], built: true },
+  ticketMachine: { models: ['ticketMachine'], built: true, use: ['use'] },
+  barrierGate: { models: ['barrierGate'], built: true, solid: false, use: ['use'] },
+  cone: { models: ['cone'], built: true, use: ['move', 'pick up'] },
   mailboxes: { models: ['mailboxes'], built: true, use: ['open', 'search'] },
   noticeBoard: { models: ['noticeBoard'], built: true },
   frontDoor: { models: ['frontDoor'], built: true, solid: false, use: ['open'] },
@@ -110,6 +124,20 @@ const BUILT = {
     [0.31, LIFT_D / 2 + 0.01, 0, 2.15, 0.29, 0.02, 'metalLight'],
     [0, LIFT_D / 2 + 0.01, 2.2, 2.4, 0.2, 0.02, 'lamp'],
   ],
+  bayMark: () => [[-1.28, 0, 0, 0.01, 0.05, 2.5, 'carpetWhite'], [1.28, 0, 0, 0.01, 0.05, 2.5, 'carpetWhite'], [0, -2.45, 0, 0.01, 1.28, 0.05, 'carpetWhite'], [0, -1.85, 0, 0.1, 0.8, 0.08, 'lamp']],
+  laneArrow: () => [[0, -0.5, 0, 0.01, 0.1, 0.9, 'carpetWhite'], [0, 0.45, 0, 0.01, 0.1, 0.1, 'carpetWhite'], [0, 0.3, 0, 0.01, 0.25, 0.1, 'carpetWhite'], [0, 0.15, 0, 0.01, 0.4, 0.1, 'carpetWhite']],
+  pillar: () => [[0, 0, 0, 2.95, 0.28, 0.28, 'metalMedium'], [0, 0, 0, 1, 0.3, 0.3, 'lamp']],
+  carRamp: () => {
+    const boxes = [];
+    for (let n = 0; n < 12; n++) boxes.push([0, 3.7 - n * 0.67, 0, 0.25 * (n + 1), 1.7, 0.34, 'metalMedium']);
+    boxes.push([-1.7, 0, 0, 3.6, 0.04, 4, 'lamp'], [1.7, 0, 0, 3.6, 0.04, 4, 'lamp']);
+    return boxes;
+  },
+  rampTop: () => [[0, 0, 0.02, 0.05, 1.7, 4, 'metalDark'], [-1.7, 0, 0, 1.05, 0.04, 4, 'lamp'], [1.7, 0, 0, 1.05, 0.04, 4, 'lamp'], [0, -4, 0, 1.05, 1.7, 0.04, 'lamp']],
+  ticketMachine: () => [[0, 0, 0, 1.45, 0.28, 0.24, 'metalLight'], [0, 0.25, 0.9, 1.3, 0.2, 0.01, 'metalDark'], [0, 0.26, 0.6, 0.75, 0.12, 0.02, 'carpetBlue'], [0, 0, 1.45, 1.75, 0.3, 0.26, 'carpetBlue']],
+  barrierGate: () => [[-1.8, 0, 0, 1, 0.16, 0.16, 'lamp'], [-1.8, 0, 1, 1.12, 0.1, 0.1, 'metalDark'], [-1.8, 0, 1.12, 3, 0.03, 0.03, 'carpetWhite'], [-1.8, 0, 2.2, 2.45, 0.03, 0.03, 'carpet']],
+  cone: () => [[0, 0, 0, 0.05, 0.17, 0.17, 'metalDark'], [0, 0, 0.05, 0.25, 0.1, 0.1, 'carpet'], [0, 0, 0.25, 0.35, 0.07, 0.07, 'carpetWhite'], [0, 0, 0.35, 0.55, 0.05, 0.05, 'carpet']],
+  ...carBuilds(),
   mailboxes: () => {
     const boxes = [[0, 0, 0.5, 1.75, 0.85, 0.12, 'metalMedium'], [-0.75, 0, 0, 0.5, 0.05, 0.1, 'metalDark'], [0.75, 0, 0, 0.5, 0.05, 0.1, 'metalDark']];
     for (let i = 0; i < 6; i++) for (let j = 0; j < 4; j++) boxes.push([-0.67 + i * 0.268, 0.13, 0.57 + j * 0.28, 0.82 + j * 0.28, 0.115, 0.01, 'metalLight']);
@@ -187,6 +215,33 @@ const BUILT = {
     [0, -d / 2 + 0.03, 0, 1, w / 2, 0.03, 'wood'],
   ],
 };
+
+function carBuilds() {
+  const shapes = {
+    Sedan: { hw: 0.9, hd: 2.25, sill: 0.3, belt: 0.82, roof: 1.42, cabin: [0.15, 1.2] },
+    Hatch: { hw: 0.87, hd: 1.95, sill: 0.3, belt: 0.86, roof: 1.5, cabin: [-0.3, 1.35] },
+    Suv: { hw: 0.95, hd: 2.35, sill: 0.42, belt: 1.05, roof: 1.78, cabin: [-0.4, 1.65] },
+  };
+  const out = {};
+  for (const [body, s] of Object.entries(shapes)) {
+    for (const paint of CAR_PAINTS) {
+      out[carName(body, paint)] = () => {
+        const [middle, half] = s.cabin, wheel = [[-1, 1], [1, 1], [-1, -1], [1, -1]];
+        return [
+          [0, 0, s.sill, s.belt, s.hw, s.hd, paint],
+          [0, middle, s.belt, s.roof, s.hw - 0.08, half, 'glass'],
+          [0, middle, s.roof, s.roof + 0.04, s.hw - 0.1, half - 0.04, paint],
+          [-0.55, s.hd + 0.01, s.belt - 0.22, s.belt - 0.08, 0.2, 0.01, 'lamp'],
+          [0.55, s.hd + 0.01, s.belt - 0.22, s.belt - 0.08, 0.2, 0.01, 'lamp'],
+          [-0.55, -s.hd - 0.01, s.belt - 0.22, s.belt - 0.08, 0.2, 0.01, 'carpet'],
+          [0.55, -s.hd - 0.01, s.belt - 0.22, s.belt - 0.08, 0.2, 0.01, 'carpet'],
+          ...wheel.map(([x, y]) => [x * (s.hw - 0.02), y * (s.hd - 0.72), 0, 0.62, 0.12, 0.31, 'metalDark']),
+        ];
+      };
+    }
+  }
+  return out;
+}
 
 function builtModel(boxes) {
   const byMaterial = new Map();

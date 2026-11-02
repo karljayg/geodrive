@@ -27,6 +27,7 @@ const TOILETS = ['toilets', 14], STOCK = ['stock', 16], DESKS = ['openPlan', 60]
 // for as long as there's room, which is how a big floor gets more of them. A type with one list has it on every floor.
 const TYPE_ZONES = {
   shed: { ground: [['workshop', 20]] },
+  parking: { ground: [['parkingDeck', 40]] }, // for one too small for lanes; otherwise see parkingFloor
   apartments: { ground: [['lobby', 30], ['laundry', 12], ['gym', 30]], upper: [['living', 28], ['kitchen', 15], ['bathroom', 6], ['bedroom', BEDROOM]], then: [['living', 24], ['kitchen', 12], ['bathroom', 6], ['bedroom', BEDROOM]] },
   hotel: { ground: [['lobby', 50], ['restaurantDining', 60], ['restaurantKitchen', 25], TOILETS], upper: [['hotelRoom', 26], ['hotelRoom', 26]], then: [['hotelRoom', 26]] },
   office: { ground: [['lobby', 40], BREAK, TOILETS], upper: [DESKS, TOILETS, MEETING, BREAK], then: [OFFICE, MEETING, DESKS] },
@@ -54,6 +55,9 @@ const ROOM_WIDTH = {
   living: 3, bedroom: 2.8, dining: 2.8, kitchen: 2.5, hotelRoom: 3, openPlan: 4, meeting: 3, privateOffice: 2.5, breakRoom: 2.5, bankHall: 5, vault: 3, restaurantDining: 4, restaurantKitchen: 3, cafe: 3.5,
   salesFloor: 3.5, aisles: 6, foodCourt: 6, classroom: 5, cafeteria: 5, hospitalWaiting: 4, ward: 4, worshipHall: 6, gallery: 5, racking: 7, machines: 6, hangarBay: 12, checkIn: 6, gates: 6, lobby: 4, gym: 4,
 }; // m a room needs for what must go in it
+const BAY_WIDTH = 2.6, BAY_DEPTH = 5, LANE = 6, CROSS_LANE = 3.5, MOST_BAYS = 130; // m, m, m, m, on a floor
+const PILLAR_EVERY = 3;    // bays
+const RAMP_BAYS = 4;       // bays a ramp takes the place of
 const CORRIDOR = 2;        // m wide
 const FLAT_WIDTH = 8, FLAT_WIDTH_MIN = 6.5, FLAT_DEPTH_MIN = 5.5, BAND_DEPTH = 22, MOST_FLATS = 9; // m, m, m, m, on a floor
 const LIFT_FROM = 5;       // floors from which a building has a lift as well as stairs
@@ -83,6 +87,12 @@ const RECIPES = {
     { item: 'bin', at: 'wall' },
   ],
   corridor: [],
+  parkingDeck: [
+    { item: 'parkedCar', at: 'wall', must: true },
+    { item: 'parkedCar', at: 'wall' },
+    { item: 'ticketMachine', at: 'wall', must: true },
+    { item: 'cone', at: 'wall', loose: true },
+  ],
   landing: [
     { item: 'plant', at: 'wall', loose: true },
     { item: 'noticeBoard', at: 'wall' },
@@ -409,7 +419,7 @@ const FLOORS = {
   bedroom: ['a79c8e', '8f9aa3', 'b5a795', '9c8d86'],
 };
 const FLOOR_KIND = {
-  corridor: 'office', landing: 'smart', mailroom: 'smart',
+  corridor: 'office', landing: 'smart', mailroom: 'smart', parkingDeck: 'hard',
   bathroom: 'wet', laundry: 'wet', toilets: 'wet', ward: 'wet', hospitalWaiting: 'wet', kitchen: 'kitchen', breakRoom: 'kitchen', restaurantKitchen: 'kitchen', cafeteria: 'kitchen', bedroom: 'bedroom', hotelRoom: 'bedroom',
   openPlan: 'office', privateOffice: 'office', meeting: 'office', schoolOffice: 'office', records: 'office', classroom: 'office', workshop: 'hard', racking: 'hard', machines: 'hard', hangarBay: 'hard', stock: 'hard', vault: 'hard', gym: 'hard',
   lobby: 'smart', bankHall: 'smart', salesFloor: 'smart', aisles: 'smart', foodCourt: 'smart', checkIn: 'smart', gates: 'smart', gallery: 'smart', worshipHall: 'smart', cafe: 'room', restaurantDining: 'room',
@@ -811,6 +821,17 @@ class Furnisher {
     if (step.must && step.at !== 'wall' && step.at !== 'front') yield* this.wallSpots(model, room);
   }
 
+  // Puts down what the layout has already made room for, which needs no check that it shuts anything off.
+  place(item, name, u, v, rot, zoneIndex) {
+    const model = this.models[name], box = boxAt(u, v, reach(model, rot));
+    if (isSolid(item)) {
+      if (this.solids.length >= MOST_SOLIDS || this.solids.some((other) => overlaps(box, other)) || this.doors.some((door) => overlaps(box, door))) return false;
+      this.solids.push(box);
+    }
+    this.items.push([item, name, round(u), round(v), ITEMS[item].flat ? FLOOR_LIFT : 0, rot, zoneIndex, round(0.94 + this.roll() * 0.12)]);
+    return true;
+  }
+
   // Things on top of another, which take up room there and never stop anyone.
   placeOn(step, parent, zoneIndex) {
     const used = this.tops.get(parent) || [];
@@ -1103,6 +1124,76 @@ function apartmentFloor(grid, plan, floor, roll, doors) {
   return { cuts, rooms, frontDoors };
 }
 
+// A parking garage's floor: rows of bays either side of lanes down the building, with lanes across each end so nobody is
+// shut in by parked cars. False if it's too small, and it's then furnished like any other. a runs along the building and b across it.
+function parkingFloor(furnisher, grid, plan, floor, zones, roll) {
+  const whole = trim(grid, { i0: 0, i1: grid.nu - 1, j0: 0, j1: grid.nv - 1 });
+  if (!whole) return false;
+  const u0 = grid.minU + whole.i0 * grid.cell, u1 = grid.minU + (whole.i1 + 1) * grid.cell, v0 = grid.minV + whole.j0 * grid.cell, v1 = grid.minV + (whole.j1 + 1) * grid.cell;
+  const along = u1 - u0 >= v1 - v0, aLo = along ? u0 : v0, aHi = along ? u1 : v1, bLo = along ? v0 : u0, bHi = along ? v1 : u1;
+  const single = BAY_DEPTH + LANE, double = BAY_DEPTH * 2 + LANE;
+  if (bHi - bLo < single || aHi - aLo < CROSS_LANE * 2 + BAY_WIDTH * 2) return false;
+  const uv = (a, b) => (along ? [a, b] : [b, a]), room = { u0, u1, v0, v1 };
+  const facing = (towardsHighB) => (along ? (towardsHighB ? 0 : 180) : (towardsHighB ? 90 : 270)), running = along ? 90 : 0;
+  // Lanes with a row of bays each side, then one with a row on just one side if there's room left over.
+  const decks = [];
+  let b = bLo + (bHi - bLo - Math.floor((bHi - bLo) / double) * double) / 2;
+  if (bHi - bLo < double) b = bLo;
+  while (b + double <= bHi + 0.01) {
+    decks.push({ b0: b, lane: b + BAY_DEPTH, rows: [[b, true], [b + BAY_DEPTH + LANE, false]] });
+    b += double;
+  }
+  if (!decks.length) decks.push({ b0: bLo, lane: bLo + BAY_DEPTH, rows: [[bLo, true]] });
+  const first = aLo + CROSS_LANE, count = Math.floor((aHi - CROSS_LANE - first) / BAY_WIDTH), offset = first + (aHi - CROSS_LANE - first - count * BAY_WIDTH) / 2;
+  const occupied = 0.5 + roll() * 0.35, bodies = ITEMS.parkedCar.models;
+  const rowCount = decks.reduce((sum, deck) => sum + deck.rows.length, 0), everyBay = Math.min(count, Math.floor(MOST_BAYS / rowCount));
+  const top = floor >= plan.floors, hasRamp = plan.floors > 1;
+  let rampDone = false;
+  decks.forEach((deck, index) => {
+    const zoneIndex = zones.length, [zu0, zv0] = uv(aLo, deck.b0), [zu1, zv1] = uv(aHi, deck.b0 + (deck.rows.length > 1 ? double : single));
+    zones.push(['parkingDeck', round(Math.min(zu0, zu1)), round(Math.min(zv0, zv1)), round(Math.max(zu0, zu1)), round(Math.max(zv0, zv1)), schemeFor('parkingDeck', plan.style, roll)]);
+    // Arrows down the lane, the way the traffic goes.
+    for (let a = aLo + CROSS_LANE + 2; a < aHi - CROSS_LANE; a += 12) {
+      const [u, v] = uv(a, deck.lane + LANE / 2), box = boxAt(u, v, reach(furnisher.models.laneArrow, running));
+      if (!furnisher.doors.some((door) => overlaps(box, door))) furnisher.place('laneArrow', 'laneArrow', u, v, (running + (index % 2 ? 180 : 0)) % 360, zoneIndex);
+    }
+    for (const [rowB, opensHigh] of deck.rows) {
+      const centreB = rowB + BAY_DEPTH / 2, nose = facing(opensHigh);
+      for (let n = 0; n < everyBay; n++) {
+        const a = offset + (n + 0.5) * BAY_WIDTH, [u, v] = uv(a, centreB), box = boxAt(u, v, reach(furnisher.models.bayMark, nose));
+        if (!furnisher.inside(box, room) || furnisher.doors.some((door) => overlaps(box, door)) || furnisher.solids.some((other) => overlaps(box, other))) continue;
+        // A ramp up takes the last few bays of the last row.
+        if (hasRamp && !rampDone && index === decks.length - 1 && !opensHigh === (deck.rows.length > 1) && n >= everyBay - RAMP_BAYS) {
+          const rampName = top ? 'rampTop' : 'carRamp', rampA = offset + (everyBay - RAMP_BAYS / 2) * BAY_WIDTH, [ru, rv] = uv(rampA, centreB);
+          if (furnisher.place(rampName, rampName, ru, rv, running, zoneIndex)) rampDone = true;
+        }
+        const rampHere = furnisher.solids.some((other) => overlaps(box, other));
+        if (rampHere) continue;
+        furnisher.place('bayMark', 'bayMark', u, v, nose, zoneIndex);
+        if (n % PILLAR_EVERY === 0) {
+          const [pu, pv] = uv(a - BAY_WIDTH / 2, opensHigh ? rowB + 0.3 : rowB + BAY_DEPTH - 0.3);
+          furnisher.place('pillar', 'pillar', pu, pv, 0, zoneIndex);
+        }
+        if (roll() < occupied) {
+          const name = pick(bodies, roll);
+          furnisher.place('parkedCar', name, u, v, roll() < 0.8 ? nose : (nose + 180) % 360, zoneIndex);
+        } else if (roll() < 0.08) furnisher.place('cone', 'cone', u, v, 0, zoneIndex);
+      }
+    }
+  });
+  // The way in, at the end of the first lane, on the ground floor. Ticket machines on every floor, for the way back to the car.
+  const laneB = decks[0].lane + LANE / 2;
+  const [mu, mv] = uv(aLo + 1.2, decks[0].lane + 0.5);
+  furnisher.place('ticketMachine', 'ticketMachine', mu, mv, facing(true), 0);
+  if (floor === 1) {
+    const [gu, gv] = uv(aLo + 2.2, laneB);
+    furnisher.place('barrierGate', 'barrierGate', gu, gv, running, 0);
+    const [hu, hv] = uv(aHi - 1.2, decks[0].lane + 0.5);
+    furnisher.place('ticketMachine', 'ticketMachine', hu, hv, facing(true), 0);
+  }
+  return true;
+}
+
 // One floor, as plain data for saving. models: what parseFurniture read. roll: the building's dice for this floor.
 export function layoutFloor(pieces, plan, floor, models, roll) {
   const axis = plan.core?.axis ?? axisOf(pieces), frame = frameOf(pieces, axis);
@@ -1112,6 +1203,7 @@ export function layoutFloor(pieces, plan, floor, models, roll) {
   let grid, cuts, rooms;
   const whole = () => ({ i0: 0, i1: grid.nu - 1, j0: 0, j1: grid.nv - 1 });
   let fitted = false, frontDoors = [];
+  const garage = (floor === 1 && plan.ground ? plan.ground : plan.type) === 'parking';
   if ((floor === 1 && plan.ground ? plan.ground : plan.type) === 'apartments') {
     grid = makeGrid(pieces, frame, cell);
     const flats = apartmentFloor(grid, plan, floor, roll, doors);
@@ -1141,6 +1233,7 @@ export function layoutFloor(pieces, plan, floor, models, roll) {
   joinUp(grid, cuts, doors);
   const furnisher = new Furnisher(grid, doors, models, roll), zones = [];
   furnisher.addCore(coreOnFloor(plan, floor));
+  if (garage && parkingFloor(furnisher, grid, plan, floor, zones, roll)) rooms = [];
   for (const { u, v, rot } of frontDoors) furnisher.items.push(['frontDoor', 'frontDoor', round(u), round(v), 0, rot, -1, 1]);
   rooms.forEach(({ zone, rect }, index) => {
     const room = {

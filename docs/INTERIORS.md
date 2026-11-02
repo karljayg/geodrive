@@ -90,7 +90,6 @@ Which types you can go into, and what each still needs. A locked building says "
 | Status | Type | Has rooms? | What it needs |
 |---|---|---|---|
 | Locked | Hospital | Basic | Real wards, reception, exam rooms, operating room, nurses' station |
-| Locked | Parking garage | No | Painted bays, parked cars, ramps, ticket machine. New type |
 | Locked | Clinic, dentist, vet | No | Waiting room, reception, exam rooms. Was counted as a hospital |
 | Locked | Pharmacy | No | Shelves, counter. Was counted as a shop |
 | Locked | Hair and beauty salon | No | Chairs, mirrors, basins. Was counted as a shop |
@@ -107,6 +106,7 @@ Which types you can go into, and what each still needs. A locked building says "
 | Locked | Stadium | No | Seating, concourse, field. New type |
 | Open, could be better | Lobbies, in offices, hotels and apartments | Better | Now has a desk with a chair, sofa, armchairs, rug, notice board and plants. A lift lobby and signs would help |
 | Open, could be better | Hotel, mall, airport terminal, museum, place of worship, school, supermarket, warehouse, factory, hangar | Basic | Made from boxes and only checked by tests, apart from the school's layout. Walk round them and lock any that disappoint |
+| Open | Parking garage | Yes | Done: bays, parked cars, pillars, lanes with arrows, ramps, ticket machines, a barrier on the ground floor. Also found from parking aisles mapped inside a footprint |
 | Open | Apartment building | Yes | Done: corridors, a landing at the stairs, up to 9 flats a floor with front doors, each with a kitchen, bathroom, living room and bedroom. Lobby, mailroom, laundry and gym downstairs. Very large footprints get oversized flats |
 | Open | Home, shed, office, bank, restaurant, café, shop | Yes | Homes and rooms in them are due an adjustment pass |
 

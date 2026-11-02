@@ -386,10 +386,10 @@ test('a type with no furniture yet still has its stairs and lift on every floor,
 });
 
 const TYPE_MUST = {
-  shed: 'workbench', apartments: 'frontDesk', hotel: 'frontDesk', office: 'frontDesk', bank: 'tellerCounter', restaurant: 'diningTable', cafe: 'barCounter', shop: 'clothesRack', supermarket: 'storeShelf',
+  parking: 'bayMark', shed: 'workbench', apartments: 'frontDesk', hotel: 'frontDesk', office: 'frontDesk', bank: 'tellerCounter', restaurant: 'diningTable', cafe: 'barCounter', shop: 'clothesRack', supermarket: 'storeShelf',
   mall: 'barCounter', school: 'schoolDesk', hospital: 'hospitalBed', worship: 'pew', museum: 'displayCase', warehouse: 'palletRack', factory: 'machine', hangar: 'plane', terminal: 'checkInDesk',
 };
-const typeShape = (type) => ({ shed: rectangle(6, 5), cafe: rectangle(13, 9), restaurant: rectangle(16, 12), bank: rectangle(16, 14), shop: rectangle(14, 10), apartments: rectangle(24, 16), hotel: rectangle(30, 20), office: rectangle(30, 22) }[type] ?? rectangle(45, 30));
+const typeShape = (type) => ({ parking: rectangle(50, 30), shed: rectangle(6, 5), cafe: rectangle(13, 9), restaurant: rectangle(16, 12), bank: rectangle(16, 14), shop: rectangle(14, 10), apartments: rectangle(24, 16), hotel: rectangle(30, 20), office: rectangle(30, 22) }[type] ?? rectangle(45, 30));
 const solidsClear = (record, label) => {
   const boxes = record.items.filter(([item]) => isSolid(item) && !['stairs', 'lift', 'stairwell'].includes(item)).map(([item, model, u, v, , rot]) => {
     const m = models[model], q = Math.round(rot / 90) % 2 === 0;
@@ -519,4 +519,92 @@ test('stairs and lift are clear on an apartment floor, in the landing, and a nar
   for (const [a0, b0, a1, b1] of record.walls) assert.ok(!(Math.min(a0, a1) < u1 - 0.01 && Math.max(a0, a1) > u0 + 0.01 && Math.min(b0, b1) < v1 - 0.01 && Math.max(b0, b1) > v0 + 0.01), 'a wall across the way to the stairs');
   const narrow = layoutFloor([rectangle(14, 6)], { type: 'apartments', floors: 1, style: 'cheap' }, 1, models, dice(4));
   assert.ok(narrow.zones.length >= 1);
+});
+
+const garageFloor = (p, floor, seed, floors = 4) => {
+  const plan = { type: 'parking', floors, style: 'modern' };
+  plan.core = floors > 1 ? coreOf([p], plan, models, dice(seed)) : null;
+  return { plan, record: layoutFloor([p], plan, floor, models, dice(hashText(`garage${seed}:${floor}`))) };
+};
+const GARAGES = { small: rectangle(36, 18), usual: rectangle(60, 34), big: rectangle(90, 60), turned: turned(60, 34, 27), bent: piece([{ x: 0, y: 0 }, { x: 70, y: 0 }, { x: 70, y: 24 }, { x: 30, y: 24 }, { x: 30, y: 60 }, { x: 0, y: 60 }]) };
+
+test('every car model is a whole car with its nose towards +y, longer than wide', () => {
+  for (const name of ITEMS.parkedCar.models) {
+    const m = models[name];
+    assert.ok(m.d > 3.5 && m.d < 5.2 && m.w > 1.6 && m.w < 2.1 && m.h > 1.3 && m.h < 2, `${name} ${m.w} x ${m.d} x ${m.h}`);
+  }
+  assert.ok(models.bayMark.w > models.carSuv_carpet.w && models.bayMark.d > models.carSuv_carpet.d, 'the biggest car fits a bay');
+});
+
+test('a garage floor has marked bays, parked cars, pillars and lanes', () => {
+  for (const [name, p] of Object.entries(GARAGES)) {
+    for (let seed = 0; seed < 8; seed++) {
+      for (const floor of [1, 2, 4]) {
+        const { record } = garageFloor(p, floor, seed), count = (item) => record.items.filter((i) => i[0] === item).length;
+        assert.ok(count('bayMark') >= 8 && count('bayMark') <= 130, `${name} ${seed}: ${count('bayMark')} bays`);
+        assert.ok(count('parkedCar') >= 2 && count('parkedCar') <= count('bayMark'), `${name} ${seed}: ${count('parkedCar')} cars`);
+        assert.ok(count('pillar') >= 2, `${name}: pillars`);
+        assert.ok(count('laneArrow') >= 1, `${name}: arrows`);
+        assert.ok(count('ticketMachine') >= 1, `${name}: ticket machine`);
+        assert.equal(count('barrierGate') >= 1, floor === 1, `${name}: barrier on the ground floor only`);
+        solidsClear(record, `${name} ${seed} floor ${floor}`);
+        assert.ok(JSON.stringify(record).length < 30000);
+      }
+    }
+  }
+});
+
+test('a garage has a ramp up on each floor but the top, where it ends, and none with one floor', () => {
+  const p = GARAGES.usual, ramp = (record) => record.items.filter((i) => i[0] === 'carRamp').length, top = (record) => record.items.filter((i) => i[0] === 'rampTop').length;
+  for (let seed = 0; seed < 8; seed++) {
+    assert.equal(ramp(garageFloor(p, 1, seed).record), 1, `seed ${seed}`);
+    assert.equal(ramp(garageFloor(p, 3, seed).record), 1, `seed ${seed}`);
+    assert.equal(ramp(garageFloor(p, 4, seed).record), 0);
+    assert.equal(top(garageFloor(p, 4, seed).record), 1, `seed ${seed}`);
+    const one = garageFloor(p, 1, seed, 1).record;
+    assert.equal(ramp(one) + top(one), 0);
+  }
+});
+
+test('nobody is shut in by parked cars: all the free floor of a garage joins up', () => {
+  for (const [name, p] of Object.entries(GARAGES)) {
+    for (let seed = 0; seed < 6; seed++) {
+      const { record } = garageFloor(p, 2, seed), frame = frameOf([p], record.axis), { boxes } = solidsOf(record, frame, models), rings = p.rings.map((r) => r.pts), step = 0.35;
+      const free = (x, y) => inRings(rings, x, y) && !boxes.some((box) => {
+        const dx = x - box.x, dy = y - box.y;
+        return Math.abs(dx * box.c - dy * box.s) < box.hw + 0.35 && Math.abs(dx * box.s + dy * box.c) < box.hd + 0.35;
+      });
+      const cells = new Set(), key = (i, j) => `${i},${j}`;
+      for (let i = Math.floor(p.minX / step); i <= p.maxX / step; i++) for (let j = Math.floor(p.minY / step); j <= p.maxY / step; j++) if (free(i * step, j * step)) cells.add(key(i, j));
+      const groups = [], seen = new Set();
+      for (const start of cells) {
+        if (seen.has(start)) continue;
+        let size = 0;
+        const stack = [start];
+        seen.add(start);
+        while (stack.length) {
+          const [i, j] = stack.pop().split(',').map(Number);
+          size++;
+          for (const [di, dj] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+            const next = key(i + di, j + dj);
+            if (cells.has(next) && !seen.has(next)) { seen.add(next); stack.push(next); }
+          }
+        }
+        groups.push(size);
+      }
+      const largest = Math.max(...groups), total = groups.reduce((a, b) => a + b, 0);
+      assert.ok(largest / total > 0.97, `${name} ${seed}: only ${(largest / total).toFixed(3)} of the free floor joins up`);
+    }
+  }
+});
+
+test('stairs stay clear in a garage, and one too small for lanes still has cars', () => {
+  const { plan, record } = garageFloor(GARAGES.usual, 2, 3), [u0, v0, u1, v1] = plan.core.clear;
+  for (const [item, name, u, v, , rot] of record.items) {
+    if (!isSolid(item) || coreIn({ items: [[item]] }).length) continue;
+    const q = Math.round(rot / 90) % 2 === 0, hu = (q ? models[name].w : models[name].d) / 2, hv = (q ? models[name].d : models[name].w) / 2;
+    assert.ok(!(u - hu < u1 - 0.01 && u + hu > u0 + 0.01 && v - hv < v1 - 0.01 && v + hv > v0 + 0.01), `${item} in the way of the stairs`);
+  }
+  const tiny = layoutFloor([rectangle(9, 8)], { type: 'parking', floors: 1, style: 'cheap' }, 1, models, dice(3));
+  assert.ok(tiny.items.some(([item]) => item === 'parkedCar'));
 });

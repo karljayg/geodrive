@@ -174,8 +174,8 @@ test('only types with rooms can be open, and everything else is locked', () => {
     assert.ok(TYPES[type], type);
     assert.ok(FURNISHED.has(type), `${type} is open with no rooms`);
   }
-  for (const type of ['parking', 'hospital', 'gasStation', 'clinic', 'police']) assert.equal(isLocked({ type }), true, type);
-  for (const type of ['home', 'apartments', 'office', 'bank']) assert.equal(isLocked({ type }), false, type);
+  for (const type of ['hospital', 'gasStation', 'clinic', 'police']) assert.equal(isLocked({ type }), true, type);
+  for (const type of ['home', 'apartments', 'parking', 'office', 'bank']) assert.equal(isLocked({ type }), false, type);
   assert.equal(typeName({ type: 'parking' }), 'Parking garage');
 });
 

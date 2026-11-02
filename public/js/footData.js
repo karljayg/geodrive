@@ -262,6 +262,8 @@ export function parseTile(bytes, tx, ty, origin, zoom = VECTOR_ZOOM) {
     }
   });
   features('transportation', ({ tags, type }, lines, extent, toMetres) => {
+    // A parking aisle mapped inside a building says that building is a parking garage, so it counts as a point there.
+    if (type === 2 && tags.service === 'parking_aisle') for (const line of lines) for (const p of line) out.pois.push({ ...toMetres(p), cls: 'parking', sub: 'parking' });
     const road = ROAD[tags.class];
     if (type !== 2 || !road || tags.brunnel === 'bridge' || tags.brunnel === 'tunnel' || tags.indoor) return;
     for (const line of lines) if (line.length > 1) out.roads.push({ line: line.map(toMetres), width: road[0], colour: road[1], kerb: road[2] });
