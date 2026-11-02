@@ -1000,14 +1000,34 @@ function pressUse() {
     sfx('sit');
     return;
   }
-  if (asking) {
-    if (asking.choices.length === 1) answer(0);
-    else stopAsking();
-    return;
-  }
+  if (answerAsked()) return;
   const choices = foot.choices();
   if (!choices.length) return notice(foot.lookHere() || say('nothingHere'), 2500);
-  asking = { choices, x: foot.walker.x, y: foot.walker.y, level: foot.level, inside: foot.walker.inside };
+  ask(choices, { x: foot.walker.x, y: foot.walker.y, level: foot.level, inside: foot.walker.inside });
+}
+
+// F with a question already up: yes to the only choice, or never mind with several. True if there was one.
+function answerAsked() {
+  if (!asking) return false;
+  if (asking.choices.length === 1) answer(0);
+  else stopAsking();
+  return true;
+}
+
+// F in a stopped car with nowhere set, which otherwise has nothing to do. Moving, or with a destination, it stays self-driving.
+function pressCarF() {
+  if (answerAsked()) return;
+  if (fsd || destination || Math.abs(car.speed) * MPS_TO_MPH >= STOPPED_MPH) return setFsd(!fsd);
+  ask([
+    { label: 'Set a destination?', run: () => { openDialog('dest'); return ''; } },
+    { label: 'Get out of the car?', run: () => { getOut(); return ''; } },
+    { label: 'Open the storage?', run: () => { openStorage(); return ''; } },
+    { label: settings.headlights ? 'Turn off the headlights?' : 'Turn on the headlights?', run: () => { setHeadlights(!settings.headlights); return ''; } },
+  ], { car: true });
+}
+
+function ask(choices, where) {
+  asking = { choices, ...where };
   const many = choices.length > 1, box = el('asking');
   box.innerHTML = `${choices.map(({ label, html }, i) => `<button data-answer="${i}">${many ? `<kbd>${i + 1}</kbd> ` : ''}${html || label}</button>`).join('')}
     <small>${many ? 'Press a number, walk away or Esc' : 'F for yes, walk away or Esc'}</small>`;
@@ -1037,6 +1057,10 @@ function stopAsking() {
 // Walking away, or anything else that changes where they are, drops the question.
 function checkAsking() {
   if (!asking) return;
+  if (asking.car) {
+    if (foot || Math.abs(car.speed) * MPS_TO_MPH >= STOPPED_MPH) stopAsking();
+    return;
+  }
   const w = foot?.walker;
   if (!w || Math.hypot(w.x - asking.x, w.y - asking.y) > WALK_AWAY || foot.level !== asking.level || w.inside !== asking.inside || foot.pose) stopAsking();
 }
@@ -1179,6 +1203,7 @@ function passNeeds(t, hours) {
   if (!map) return;
   sayEvents(vitals.pass(hours, doingNow()));
   syncDrops(t);
+  if (!foot) checkAsking();
   if (t - vitalsDrawnAt > 500) {
     vitalsDrawnAt = t;
     drawVitals();
@@ -2241,7 +2266,7 @@ document.addEventListener('keydown', (e) => {
   if (k === 'm') toggleMute();
   if (k === 'q') pressSignal(-1);
   if (k === 'e') pressSignal(1);
-  if (k === 'f') setFsd(!fsd);
+  if (k === 'f') pressCarF();
   if (k === '=' || k === '+') fsdBoost += FSD_SPEED_STEP;
   if (k === '-') fsdBoost -= FSD_SPEED_STEP;
 }, { capture: true });
@@ -2262,7 +2287,7 @@ el('asking').addEventListener('click', (e) => {
   const button = e.target.closest('[data-answer]');
   if (button) answer(Number(button.dataset.answer));
 });
-el('touchF').addEventListener('click', () => { if (foot) pressUse(); else setFsd(!fsd); });
+el('touchF').addEventListener('click', () => { if (foot) pressUse(); else pressCarF(); });
 el('touchL').addEventListener('click', pressL);
 
 // The first drive's tip goes once they've driven, as the first walk's goes with the walk.

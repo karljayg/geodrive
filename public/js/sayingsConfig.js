@@ -43,6 +43,27 @@ export const SAYINGS = {
   look_frontDoor: ['The way you came in.', 'A door. They\'re big on those here.'],
   look_barrierGate: ['The barrier stays down. You\'re on foot anyway.', 'It doesn\'t lift for people.'],
 
+  // F outdoors with nothing to do: what's around. place's {name} is off the map's data.
+  look_water: ['Water. You can\'t drink this one.', 'You\'d rather not swim.', 'It looks wet, and you\'re thirsty, but no.'],
+  look_road: ['You\'re standing in the road. Bold.', 'This is a road. They\'re for cars, like the one you left.', 'You look both ways, belatedly.'],
+  look_place: ['That\'s {name}, around here somewhere.', '{name} is close by.', 'A sign says {name}.'],
+  look_tree: ['A tree. It has nothing to say.', 'You pat the tree. Good tree.', 'No fruit on this one. You checked.'],
+  lookGround: ['Nothing to do here. Just ground.', 'A patch of nothing much.', 'You kick at the ground. It holds.'],
+  lookLand_grass: ['Grass. You don\'t eat it, yet.', 'Nice grass. Not a meal.'],
+  lookLand_wood: ['Woods. Nice to look at, no use for supper.', 'Lots of trees, no snacks.'],
+  lookLand_forest: ['Forest. Nice to look at, no use for supper.', 'Lots of trees, no snacks.'],
+  lookLand_cemetery: ['Quiet here.', 'You read a headstone. Nobody you know.'],
+  lookLand_playground: ['You\'re too big for the swings. Probably.', 'A playground, and no one to race.'],
+  lookLand_residential: ['Someone\'s neighbourhood. Nobody waves.', 'Quiet street. Curtains twitch.'],
+  lookLand_retail: ['A shopping area. Worth trying a few doors.', 'Shops around here somewhere.'],
+  lookLand_industrial: ['Industrial land. It smells of it.', 'Nothing here but work, and nobody doing it.'],
+  // Shoving things in rooms
+  pushed: ['You push the {name}.', 'The {name} shifts along.', 'You shove the {name} out of the way.', 'The {name} scrapes across the floor.'],
+  pushStuck: ['The {name} won\'t go any further that way.', 'Something\'s in the way of the {name}.', 'The {name} isn\'t going there.'],
+  droveIt: ['You get the {name} going, a little, and think better of it.', 'It lurches forward, and you stop while you\'re ahead.'],
+  barrierGate: ['The barrier lifts, thinks about it, and drops.', 'Up it goes, and down again.'],
+  tillUse: ['The drawer pings open, and shut.', 'It asks for a manager code.', 'Ping. No sale.'],
+
   // Light switches
   lightsOn: ['Lights on.', 'Click. Much better.', 'And there was light.', 'Ah, so that\'s what this room looks like.', 'Lights on. Nothing jumped out.'],
   lightsOff: ['Lights off.', 'Click. Dark again.', 'Lights off. Very economical.', 'Off they go.', 'Somewhere, a power bill sighs with relief.'],

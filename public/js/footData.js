@@ -10,6 +10,7 @@ const UNMAPPED_HEIGHT = 5;      // m
 const TOUCHING = 0.7;           // m between walls that makes two buildings one
 const POI_REACH = 25;           // m outside a footprint that a place still belongs to it, as places are often mapped at the door or the car park
 const SEAM_MATCH = 0.01;        // m; pieces of one building cut by a tile edge lie on the same line
+const LOOK_PLACE = 15, LOOK_TREE = 3; // m that F outdoors will mention one
 const ROAD_PAD = 6;    // m around a road that its cells also list it, for checks just beside it
 const TREE_STEP = { dense: 8, sparse: 18 }; // m between trees
 export const TRUNK_RADIUS = 0.3;
@@ -364,6 +365,22 @@ export class Place {
   }
 
   // The building whose ground floor is here, if any.
+  // What's here for someone outdoors to remark on: the water, the road, a named place, a tree, or the land. kind and, for a place, its name.
+  whatsAround(x, y) {
+    if (this.inWater(x, y)) return { kind: 'water' };
+    const cx = Math.floor(x / CELL), cy = Math.floor(y / CELL), cell = this.cellAt(x, y);
+    if (cell.roads.some((r) => distToSegment(x, y, r.ax, r.ay, r.bx, r.by) < r.width / 2 + 1)) return { kind: 'road' };
+    let place = null, bestPlace = LOOK_PLACE;
+    for (const poi of cell.pois) {
+      const away = Math.hypot(poi.x - x, poi.y - y);
+      if (poi.name && away < bestPlace) { place = poi; bestPlace = away; }
+    }
+    if (place) return { kind: 'place', name: place.name };
+    if (this.treesIn(cx, cy).some((tree) => Math.hypot(tree.x - x, tree.y - y) < LOOK_TREE)) return { kind: 'tree' };
+    const land = cell.lands.filter((l) => within(l, x, y) && inRings(l.rings, x, y)).sort((a, b) => b.rank - a.rank)[0];
+    return { kind: 'land', name: land?.name };
+  }
+
   footprintAt(x, y) {
     return this.cellAt(x, y).buildings.find((b) => b.ground && within(b, x, y) && inRings(b.rings.map((r) => r.pts), x, y)) || null;
   }

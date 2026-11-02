@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { actionsOf, coreQuestions, inertNear, lookLine, questionsFor, thingsNear, uniqueChoices, usableNear, useThing, withoutTaken, switchNeedsKey, switchSpots, useSwitch } from '../public/js/footActions.js';
+import { actionsOf, coreQuestions, pushFits, pushTarget, pushThing, inertNear, lookLine, questionsFor, thingsNear, uniqueChoices, usableNear, useThing, withoutTaken, switchNeedsKey, switchSpots, useSwitch } from '../public/js/footActions.js';
 import { SAYINGS } from '../public/js/sayingsConfig.js';
 import { SOUNDS, bagSound, bakeOrder, footfall, lengthOf, play, stepSound, takesOf, useSound } from '../public/js/sounds.js';
 import { GAME } from '../public/js/gameConfig.js';
@@ -17,7 +17,7 @@ const frame = frameOf([piece], 0);
 const entry = (item, u = 0, v = 0, rot = 0) => [item, ITEMS[item].models[0], u, v, 0, rot, 0, 1];
 
 test('what can be done with a thing comes from the catalogue, and stairs are left to L', () => {
-  assert.deepEqual(actionsOf('chair'), ['sit']);
+  assert.deepEqual(actionsOf('chair'), ['sit', 'move']);
   assert.deepEqual(actionsOf('bed'), ['sleep']);
   assert.deepEqual(actionsOf('books'), ['pick up']);
   assert.deepEqual(actionsOf('microwave'), ['use', 'pick up']);
@@ -231,4 +231,48 @@ test('F can say what a thing with no use is, leaving out what has a use and what
   assert.equal(inertNear({ items: [entry('lift', 0.5, 0)] }, frame, models, 0, 0), null, 'the elevator has its own question');
   assert.ok(SAYINGS.look_plant.includes(lookLine('plant')));
   assert.match(lookLine('tireStack'), /tire stack/);
+});
+
+const box = { w: 0.6, d: 0.6, h: 1 }, pushModels = new Proxy({}, { get: () => box });
+const everywhere = () => true;
+
+test('a push goes straight away from the person', () => {
+  const chair = entry('chair', 2, 2);
+  assert.deepEqual(pushTarget(chair, 1, 2, 0.8), { u: 2.8, v: 2 });
+  assert.deepEqual(pushTarget(chair, 3, 2.2, 0.8), { u: 1.2, v: 2 });
+  assert.deepEqual(pushTarget(chair, 2.1, 1, 0.8), { u: 2, v: 2.8 });
+});
+
+test('a thing will not be pushed through walls, into other things, out of the building or across the way to the stairs', () => {
+  const chair = entry('chair', 2, 2), other = entry('sofa', 4, 2);
+  const record = { walls: [[5, 0, 5, 9]], items: [chair, other] };
+  assert.equal(pushFits(record, pushModels, chair, { u: 2.8, v: 2 }, everywhere), true);
+  assert.equal(pushFits(record, pushModels, chair, { u: 3.5, v: 2 }, everywhere), false, 'the sofa');
+  assert.equal(pushFits(record, pushModels, entry('chair', 6, 7), { u: 5, v: 7 }, everywhere), false, 'the wall');
+  assert.equal(pushFits(record, pushModels, chair, { u: 2.8, v: 2 }, (u) => u < 2.5), false, 'the outside wall');
+  assert.equal(pushFits(record, pushModels, chair, { u: 2.8, v: 2 }, everywhere, { clear: [2.5, 1, 3.5, 3] }), false, 'the stairs');
+});
+
+test('a pushed thing stays pushed, and keeps what has happened to it', () => {
+  const chair = entry('chair', 2, 2), record = { walls: [], items: [chair, entry('sofa', 8, 8)] }, plan = {};
+  const after = pushThing(record, plan, 1, chair, { u: 2.8, v: 2 });
+  assert.equal(after.items[0][2], 2.8);
+  const again = withoutTaken(record, plan, 1);
+  assert.equal(again.items[0][2], 2.8, 'as the floor is read again');
+  const further = pushThing(again, plan, 1, again.items[0], { u: 3.6, v: 2 });
+  assert.equal(withoutTaken(record, plan, 1).items[0][2], 3.6);
+  assert.equal(further.items[1][0], 'sofa');
+  useThing(further.items[0], plan, 1, 'b');
+  plan.state[1].taken.push(further.items[0][8]);
+  assert.equal(withoutTaken(record, plan, 1).items.length, 1, 'taken, wherever it had got to');
+});
+
+test('pushing and driving are offered, and say so', () => {
+  assert.deepEqual(questionsFor(entry('chair')).map((q) => q.label), ['Sit on the chair?', 'Push the chair?']);
+  assert.equal(questionsFor(entry('forklift'))[0].label, 'Drive the forklift?');
+  const chairPush = useThing(entry('chair'), {}, 1, 'b', true), lift = useThing(entry('forklift'), {}, 1, 'b');
+  assert.ok(chairPush.push > 0 && chairPush.say && chairPush.stuck);
+  assert.ok(lift.push > chairPush.push);
+  assert.ok(useThing(entry('barrierGate'), {}, 1, 'b').say);
+  assert.ok(useThing(entry('till'), {}, 1, 'b').say);
 });

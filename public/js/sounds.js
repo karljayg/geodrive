@@ -126,6 +126,7 @@ export function useSound(item, action, result) {
   }
   if (action === 'switch') return SWITCHED[item] || 'click';
   if (action === 'write') return 'scribble';
+  if (action === 'move' || action === 'drive') return 'drop';
   if (result.empty) return 'ack';   // a machine with nothing left
   if (result.dry) return 'dryTap';
   return USED[item] || 'ack';

@@ -123,13 +123,13 @@ export const GAME = {
     box: ['Old newspapers', 'Packing tape', 'Holiday lights'], bin: ['Crumpled receipt', 'Empty can'], cashCart: ['Bundle of cash'], toolChest: ['Wrench', 'Screwdriver', 'Tape measure', 'Building key'], medCart: ['Bandages', 'Thermometer'],
     storeShelf: ['Tin of beans', 'Bottle of water', 'Pack of batteries', 'Bag of chips', 'Instant noodles', 'Can of soup', 'Box of cereal', 'Granola bar', 'Peanut butter'], clothesRack: ['Denim jacket', 'Silk scarf'], displayTable: ['Gift card', 'Sunglasses'], displayCase: ['Old coin', 'Museum guide'],
     palletRack: ['Box of parts', 'Roll of tape'], bookStack: ['Library book', 'Old atlas'], gearRack: ['Fire helmet', 'Gloves'], walkInFridge: ['Tray of steaks', 'Crate of milk', 'Cheese', 'Bowl of soup', 'Chicken wrap'], toyBox: ['Toy car', 'Teddy bear'],
-    produceStand: ['Apple', 'Banana', 'Orange', 'Grapes'], fridgeCase: ['Sandwich', 'Cold drink', 'Yogurt', 'Energy drink', 'Juice box', 'Cheese'], breadRack: ['Fresh loaf', 'Croissant', 'Muffin', 'Donut', 'Bread roll', 'Slice of cake'], petCage: ['Dog biscuit'],
+till: ['Cash', 'Bundle of cash'], produceStand: ['Apple', 'Banana', 'Orange', 'Grapes'], fridgeCase: ['Sandwich', 'Cold drink', 'Yogurt', 'Energy drink', 'Juice box', 'Cheese'], breadRack: ['Fresh loaf', 'Croissant', 'Muffin', 'Donut', 'Bread roll', 'Slice of cake'], petCage: ['Dog biscuit'],
     barCounter: ['Burger', 'Fries', 'Slice of pizza', 'Chicken wrap', 'Glass of water', 'Cold soda'], prepTable: ['Burger', 'Chicken wrap', 'Bowl of soup', 'Bread roll', 'Fries'], diningTable: ['Half a burger', 'Fries', 'Bread roll', 'Glass of water'],
   },
   // The chance of finding anything at all, so food is never a sure thing. Each spot is decided once and stays that way for that building.
   findChance: {
     default: 0.7,
-    fridge: 0.55, counter: 0.4, walkInFridge: 0.7, medCart: 0.4, bathCabinet: 0.4, sideTable: 0.4, desk: 0.3, barCounter: 0.5, prepTable: 0.55,
+    till: 0.25, fridge: 0.55, counter: 0.4, walkInFridge: 0.7, medCart: 0.4, bathCabinet: 0.4, sideTable: 0.4, desk: 0.3, barCounter: 0.5, prepTable: 0.55,
     storeShelf: 0.15, fridgeCase: 0.3, produceStand: 0.3, breadRack: 0.4, diningTable: 0.12, // shops have many of these: a big supermarket has about 190 shelves, and a restaurant a dozen tables
   },
 
@@ -158,6 +158,9 @@ export const GAME = {
     mostPerFloor: 6,
     workingChance: 0.55,      // of an outlet having power, decided once
   },
+
+  // Shoving things around rooms.
+  push: { step: 0.8, driveStep: 2 }, // m a push moves a thing, and a go on a forklift
 
   // Things dropped, which stay where they're left.
   drops: {

@@ -1,14 +1,15 @@
 // What a person can do with the things in a room: which is in reach, what F does to it, and what's found inside. Pure, tested in node.
 // What has happened is kept in the building's plan by floor, not in the saved layout, so a layout can be redone without losing it.
 import { dice, hashText } from './buildings.js';
-import { ITEMS } from './furniture.js';
+import { ITEMS, isSolid } from './furniture.js';
 import { GAME } from './gameConfig.js';
 import { say as line } from './sayings.js';
 import { SAYINGS } from './sayingsConfig.js';
 import { useSound } from './sounds.js';
 
 const REACH = 1.2;       // m from a thing's edge that it can be used
-const DONE = new Set(['sit', 'sleep', 'open', 'search', 'pick up', 'use', 'switch', 'write']);
+const DONE = new Set(['sit', 'sleep', 'open', 'search', 'pick up', 'use', 'switch', 'write', 'move', 'drive']);
+const WALL_HALF = 0.06; // m, half a wall's thickness
 const NOT_USED_HERE = new Set(['stairs', 'stairwell', 'lift']); // L does those
 export const SWITCH_REACH = 1.5; // m from a light switch that it can be used
 export const BUILDING_KEY = 'Building key'; // turns on a light switch that needs one
@@ -26,6 +27,7 @@ const nameOf = (item) => NAMES[item] || item.replace(/[A-Z]/g, (c) => ` ${c.toLo
 
 // What using something says. A thing can also give something, as a cash machine gives cash.
 const USES = {
+  barrierGate: { say: 'barrierGate' }, till: { say: 'tillUse' },
   atm: { say: 'The cash machine gives you some cash.', give: 'Cash' }, vendingMachine: {}, coffeeMachine: {},
   sink: { say: 'washHands' }, basin: { say: 'washHands' }, toilet: { say: 'That\'s better.' }, stall: { say: 'That\'s better.' }, bath: { say: 'You run the water for a moment.' }, stove: { say: 'The ring clicks on and off.' },
   proStove: { say: 'The burners roar, then you turn them off.' }, microwave: { say: 'It hums and beeps.' }, toaster: { say: 'Pop.' }, washer: { say: 'It rumbles through a cycle.' }, screen: { say: 'It asks for a password.' },
@@ -36,13 +38,54 @@ const USES = {
 };
 const SWITCHES = { tv: 'The TV flickers on and off.', radio: 'A burst of music, and you turn it off.', tableLamp: 'Click. Click.', floorLamp: 'Click. Click.', surgeryLamp: 'It blazes, and you turn it off.', speakerStand: 'A burst of static.' };
 
-const key = (entry) => `${entry[0]}|${entry[2]}|${entry[3]}`;
+// A thing's name for its state, where it started out even after being pushed, which is the ninth value of its entry.
+const key = (entry) => entry[8] ?? `${entry[0]}|${entry[2]}|${entry[3]}`;
 const stateOf = (plan, floor) => ((plan.state ||= {})[floor] ||= { taken: [], opened: [] });
 
 // A floor as the person has left it: without what they've picked up.
 export function withoutTaken(record, plan, floor) {
-  const taken = plan.state?.[floor]?.taken;
-  return taken?.length ? { ...record, items: record.items.filter((entry) => !taken.includes(key(entry))) } : record;
+  const taken = plan.state?.[floor]?.taken, moved = plan.state?.[floor]?.moved;
+  if (!taken?.length && !moved) return record;
+  const items = record.items.filter((entry) => !taken?.includes(key(entry))).map((entry) => {
+    const to = moved?.[key(entry)];
+    return to ? pushedEntry(entry, to[0], to[1]) : entry;
+  });
+  return { ...record, items };
+}
+
+const pushedEntry = (entry, u, v) => { const copy = [...entry]; copy[2] = u; copy[3] = v; copy[8] = key(entry); return copy; };
+
+const halfSizes = (model, rot) => (Math.round(rot / 90) % 2 === 0 ? [model.w / 2, model.d / 2] : [model.d / 2, model.w / 2]);
+
+// Where a push takes a thing: straight along the room, away from the person, whichever way is most nearly away.
+export function pushTarget(entry, u, v, step) {
+  const du = entry[2] - u, dv = entry[3] - v;
+  return Math.abs(du) >= Math.abs(dv) ? { u: entry[2] + Math.sign(du || 1) * step, v: entry[3] } : { u: entry[2], v: entry[3] + Math.sign(dv || 1) * step };
+}
+
+// Whether a thing fits there: inside the building by inBuilding(u, v), clear of walls, of other solid things and of the way to the stairs.
+export function pushFits(record, models, entry, to, inBuilding, core) {
+  const [hu, hv] = halfSizes(models[entry[1]], entry[5]), u0 = to.u - hu, u1 = to.u + hu, v0 = to.v - hv, v1 = to.v + hv;
+  if (![[u0, v0], [u1, v0], [u1, v1], [u0, v1], [to.u, to.v]].every(([u, v]) => inBuilding(u, v))) return false;
+  const overlaps = (a0, b0, a1, b1) => a0 < u1 && a1 > u0 && b0 < v1 && b1 > v0;
+  for (const [a, b, c, d] of record.walls) {
+    if (overlaps(Math.min(a, c) - WALL_HALF, Math.min(b, d) - WALL_HALF, Math.max(a, c) + WALL_HALF, Math.max(b, d) + WALL_HALF)) return false;
+  }
+  if (core?.clear && overlaps(core.clear[0], core.clear[1], core.clear[2], core.clear[3])) return false;
+  return !record.items.some((other) => {
+    const model = models[other[1]];
+    if (other === entry || !model || !isSolid(other[0])) return false;
+    const [ou, ov] = halfSizes(model, other[5]);
+    return overlaps(other[2] - ou, other[3] - ov, other[2] + ou, other[3] + ov);
+  });
+}
+
+// Moves it, and keeps that with the building. Returns the record as it now is.
+export function pushThing(record, plan, floor, entry, to) {
+  const state = stateOf(plan, floor);
+  (state.moved ||= {})[key(entry)] = [to.u, to.v];
+  const moved = pushedEntry(entry, to.u, to.v);
+  return { ...record, items: record.items.map((other) => (other === entry ? moved : other)) };
 }
 
 // Where a floor's light switches are, in the frame: on the wall beside each front door and each gap left for a door, and for a floor with no front door, by the stairs.
@@ -160,7 +203,7 @@ export const lookLine = (item) => (SAYINGS[`look_${item}`] ? line(`look_${item}`
 
 export const usableNear = (record, frame, models, x, y, facing) => thingsNear(record, frame, models, x, y, facing)[0] || null;
 
-const VERB = { sit: 'sit', sleep: 'sleep', open: 'open', search: 'search', 'pick up': 'pick up', use: 'use', switch: 'switch on', write: 'write on' };
+const VERB = { sit: 'sit', sleep: 'sleep', open: 'open', search: 'search', 'pick up': 'pick up', use: 'use', switch: 'switch on', write: 'write on', move: 'push', drive: 'drive' };
 
 // What a thing offers, as questions to confirm: its one or two uses. second says which to ask useThing for.
 export function questionsFor(entry) {
@@ -211,6 +254,7 @@ function doThing(entry, action, plan, floor, buildingId) {
     const found = finds[Math.floor(roll() * finds.length)];
     return { give: found, say: line('foundIn', { name, found: found.toLowerCase() }) };
   }
+  if (action === 'move' || action === 'drive') return { push: action === 'drive' ? GAME.push.driveStep : GAME.push.step, say: line(action === 'drive' ? 'droveIt' : 'pushed', { name }), stuck: line('pushStuck', { name }) };
   if (action === 'switch') return { say: SWITCHES[item] };
   if (action === 'write') return { say: 'You doodle on it and wipe it off.' };
   const machine = GAME.machines[item];

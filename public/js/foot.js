@@ -7,7 +7,7 @@ import { tintAt } from './daylight.js';
 import { FootGl, bearing, lookAt, multiply, perspective, swing, translate } from './footGl.js';
 import { Place, fromLocal, parseTile, toLocal } from './footData.js';
 import { SIT_FRAME, personFloats } from './footPerson.js';
-import { SWITCH_REACH, outletSpots, switchNeedsKey, switchSpots, useSwitch, poseSpot, coreQuestions, modelNamed, inertNear, lookLine, questionsFor, thingsNear, uniqueChoices, useThing, withoutTaken } from './footActions.js';
+import { SWITCH_REACH, outletSpots, switchNeedsKey, switchSpots, useSwitch, poseSpot, coreQuestions, modelNamed, inertNear, lookLine, pushFits, pushTarget, pushThing, questionsFor, thingsNear, uniqueChoices, useThing, withoutTaken } from './footActions.js';
 import { CORE_SCHEME, roomMesh } from './footScene.js';
 import { FURNISHED, colourFor, coreNear, coreOf, frameOf as buildingFrame, layoutFloor, plainFloor, solidsOf, upgradeFloor, worldBearing } from './furnish.js';
 import { parseFurniture } from './furniture.js';
@@ -15,6 +15,7 @@ import { buildingWithin, byOutsideWall, carWalls, distanceToCar, enterBuilding, 
 import { parcelParts, thingParts } from './drops.js';
 import { GAME } from './gameConfig.js';
 import { say } from './sayings.js';
+import { SAYINGS } from './sayingsConfig.js';
 import { footfall, stepSound } from './sounds.js';
 import { Overture } from './overture.js';
 import { TORCHES, lightMap, sunAt, windowsOn } from './roomLight.js';
@@ -356,7 +357,7 @@ export class Foot {
     }
     if (!building) {
       const near = buildingWithin(this.walker, this.world);
-      if (near) list.push({ label: near.building.plan && isLocked(near.building.plan) ? 'Try the door?' : 'Go inside?', run: () => this.goInside() });
+      if (near) list.push({ label: near.building.plan && !isLocked(near.building.plan) ? 'Go inside?' : 'Try the door?', run: () => this.goInside() });
       return uniqueChoices(list);
     }
     const out = { label: 'Go outside?', run: () => { this.goOutside(); return ''; } };
@@ -372,6 +373,10 @@ export class Foot {
 
   // What the nearest thing with no use is, for F to say. Null if there's nothing.
   lookHere() {
+    if (!this.walker.inside) {
+      const { kind, name } = this.place.whatsAround(this.walker.x, this.walker.y);
+      return kind === 'land' ? say(SAYINGS[`lookLand_${name}`] ? `lookLand_${name}` : 'lookGround') : say(`look_${kind}`, { name });
+    }
     const building = this.walker.inside, record = this.room?.furnishing?.record;
     if (!building?.plan || !record || !furniture) return null;
     const entry = inertNear(record, buildingFrame(building.pieces, record.axis), furniture.models, this.walker.x, this.walker.y);
@@ -408,6 +413,7 @@ export class Foot {
       this.onSound?.(result.sound);
       return this.takePose(entry, result);
     }
+    if (result.push) return this.pushEntry(entry, result);
     if (result.effect) this.onUsed?.(result.effect, result.count);
     if (result.give && this.onFound && !this.onFound(result.give)) {
       if (result.taken) plan.state[this.level].taken.pop();
@@ -420,6 +426,22 @@ export class Foot {
       furnishing.record = { ...furnishing.record, items: furnishing.record.items.filter((other) => other !== gone) };
       this.room.stale = true;
     }
+    saved.saveIndex();
+    return result.say;
+  }
+
+  // Away from the person, if there's room for it there.
+  pushEntry(entry, result) {
+    const building = this.walker.inside, { furnishing } = this.room, record = furnishing.record, frame = buildingFrame(building.pieces, record.axis);
+    const { u, v } = frame.toFrame(this.walker.x, this.walker.y), to = pushTarget(entry, u, v, result.push);
+    const inBuilding = (pu, pv) => { const p = frame.toWorld(pu, pv); return this.place.footprintAt(p.x, p.y) === building; };
+    if (!pushFits(record, furniture.models, entry, to, inBuilding, building.plan.core)) {
+      this.onSound?.('ack');
+      return result.stuck;
+    }
+    furnishing.record = pushThing(record, building.plan, this.level, entry, to);
+    this.room.stale = true;
+    this.onSound?.(result.sound);
     saved.saveIndex();
     return result.say;
   }

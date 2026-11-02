@@ -332,3 +332,19 @@ test('someone inside is by an outside wall only close to one', async () => {
   assert.equal(byOutsideWall({ x: 10, y: 15, inside: building }, world), false);
   assert.equal(byOutsideWall({ x: 10, y: 0.5, inside: null }, world), false);
 });
+
+test('outdoors F can tell a road, a named place, the land and the water apart', async () => {
+  const { Place } = await import('../public/js/footData.js');
+  const square = (x0, y0, x1, y1) => [[{ x: x0, y: y0 }, { x: x1, y: y0 }, { x: x1, y: y1 }, { x: x0, y: y1 }]];
+  const place = new Place({ lat: 39, lng: -77 });
+  place.addTile('t', {
+    buildings: [], waters: [{ rings: square(40, 0, 50, 10), minX: 40, maxX: 50, minY: 0, maxY: 10 }],
+    lands: [{ rings: square(0, 0, 30, 30), name: 'grass', rank: 2, minX: 0, maxX: 30, minY: 0, maxY: 30 }],
+    roads: [{ line: [{ x: 0, y: -20 }, { x: 30, y: -20 }], width: 6 }], pois: [{ x: 25, y: 25, name: 'Corner Shop' }],
+  });
+  assert.equal(place.whatsAround(45, 5).kind, 'water');
+  assert.equal(place.whatsAround(10, -20).kind, 'road');
+  assert.deepEqual(place.whatsAround(24, 24), { kind: 'place', name: 'Corner Shop' });
+  assert.deepEqual(place.whatsAround(5, 5), { kind: 'land', name: 'grass' });
+  assert.equal(place.whatsAround(100, 100).name, undefined);
+});
