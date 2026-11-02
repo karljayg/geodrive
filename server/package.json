@@ -1,0 +1,16 @@
+{
+  "name": "geodrive-server",
+  "private": true,
+  "type": "module",
+  "description": "The world server: holds shared worlds and passes messages between their players. The game itself has no packages. See docs/MODE2_DESIGN.md.",
+  "scripts": {
+    "start": "node main.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "better-sqlite3": "^12.2.0",
+    "ws": "^8.18.0"
+  }
+}

@@ -1,0 +1,24 @@
+# GeoDrive's world server. Installed by scripts/install-server.sh. Its own user and its own copy of Node, so it and Agecraft can't touch each other.
+[Unit]
+Description=GeoDrive world server
+After=network.target
+
+[Service]
+Type=simple
+User=geodrive
+Group=geodrive
+WorkingDirectory=/opt/geodrive/server
+Environment=GEODRIVE_CONFIG=/etc/geodrive/config.json
+ExecStart=/opt/geodrive/node /opt/geodrive/server/main.mjs
+Restart=on-failure
+RestartSec=3
+# It may only write its worlds, and can't crowd out Agecraft on the same machine.
+MemoryMax=400M
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/geodrive
+
+[Install]
+WantedBy=multi-user.target

@@ -1,6 +1,6 @@
 # Shared worlds: plan
 
-Status: stage 0 built and measured on the owner's machine. Nothing shared exists yet. Written 2026-11-02. Numbers marked "measured" were tested on the code and server as they stood that day.
+Status: stage 0 built and measured on the owner's machine. Stage 1's world server is built and installed on the live server (2026-11-02), and the game's side isn't built yet, so nothing shared is playable. Written 2026-11-02. Numbers marked "measured" were tested on the code and server as they stood that day.
 
 ## The idea
 Today every browser is its own world. This adds worlds that several people play in together, reached by invite. The invite replaces the Share button (`J`) and its link.

@@ -1,6 +1,6 @@
 # GeoDrive
 
-Drive a car over Google's photorealistic 3D map around any address, starting by default at Dulles, Virginia. Static site; its only server code is `log.php`, which saves performance logs, `nowplaying.php`, which reads song titles, and `places.php`, which keeps copies of Overture's place data. Live at https://www.psistorm.com/geodrive/.
+Drive a car over Google's photorealistic 3D map around any address, starting by default at Dulles, Virginia. Static site, plus a world server for shared worlds (`server/`, see below). Its other server code is `log.php`, which saves performance logs, `nowplaying.php`, which reads song titles, and `places.php`, which keeps copies of Overture's place data. Live at https://www.psistorm.com/geodrive/.
 
 See `docs/FEATURES.md` for what the game does and `docs/TECH_STACK.md` for how it's built. Update them when behaviour changes. `docs/SHARED_WORLD.md` is the plan for private and universal worlds; only its stage 0 is built, and nothing is shared yet.
 
@@ -18,6 +18,7 @@ Deploy with `npm run deploy` when a change is done, without being asked, so the 
 - Files: `/var/www/html/psistorm/geodrive`, served by the existing psistorm.com vhost.
 - Overture's data, as asked for: `/var/www/html/psistorm/geodrive-cache`, made by `deploy.sh` and closed to the web, up to 3 GB.
 - Logs: `/var/www/html/psistorm/geodrive-logs`, beside the deployed folder because rsync `--delete` empties that one. `deploy.sh` creates it and closes it to the web. `public/log.php` writes there and refuses more than 200 MB in all.
+- World server: installed 2026-11-02, at `wss://www.psistorm.com/geodrive/ws`. `scripts/install-server.sh` installed it: the `geodrive` user and service on `127.0.0.1:5175`, code in `/opt/geodrive` with its own Node, worlds in `/var/lib/geodrive/worlds`, config and save key in `/etc/geodrive/config.json`, never in this repo, and `/etc/httpd/conf.d/geodrive-proxy.conf`. If the key is lost, save files are unreadable. `npm run deploy` updates it (`scripts/update-server.sh`) and restarts it only when `server/`, `protocol.js` or `gameConfig.js` changed, which cuts everyone off for a moment. Packages rebuild, about a minute of compiling, only when `package-lock.json` changes.
 - Agecraft shares this server (`/agecraft`, `/agecraft3d`, ports 5173/5174). Leave those alone.
 
 ## API key
@@ -95,6 +96,7 @@ The header, nav screen and tab title show the current town (`refreshTown`: a bil
 - `public/js/terrain.js`: ground height from free terrain tiles. Pure apart from loading a tile, tested.
 - `public/js/physics.js`: bicycle-model car. Pure, tested. Tune `CAR` here.
 - `public/js/camera.js`: geo and camera maths. Pure, tested.
+- `public/js/protocol.js`: what the browser and world server say to each other, used by both: places in 24 bytes, name and look rules, the clock, reading a chat line. Pure, tested. `server/`: the world server. `room.mjs` is one open world and `store.mjs` its SQLite file, and it has the only npm packages in the project (`ws`, `better-sqlite3`). Tested with real connections in `test/server.test.mjs`.
 - `public/js/world.js`: which world this page is in, where its saves live and what it allows (`world.rules`). Nothing else reads saved game data or asks which mode it's in. The sandbox uses the old keys; `?world=walktest` is a practice world with its own, starting on foot with no car. Pure apart from loading the buildings, tested.
 - `public/js/crowdTest.js`: a full world's worth of other players on the real map, from the console with `__geodrive.crowdTest()`. Loaded only when run.
 - `public/js/session.js`: `TripStore`, the trip and route saved for a refresh, one per world. Pure, tested.

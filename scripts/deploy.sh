@@ -16,4 +16,13 @@ SSH=(ssh -i "$KEY" -o BatchMode=yes -o ConnectTimeout=15)
 rsync -rlt --delete --exclude '.DS_Store' --exclude 'config.example.json' --exclude '_*.html' -e "ssh -i '$KEY' -o BatchMode=yes" "$HERE/public/" "$HOST:$REMOTE/"
 # rsync from the Mac can copy restrictive modes, and the apache user has to be able to read everything.
 "${SSH[@]}" "$HOST" "find '$REMOTE' -type d -exec chmod 755 {} + ; find '$REMOTE' -type f -exec chmod 644 {} +"
+# The world server, once scripts/install-server.sh has put it there. It only restarts if its code changed, as everyone playing is cut off for a moment and reconnects.
+if "${SSH[@]}" "$HOST" "test -d /opt/geodrive/server"; then
+  RSYNC=(rsync -rlti --delete --checksum -e "ssh -i '$KEY' -o BatchMode=yes")
+  changed=$("${RSYNC[@]}" --exclude node_modules --exclude .DS_Store "$HERE/server/" "$HOST:/opt/geodrive/server/"; "${RSYNC[@]}" "$HERE/public/js/protocol.js" "$HERE/public/js/gameConfig.js" "$HOST:/opt/geodrive/public/js/")
+  if [ -n "$changed" ]; then
+    "${SSH[@]}" "$HOST" "bash -s" < "$HERE/scripts/update-server.sh"
+    echo "World server updated and restarted."
+  fi
+fi
 echo "Deployed: https://www.psistorm.com/geodrive/"
