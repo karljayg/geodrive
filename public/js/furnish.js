@@ -26,6 +26,13 @@ const TOILETS = ['toilets', 14], STOCK = ['stock', 16], DESKS = ['openPlan', 60]
 // For each type: the zones of a ground floor, then of those above, in order of need. first: how many it always tries. then: repeated
 // for as long as there's room, which is how a big floor gets more of them. A type with one list has it on every floor.
 const TYPE_ZONES = {
+  fireStation: { ground: [['engineBay', 90], ['gearRoom', 18], BREAK], upper: [['bunkRoom', 30], BREAK, TOILETS] },
+  police: { ground: [['policeFront', 30], ['cells', 30], OFFICE, TOILETS], upper: [DESKS, MEETING, TOILETS], then: [OFFICE, ['records', 18], ['cells', 30]] },
+  postOffice: { ground: [['postCounter', 40], ['sorting', 30]], upper: [['sorting', 40]] },
+  communityCentre: { ground: [['eventHall', 80], ['lobby', 25], BREAK, TOILETS], upper: [MEETING, OFFICE], then: [MEETING, ['eventHall', 60]] },
+  library: { ground: [['stacks', 90], ['lobby', 22], TOILETS], upper: [['stacks', 90], ['readingRoom', 40]], then: [['stacks', 90], ['readingRoom', 40]] },
+  kindergarten: { ground: [['playRoom', 45], ['playRoom', 45], ['schoolOffice', 14], TOILETS], then: [['playRoom', 45]] },
+  dorm: { ground: [['lobby', 25], ['laundry', 12], ['lounge', 40], TOILETS], upper: [['dormRoom', 20], ['dormRoom', 20], ['bathroom', 12]], then: [['dormRoom', 20], ['dormRoom', 20], ['bathroom', 12]] },
   shed: { ground: [['workshop', 20]] },
   parking: { ground: [['parkingDeck', 40]] }, // for one too small for lanes; otherwise see parkingFloor
   apartments: { ground: [['lobby', 30], ['laundry', 12], ['gym', 30]], upper: [['living', 28], ['kitchen', 15], ['bathroom', 6], ['bedroom', BEDROOM]], then: [['living', 24], ['kitchen', 12], ['bathroom', 6], ['bedroom', BEDROOM]] },
@@ -38,7 +45,12 @@ const TYPE_ZONES = {
   supermarket: { ground: [['aisles', 300], STOCK], upper: [STOCK], then: [['aisles', 300]] },
   mall: { ground: [['salesFloor', 200], ['foodCourt', 300], TOILETS], then: [['salesFloor', 200], ['salesFloor', 300], STOCK] },
   school: { ground: [['classroom', 55], ['cafeteria', 120], ['schoolOffice', 20], TOILETS], upper: [['classroom', 55], ['classroom', 55], TOILETS], then: [['classroom', 55]] },
-  hospital: { ground: [['hospitalWaiting', 60], ['ward', 50], TOILETS], upper: [['ward', 50], ['ward', 50], TOILETS], then: [['ward', 50], OFFICE] },
+  hospital: { ground: [['hospitalWaiting', 60], ['examRoom', 16], ['examRoom', 16], ['scanRoom', 25], TOILETS], upper: [['ward', 50], ['nurseStation', 18], ['operatingRoom', 35], TOILETS], then: [['ward', 50], ['examRoom', 16], ['operatingRoom', 35], OFFICE] },
+  clinic: { ground: [['clinicWaiting', 25], ['examRoom', 14], TOILETS], upper: [['examRoom', 14], ['examRoom', 14]], then: [['examRoom', 14], OFFICE] },
+  vet: { ground: [['clinicWaiting', 22], ['examRoom', 14], ['kennels', 18]], then: [['examRoom', 14]] },
+  pharmacy: { ground: [['pharmacyFloor', 60], STOCK], upper: [STOCK] },
+  salon: { ground: [['salonFloor', 45], STOCK], upper: [['salonFloor', 45]] },
+  nursingHome: { ground: [['lobby', 30], ['lounge', 50], ['restaurantDining', 50], ['restaurantKitchen', 22], TOILETS], upper: [['careRoom', 20], ['careRoom', 20], ['nurseStation', 16], TOILETS], then: [['careRoom', 20]] },
   worship: { ground: [['worshipHall', 120]], upper: [['worshipHall', 80]] },
   museum: { ground: [['gallery', 120], TOILETS], upper: [['gallery', 120]], then: [['gallery', 150]] },
   warehouse: { ground: [['racking', 300], ['workshop', 25]], then: [['racking', 400]] },
@@ -52,6 +64,7 @@ const MOST_SOLIDS = 200;   // things on a floor that stop you, which is also wha
 const CHECK_BUDGET = 4e6; // grid cells a floor may look at to check nothing is shut off, which is what bounds how long it takes
 const WINDOW = 45;         // m from the centre that a huge floor is furnished; past that it's an open hall, for now
 const ROOM_WIDTH = {
+  engineBay: 8, eventHall: 7, stacks: 5, readingRoom: 4, playRoom: 4, cells: 3.5, bunkRoom: 4, dormRoom: 3,
   living: 3, bedroom: 2.8, dining: 2.8, kitchen: 2.5, hotelRoom: 3, openPlan: 4, meeting: 3, privateOffice: 2.5, breakRoom: 2.5, bankHall: 5, vault: 3, restaurantDining: 4, restaurantKitchen: 3, cafe: 3.5,
   salesFloor: 3.5, aisles: 6, foodCourt: 6, classroom: 5, cafeteria: 5, hospitalWaiting: 4, ward: 4, worshipHall: 6, gallery: 5, racking: 7, machines: 6, hangarBay: 12, checkIn: 6, gates: 6, lobby: 4, gym: 4,
 }; // m a room needs for what must go in it
@@ -87,6 +100,183 @@ const RECIPES = {
     { item: 'bin', at: 'wall' },
   ],
   corridor: [],
+  engineBay: [
+    { item: 'fireEngine', at: 'rows', count: 3, must: true, aisle: 1.6, gap: 1.8, along: false },
+    { item: 'gearRack', at: 'wall', must: true },
+    { item: 'toolChest', at: 'wall', must: true },
+    { item: 'workbench', at: 'wall' },
+    { item: 'pallet', at: 'wall' },
+  ],
+  gearRoom: [
+    { item: 'gearRack', at: 'wall', must: true },
+    { item: 'gearRack', at: 'wall', must: true },
+    { item: 'locker', at: 'wall', must: true },
+    { item: 'bench', at: 'wall' },
+    { item: 'box', at: 'wall', loose: true },
+  ],
+  bunkRoom: [
+    { item: 'bunk', at: 'rows', count: 6, must: true, aisle: 1.2, gap: 0.8 },
+    { item: 'locker', at: 'wall', must: true },
+    { item: 'locker', at: 'wall' },
+    { item: 'bench', at: 'wall' },
+  ],
+  policeFront: [
+    { item: 'frontDesk', at: 'wall', name: 'desk', must: true },
+    { item: 'screen', at: 'on', of: 'desk', must: true },
+    { item: 'deskChair', at: 'front', of: 'desk', must: true, loose: true },
+    { item: 'seatRow', at: 'wall', must: true },
+    { item: 'noticeBoard', at: 'wall', must: true },
+    { item: 'filingCabinet', at: 'wall' },
+    { item: 'plant', at: 'wall', loose: true },
+  ],
+  cells: [
+    { item: 'policeCell', at: 'wall', name: 'cell', must: true },
+    { item: 'policeCell', at: 'beside', of: 'cell', name: 'cell', must: true },
+    { item: 'policeCell', at: 'beside', of: 'cell', name: 'cell' },
+    { item: 'chair', at: 'wall', loose: true },
+  ],
+  postCounter: [
+    { item: 'tellerCounter', at: 'wall', name: 'counter', must: true },
+    { item: 'scales', at: 'on', of: 'counter', must: true },
+    { item: 'mailboxes', at: 'wall', must: true },
+    { item: 'mailboxes', at: 'wall' },
+    { item: 'queueRope', at: 'front', of: 'counter' },
+    { item: 'noticeBoard', at: 'wall' },
+    { item: 'bench', at: 'wall' },
+  ],
+  sorting: [
+    { item: 'storeShelf', at: 'rows', count: 8, must: true, aisle: 1.6, gap: 0.1 },
+    { item: 'prepTable', at: 'centre', must: true },
+    { item: 'box', at: 'wall', loose: true, must: true },
+    { item: 'box', at: 'wall', loose: true },
+    { item: 'box', at: 'wall', loose: true },
+    { item: 'pallet', at: 'wall' },
+  ],
+  eventHall: [
+    { item: 'stagePlatform', at: 'wall', name: 'stage', must: true },
+    { item: 'seatRow', at: 'rows', towards: 'stage', count: 16, must: true, aisle: 1, gap: 0.3 },
+    { item: 'noticeBoard', at: 'wall' },
+    { item: 'plant', at: 'wall', loose: true },
+  ],
+  stacks: [
+    { item: 'bookStack', at: 'rows', count: 24, must: true, aisle: 1.4, gap: 0.1 },
+    { item: 'frontDesk', at: 'wall', name: 'desk', must: true },
+    { item: 'screen', at: 'on', of: 'desk' },
+    { item: 'bench', at: 'wall' },
+    { item: 'plant', at: 'wall', loose: true },
+  ],
+  readingRoom: [
+    { item: 'diningTable', at: 'rows', count: 8, must: true, aisle: 1.8, gap: 1.2, with: [{ item: 'chair', at: 'around', count: 4 }] },
+    { item: 'bookcase', at: 'wall', must: true },
+    { item: 'bookcase', at: 'wall' },
+    { item: 'armchair', at: 'wall', loose: true },
+    { item: 'floorLamp', at: 'wall' },
+  ],
+  playRoom: [
+    { item: 'rug', at: 'centre', must: true },
+    { item: 'tinyTable', at: 'rows', count: 4, must: true, aisle: 1.2, gap: 1, with: [{ item: 'tinyChair', at: 'around', count: 4 }] },
+    { item: 'toyBox', at: 'wall', must: true, loose: true },
+    { item: 'toyBox', at: 'wall', loose: true },
+    { item: 'locker', at: 'wall', must: true },
+    { item: 'bookcase', at: 'wall' },
+    { item: 'whiteboard', at: 'wall' },
+  ],
+  dormRoom: [
+    { item: 'bunk', at: 'wall', name: 'bed', must: true },
+    { item: 'bed', at: 'wall' },
+    { item: 'desk', at: 'wall', name: 'desk', must: true },
+    { item: 'chair', at: 'front', of: 'desk', face: true, must: true },
+    { item: 'screen', at: 'on', of: 'desk' },
+    { item: 'wardrobe', at: 'wall', must: true },
+    { item: 'box', at: 'wall', loose: true },
+  ],
+  examRoom: [
+    { item: 'examTable', at: 'wall', must: true },
+    { item: 'desk', at: 'wall', name: 'desk', must: true },
+    { item: 'chair', at: 'front', of: 'desk', face: true, must: true },
+    { item: 'screen', at: 'on', of: 'desk' },
+    { item: 'basin', at: 'wall', must: true },
+    { item: 'medCart', at: 'wall', loose: true },
+    { item: 'chair', at: 'wall', loose: true },
+  ],
+  operatingRoom: [
+    { item: 'operatingTable', at: 'centre', name: 'table', must: true },
+    { item: 'surgeryLamp', at: 'beside', of: 'table', must: true },
+    { item: 'medCart', at: 'wall', must: true, loose: true },
+    { item: 'medCart', at: 'wall', loose: true },
+    { item: 'dripStand', at: 'wall', must: true },
+    { item: 'basin', at: 'wall', must: true },
+    { item: 'filingCabinet', at: 'wall' },
+  ],
+  scanRoom: [
+    { item: 'scanner', at: 'wall', must: true },
+    { item: 'desk', at: 'wall', name: 'desk', must: true },
+    { item: 'screen', at: 'on', of: 'desk', must: true },
+    { item: 'chair', at: 'front', of: 'desk', face: true },
+    { item: 'wheelchair', at: 'wall', loose: true },
+  ],
+  nurseStation: [
+    { item: 'frontDesk', at: 'wall', name: 'desk', must: true },
+    { item: 'screen', at: 'on', of: 'desk', must: true },
+    { item: 'deskChair', at: 'front', of: 'desk', must: true, loose: true },
+    { item: 'filingCabinet', at: 'wall', must: true },
+    { item: 'medCart', at: 'wall', loose: true },
+    { item: 'wheelchair', at: 'wall', loose: true },
+  ],
+  clinicWaiting: [
+    { item: 'frontDesk', at: 'wall', name: 'desk', must: true },
+    { item: 'screen', at: 'on', of: 'desk', must: true },
+    { item: 'seatRow', at: 'wall', must: true },
+    { item: 'seatRow', at: 'wall' },
+    { item: 'noticeBoard', at: 'wall' },
+    { item: 'plant', at: 'wall', loose: true },
+    { item: 'coffeeTable', at: 'centre' },
+  ],
+  kennels: [
+    { item: 'petCage', at: 'wall', name: 'cages', must: true },
+    { item: 'petCage', at: 'beside', of: 'cages', name: 'cages', must: true },
+    { item: 'petCage', at: 'beside', of: 'cages', name: 'cages' },
+    { item: 'petCage', at: 'wall' },
+    { item: 'basin', at: 'wall' },
+    { item: 'box', at: 'wall', loose: true },
+  ],
+  pharmacyFloor: [
+    { item: 'frontDesk', at: 'wall', name: 'desk', must: true },
+    { item: 'till', at: 'on', of: 'desk', must: true },
+    { item: 'filingCabinet', at: 'wall', must: true },
+    { item: 'storeShelf', at: 'rows', count: 12, must: true, aisle: 1.5, gap: 0.05 },
+    { item: 'fridgeCase', at: 'wall' },
+    { item: 'seatRow', at: 'wall' },
+  ],
+  salonFloor: [
+    { item: 'frontDesk', at: 'wall', name: 'desk', must: true },
+    { item: 'till', at: 'on', of: 'desk', must: true },
+    { item: 'basin', at: 'wall', must: true },
+    { item: 'salonMirror', at: 'rows', count: 6, must: true, aisle: 1.8, gap: 0.5, with: [{ item: 'salonChair', at: 'front', face: true, gap: 0.3 }] },
+    { item: 'bench', at: 'wall' },
+    { item: 'plant', at: 'wall', loose: true },
+  ],
+  careRoom: [
+    { item: 'hospitalBed', at: 'wall', name: 'bed', must: true },
+    { item: 'nightstand', at: 'beside', of: 'bed', name: 'stand', must: true },
+    { item: 'tableLamp', at: 'on', of: 'stand' },
+    { item: 'armchair', at: 'wall', must: true, loose: true },
+    { item: 'wheelchair', at: 'wall', loose: true },
+    { item: 'wardrobe', at: 'wall' },
+    { item: 'plant', at: 'wall', loose: true },
+  ],
+  lounge: [
+    { item: 'rug', at: 'centre' },
+    { item: 'sofa', at: 'wall', name: 'seat', must: true },
+    { item: 'armchair', at: 'wall', must: true, loose: true },
+    { item: 'armchair', at: 'wall', loose: true },
+    { item: 'tvStand', at: 'wall', name: 'stand', must: true },
+    { item: 'tv', at: 'on', of: 'stand', must: true },
+    { item: 'bookcase', at: 'wall' },
+    { item: 'diningTable', at: 'centre', name: 'table' },
+    { item: 'chair', at: 'around', of: 'table', count: 4 },
+    { item: 'plant', at: 'wall', loose: true },
+  ],
   parkingDeck: [
     { item: 'parkedCar', at: 'wall', must: true },
     { item: 'parkedCar', at: 'wall' },
@@ -249,7 +439,7 @@ const RECIPES = {
   classroom: [
     { item: 'whiteboard', at: 'wall', name: 'board', must: true },
     { item: 'desk', at: 'front', of: 'board', must: true },
-    { item: 'schoolDesk', at: 'rows', count: 24, aisle: 0.9, gap: 0.5, must: true },
+    { item: 'schoolDesk', at: 'rows', towards: 'board', count: 24, aisle: 0.9, gap: 0.5, must: true },
     { item: 'bookcase', at: 'wall' },
     { item: 'locker', at: 'wall' },
     { item: 'bin', at: 'wall' },
@@ -270,19 +460,23 @@ const RECIPES = {
   ],
   hospitalWaiting: [
     { item: 'frontDesk', at: 'wall', name: 'desk', must: true },
-    { item: 'screen', at: 'on', of: 'desk' },
+    { item: 'screen', at: 'on', of: 'desk', must: true },
+    { item: 'deskChair', at: 'front', of: 'desk', must: true, loose: true },
     { item: 'seatRow', at: 'rows', count: 8, must: true, aisle: 1.5, gap: 0.3 },
+    { item: 'wheelchair', at: 'wall', must: true, loose: true },
+    { item: 'noticeBoard', at: 'wall' },
     { item: 'plant', at: 'wall', loose: true },
   ],
   ward: [
-    { item: 'hospitalBed', at: 'rows', count: 8, must: true, aisle: 1.5, gap: 0.9, with: [{ item: 'dripStand', at: 'beside' }] },
+    { item: 'hospitalBed', at: 'rows', count: 8, must: true, aisle: 1.6, gap: 0.9, with: [{ item: 'dripStand', at: 'beside' }, { item: 'medCart', at: 'beside', chance: 0.25 }] },
     { item: 'basin', at: 'wall' },
     { item: 'filingCabinet', at: 'wall' },
     { item: 'chair', at: 'wall', loose: true },
+    { item: 'wheelchair', at: 'wall', loose: true },
   ],
   worshipHall: [
-    { item: 'altar', at: 'wall', must: true },
-    { item: 'pew', at: 'rows', count: 24, must: true, aisle: 0.9, gap: 0.2 },
+    { item: 'altar', at: 'wall', name: 'front', must: true },
+    { item: 'pew', at: 'rows', towards: 'front', count: 24, must: true, aisle: 0.9, gap: 0.2 },
     { item: 'plant', at: 'wall', loose: true },
     { item: 'plant', at: 'wall', loose: true },
     { item: 'sideTable', at: 'wall' },
@@ -419,7 +613,7 @@ const FLOORS = {
   bedroom: ['a79c8e', '8f9aa3', 'b5a795', '9c8d86'],
 };
 const FLOOR_KIND = {
-  corridor: 'office', landing: 'smart', mailroom: 'smart', parkingDeck: 'hard',
+  engineBay: 'hard', gearRoom: 'hard', bunkRoom: 'bedroom', policeFront: 'smart', cells: 'hard', postCounter: 'smart', sorting: 'hard', eventHall: 'room', stacks: 'room', readingRoom: 'bedroom', playRoom: 'bedroom', dormRoom: 'bedroom', corridor: 'office', landing: 'smart', mailroom: 'smart', parkingDeck: 'hard', examRoom: 'wet', operatingRoom: 'wet', scanRoom: 'wet', nurseStation: 'wet', clinicWaiting: 'smart', kennels: 'wet', pharmacyFloor: 'smart', salonFloor: 'smart', careRoom: 'bedroom', lounge: 'room',
   bathroom: 'wet', laundry: 'wet', toilets: 'wet', ward: 'wet', hospitalWaiting: 'wet', kitchen: 'kitchen', breakRoom: 'kitchen', restaurantKitchen: 'kitchen', cafeteria: 'kitchen', bedroom: 'bedroom', hotelRoom: 'bedroom',
   openPlan: 'office', privateOffice: 'office', meeting: 'office', schoolOffice: 'office', records: 'office', classroom: 'office', workshop: 'hard', racking: 'hard', machines: 'hard', hangarBay: 'hard', stock: 'hard', vault: 'hard', gym: 'hard',
   lobby: 'smart', bankHall: 'smart', salesFloor: 'smart', aisles: 'smart', foodCourt: 'smart', checkIn: 'smart', gates: 'smart', gallery: 'smart', worshipHall: 'smart', cafe: 'room', restaurantDining: 'room',
@@ -724,6 +918,7 @@ class Furnisher {
     this.blocked = new Uint8Array(grid.nu * grid.nv);
     this.items = [];
     this.checksLeft = Math.floor(CHECK_BUDGET / (grid.nu * grid.nv));
+    this.stranded = 0;
   }
 
   // The stairs and lift stand where they do on every floor, whatever else that gets in the way of.
@@ -735,15 +930,24 @@ class Furnisher {
       this.blocked = blockCells(grid, this.blocked, box);
       this.items.push([item, name, u, v, 0, rot, -1, 1]);
     }
+    this.stranded = this.strandedBy(this.blocked);
   }
 
-  // Blocks the cells a box stops a person standing in. Null if that would shut off part of the floor.
+  // Grid cells cut off from the main part of the floor. Stairs can leave a pocket behind them, which is no reason to refuse everything after.
+  strandedBy(blocked) {
+    const { grid } = this, { sizes } = flood(grid, blocked);
+    const open = blocked.reduce((n, b, at) => n + (b || !grid.inside[at] ? 0 : 1), 0);
+    return open - Math.max(0, ...sizes);
+  }
+
+  // Blocks the cells a box stops a person standing in. Null if that would shut off more of the floor.
   blockFor(box) {
     if (this.checksLeft-- <= 0) return null; // full enough, for what a first visit should take
     const { grid } = this, blocked = blockCells(grid, this.blocked, box);
-    const { sizes } = flood(grid, blocked);
-    const open = blocked.reduce((n, b, at) => n + (b || !grid.inside[at] ? 0 : 1), 0);
-    return (open - Math.max(0, ...sizes)) * grid.cell * grid.cell > STRANDED ? null : blocked;
+    const stranded = this.strandedBy(blocked);
+    if ((stranded - this.stranded) * grid.cell * grid.cell > STRANDED) return null;
+    this.stranded = stranded;
+    return blocked;
   }
 
   inside(box, room) {
@@ -804,7 +1008,7 @@ class Furnisher {
     } else if (step.at === 'front') {
       const [fu, fv] = FRONT[parent.rot], rot = step.face ? (parent.rot + 180) % 360 : parent.rot, mine = reach(model, rot);
       const out = fu ? parent.size.hu + mine.hu : parent.size.hv + mine.hv;
-      for (const gap of step.face ? [0.02, 0.15] : [0.45, 0.65, 0.3]) yield { u: parent.u + fu * (out + gap), v: parent.v + fv * (out + gap), rot };
+      for (const gap of step.gap ? [step.gap] : step.face ? [0.02, 0.15] : [0.45, 0.65, 0.3]) yield { u: parent.u + fu * (out + gap), v: parent.v + fv * (out + gap), rot };
     } else if (step.at === 'beside') {
       for (const neighbour of parent.chain) {
         const [fu, fv] = FRONT[neighbour.rot], mine = reach(model, neighbour.rot);
@@ -878,11 +1082,13 @@ class Furnisher {
   }
 
   // Many of the same, in lines across the room with aisles between. with: what goes with each, such as a chair with a desk.
-  placeRows(step, room, zoneIndex) {
+  placeRows(step, room, zoneIndex, named = {}) {
     const name = pick(ITEMS[step.item].models, this.roll), model = this.models[name];
     if (!model) return;
-    const along = room.u1 - room.u0 >= room.v1 - room.v0, rot = step.along ? (along ? 0 : 90) : (along ? 90 : 0), { hu, hv } = reach(model, rot);
-    const stepU = hu * 2 + (along ? step.gap ?? 0.3 : step.aisle ?? 1.2), stepV = hv * 2 + (along ? step.aisle ?? 1.2 : step.gap ?? 0.3);
+    const facing = step.towards ? named[step.towards] : null, along = room.u1 - room.u0 >= room.v1 - room.v0;
+    const rot = facing ? (facing.rot + 180) % 360 : step.along ? (along ? 0 : 90) : (along ? 90 : 0), { hu, hv } = reach(model, rot);
+    // Rows facing something run across the way they face, with the aisles between them.
+    const wideU = facing ? rot % 180 === 0 : along, stepU = hu * 2 + (wideU ? step.gap ?? 0.3 : step.aisle ?? 1.2), stepV = hv * 2 + (wideU ? step.aisle ?? 1.2 : step.gap ?? 0.3);
     const margin = 0.5, oppositeEdge = (lo, hi, half) => hi - lo - half * 2 - margin * 2;
     let placed = 0;
     for (let row = 0; row * stepV <= oppositeEdge(room.v0, room.v1, hv); row++) {
@@ -898,10 +1104,11 @@ class Furnisher {
   }
 
   doStep(step, named, room, zoneIndex) {
+    if (step.chance !== undefined && step.of === 'it' && this.roll() > step.chance) return;
     const parent = step.of ? named[step.of] : null;
     if (step.of && !parent) return;
     if (step.at === 'around') return this.placeAround(step, parent, room, zoneIndex);
-    if (step.at === 'rows') return this.placeRows(step, room, zoneIndex);
+    if (step.at === 'rows') return this.placeRows(step, room, zoneIndex, named);
     let placed = null;
     if (step.at === 'on') placed = this.placeOn(step, parent, zoneIndex);
     else {

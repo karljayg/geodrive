@@ -89,23 +89,16 @@ Which types you can go into, and what each still needs. A locked building says "
 
 | Status | Type | Has rooms? | What it needs |
 |---|---|---|---|
-| Locked | Hospital | Basic | Real wards, reception, exam rooms, operating room, nurses' station |
-| Locked | Clinic, dentist, vet | No | Waiting room, reception, exam rooms. Was counted as a hospital |
-| Locked | Pharmacy | No | Shelves, counter. Was counted as a shop |
-| Locked | Hair and beauty salon | No | Chairs, mirrors, basins. Was counted as a shop |
 | Locked | Car dealer or repair shop | No | Cars, lifts, tools. Was counted as a shop |
 | Locked | Gas station | No | Shop, counter, fridges. New type |
-| Locked | Fire station | No | Engine bay, fire engines, bunks. Was counted as an office |
-| Locked | Police station | No | Front desk, offices, cells. Was counted as an office |
-| Locked | Post office | No | Counter, parcels, boxes. Was counted as an office |
-| Locked | Community centre or town hall | No | Hall, chairs, offices. Was counted as an office |
 | Locked | Gym | No | Machines, weights, mats, lockers. New type |
-| Locked | Library | No | Stacks, reading tables, desk. Was counted as a museum |
 | Locked | Cinema | No | Screens, seat rows, ticket desk, snacks. Was counted as a museum |
 | Locked | Theatre | No | Stage, seat rows, foyer. Was counted as a museum |
 | Locked | Stadium | No | Seating, concourse, field. New type |
 | Open, could be better | Lobbies, in offices, hotels and apartments | Better | Now has a desk with a chair, sofa, armchairs, rug, notice board and plants. A lift lobby and signs would help |
 | Open, could be better | Hotel, mall, airport terminal, museum, place of worship, school, supermarket, warehouse, factory, hangar | Basic | Made from boxes and only checked by tests, apart from the school's layout. Walk round them and lock any that disappoint |
+| Open | Fire station, police station, post office, community centre, library, nursery, dormitory | Yes | Done: engine bays and bunks, front desk and cells, counters and sorting, a hall with a stage, book stacks and reading rooms, little tables, shared rooms. Nursery and dormitory are new types |
+| Open | Hospital, clinic, vet, pharmacy, salon, care home | Yes | Done: reception, exam rooms, scanner room, wards with nurses' stations, operating rooms. Clinics and vets are smaller versions, with kennels at the vet |
 | Open | Parking garage | Yes | Done: bays, parked cars, pillars, lanes with arrows, ramps, ticket machines, a barrier on the ground floor. Also found from parking aisles mapped inside a footprint |
 | Open | Apartment building | Yes | Done: corridors, a landing at the stairs, up to 9 flats a floor with front doors, each with a kitchen, bathroom, living room and bedroom. Lobby, mailroom, laundry and gym downstairs. Very large footprints get oversized flats |
 | Open | Home, shed, office, bank, restaurant, café, shop | Yes | Homes and rooms in them are due an adjustment pass |

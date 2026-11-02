@@ -174,13 +174,13 @@ test('only types with rooms can be open, and everything else is locked', () => {
     assert.ok(TYPES[type], type);
     assert.ok(FURNISHED.has(type), `${type} is open with no rooms`);
   }
-  for (const type of ['hospital', 'gasStation', 'clinic', 'police']) assert.equal(isLocked({ type }), true, type);
+  for (const type of ['nothingYet', 'gasStation']) assert.equal(isLocked({ type }), true, type);
   for (const type of ['home', 'apartments', 'parking', 'office', 'bank']) assert.equal(isLocked({ type }), false, type);
   assert.equal(typeName({ type: 'parking' }), 'Parking garage');
 });
 
 test('what is at the door decides: a clinic under offices is locked, and a bank under them is not', () => {
-  assert.equal(isLocked({ type: 'office', ground: 'clinic' }), true);
+  assert.equal(isLocked({ type: 'office', ground: 'nothingYet' }), true);
   assert.equal(typeName({ type: 'office', ground: 'clinic' }), 'Clinic');
   assert.equal(isLocked({ type: 'office', ground: 'bank' }), false);
   const plan = planBuilding(clues({ known: true, height: 60, area: 800, pois: ['clinic'], lands: ['commercial'] }), dice(1));
@@ -195,4 +195,5 @@ test('a parking garage is one even at an airport, unless something else is in th
   assert.equal(poiType({ cls: 'fuel', sub: 'fuel' }), 'gasStation');
   assert.equal(poiType({ cls: 'shop', sub: 'beauty' }), 'salon');
   assert.equal(poiType({ cls: 'hospital', sub: 'clinic' }), 'clinic');
+  assert.equal(poiType({ cls: 'hospital', sub: 'nursing_home' }), 'nursingHome');
 });

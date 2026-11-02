@@ -386,10 +386,11 @@ test('a type with no furniture yet still has its stairs and lift on every floor,
 });
 
 const TYPE_MUST = {
-  parking: 'bayMark', shed: 'workbench', apartments: 'frontDesk', hotel: 'frontDesk', office: 'frontDesk', bank: 'tellerCounter', restaurant: 'diningTable', cafe: 'barCounter', shop: 'clothesRack', supermarket: 'storeShelf',
-  mall: 'barCounter', school: 'schoolDesk', hospital: 'hospitalBed', worship: 'pew', museum: 'displayCase', warehouse: 'palletRack', factory: 'machine', hangar: 'plane', terminal: 'checkInDesk',
+  fireStation: 'fireEngine', police: 'policeCell', postOffice: 'tellerCounter', communityCentre: 'stagePlatform', library: 'bookStack', kindergarten: 'tinyTable', dorm: 'frontDesk',
+  clinic: 'examTable', vet: 'petCage', pharmacy: 'storeShelf', salon: 'salonChair', nursingHome: 'sofa', parking: 'bayMark', shed: 'workbench', apartments: 'frontDesk', hotel: 'frontDesk', office: 'frontDesk', bank: 'tellerCounter', restaurant: 'diningTable', cafe: 'barCounter', shop: 'clothesRack', supermarket: 'storeShelf',
+  mall: 'barCounter', school: 'schoolDesk', hospital: 'frontDesk', worship: 'pew', museum: 'displayCase', warehouse: 'palletRack', factory: 'machine', hangar: 'plane', terminal: 'checkInDesk',
 };
-const typeShape = (type) => ({ parking: rectangle(50, 30), shed: rectangle(6, 5), cafe: rectangle(13, 9), restaurant: rectangle(16, 12), bank: rectangle(16, 14), shop: rectangle(14, 10), apartments: rectangle(24, 16), hotel: rectangle(30, 20), office: rectangle(30, 22) }[type] ?? rectangle(45, 30));
+const typeShape = (type) => ({ fireStation: rectangle(24, 18), police: rectangle(28, 18), postOffice: rectangle(16, 12), communityCentre: rectangle(30, 20), library: rectangle(30, 20), kindergarten: rectangle(24, 14), dorm: rectangle(30, 16), clinic: rectangle(18, 12), vet: rectangle(16, 12), pharmacy: rectangle(16, 11), salon: rectangle(12, 9), nursingHome: rectangle(40, 22), parking: rectangle(50, 30), shed: rectangle(6, 5), cafe: rectangle(13, 9), restaurant: rectangle(16, 12), bank: rectangle(16, 14), shop: rectangle(14, 10), apartments: rectangle(24, 16), hotel: rectangle(30, 20), office: rectangle(30, 22) }[type] ?? rectangle(45, 30));
 const solidsClear = (record, label) => {
   const boxes = record.items.filter(([item]) => isSolid(item) && !['stairs', 'lift', 'stairwell'].includes(item)).map(([item, model, u, v, , rot]) => {
     const m = models[model], q = Math.round(rot / 90) % 2 === 0;
@@ -607,4 +608,34 @@ test('stairs stay clear in a garage, and one too small for lanes still has cars'
   }
   const tiny = layoutFloor([rectangle(9, 8)], { type: 'parking', floors: 1, style: 'cheap' }, 1, models, dice(3));
   assert.ok(tiny.items.some(([item]) => item === 'parkedCar'));
+});
+
+test('a hospital has reception downstairs, and wards, nurses and an operating room in rooms of their own upstairs', () => {
+  const p = rectangle(60, 30);
+  for (let seed = 0; seed < 8; seed++) {
+    const plan = { type: 'hospital', floors: 4, style: 'modern' };
+    plan.core = coreOf([p], plan, models, dice(seed));
+    const down = layoutFloor([p], plan, 1, models, dice(hashText(`hd${seed}`))), up = layoutFloor([p], plan, 2, models, dice(hashText(`hu${seed}`)));
+    const zones = (r) => r.zones.map((z) => z[0]), inZone = (r, zone, item) => r.items.some((i) => i[0] === item && r.zones[i[6]]?.[0] === zone);
+    assert.ok(inZone(down, 'hospitalWaiting', 'frontDesk'), `${seed} reception: ${zones(down)}`);
+    assert.ok(inZone(down, 'examRoom', 'examTable'), `${seed} exam room`);
+    assert.ok(inZone(up, 'operatingRoom', 'operatingTable'), `${seed} operating table: ${zones(up)}`);
+    assert.ok(inZone(up, 'ward', 'hospitalBed'), `${seed} beds`);
+    assert.ok(inZone(up, 'nurseStation', 'frontDesk'), `${seed} nurses`);
+  }
+});
+
+test('a pocket behind the stairs does not stop the rest of the floor being furnished', () => {
+  for (let seed = 0; seed < 12; seed++) {
+    const p = rectangle(24, 14), plan = { type: 'kindergarten', floors: 2, style: 'modern' };
+    plan.core = coreOf([p], plan, models, dice(seed));
+    const record = layoutFloor([p], plan, 1, models, dice(hashText(`pocket${seed}`)));
+    assert.ok(record.items.filter(([item]) => item === 'tinyTable').length >= 2, `seed ${seed}: ${record.items.map((i) => i[0])}`);
+  }
+});
+
+test('no room name means two different things', () => {
+  const source = readFileSync(new URL('../public/js/furnish.js', import.meta.url), 'utf8'), block = source.slice(source.indexOf('const RECIPES = {'), source.indexOf('// A colour for each thing'));
+  const names = [...block.matchAll(/^  (\w+): \[$/gm)].map((m) => m[1]);
+  assert.equal(new Set(names).size, names.length, names.filter((n, i) => names.indexOf(n) !== i).join());
 });
