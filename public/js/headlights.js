@@ -16,8 +16,9 @@ export function beamBrightness(ahead, length) {
 }
 
 // Soft pools in metres on the road: f ahead of the car's centre, r to its right, rx and ry their half sizes.
-export function beamPools(length, width) {
-  const nose = length / 2, lamp = width * 0.65, bias = BIAS * length, pools = [];
+// parked: nothing moves, so the beams can begin at the lamps.
+export function beamPools(length, width, parked = false) {
+  const nose = length / 2, lamp = width * 0.65, bias = parked ? 0 : BIAS * length, pools = [];
   for (let i = 0; i < SLICES; i++) {
     const ahead = ((i + 0.5) / SLICES) * REACH * length;
     const strength = beamBrightness(ahead, length);

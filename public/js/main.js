@@ -1,3 +1,4 @@
+import { BUILDING_KEY } from './footActions.js';
 import { newCar, stepCar } from './physics.js';
 import { distance, easeAngle, leadDistance, move } from './camera.js';
 import { FLAG_ONEWAY, RoadNet } from './road.js';
@@ -792,7 +793,7 @@ function runFoot(t, dt) {
   applyDaylight(); // a carried light turns with the person
   if (foot.walker.inside && !foot.roomLightsOn() && !toldLights) {
     toldLights = true;
-    notice('The lights are off. H switches them on, and V is your flashlight.', 4000);
+    notice('The lights are off. Look for a switch by a door and press F, or use your flashlight with V.', 5000);
   }
   const walker = foot.walker;
   pocket.update(t, { x: walker.x, y: walker.y, facing: foot.compass(), where: foot.where() }, { roads, parked: pos, hour: settings.hour });
@@ -820,7 +821,7 @@ async function getOut() {
     const { Foot, PERSON_SIZE: personSize } = await import('./foot.js'); // only those who walk load any of this
     await makePeople();
     (await pocketReady()).close();
-    foot = new Foot({ onLocked: showLocked, onFound: (name) => pocket.collect(name), onSlept: sleepUntilMorning, canvas: el('foot'), origin: { lat: pos.lat, lng: pos.lng }, heading: car.heading, profile: settings.carProfile, scale: settings.carScale, tiles, view: { tilt: CAMERAS[0].tilt, range: CAMERAS[0].range * FOOT_RANGE_SHARE, fov: FOV_Y, below: CAR_BELOW_CENTRE } });
+    foot = new Foot({ hasKey: () => pocket.data.bagHas(BUILDING_KEY), onLocked: showLocked, onFound: (name) => pocket.collect(name), onSlept: sleepUntilMorning, canvas: el('foot'), origin: { lat: pos.lat, lng: pos.lng }, heading: car.heading, profile: settings.carProfile, scale: settings.carScale, tiles, view: { tilt: CAMERAS[0].tilt, range: CAMERAS[0].range * FOOT_RANGE_SHARE, fov: FOV_Y, below: CAR_BELOW_CENTRE } });
     showPerson(personSize);
   } catch (err) {
     console.warn('getting out:', err);
@@ -941,6 +942,7 @@ async function pocketReady() {
     onOpen: releaseMouse, // the mouse is needed to use them
     onTyping: () => keys.clear(), // or a key held down would keep walking
     nearCar: () => !foot || foot.canGetIn(),
+    onFoot: () => !!foot,
     flashlight: () => carryLight('flash'),
     phoneLight: () => carryLight('phone'),
     stowed: () => { if (foot?.light === 'flash') carryLight('flash'); }, // it can't stay on in the car
@@ -1338,17 +1340,39 @@ function applyCarLook() {
 
 // The tint covers the map, and the headlight beams are cut out of it and lightly added on top. The car's place on
 // screen is fixed; the beams are sized from the car, zoom with the map and turn with the car against the camera.
+const PARKED_LIGHTS_SEEN = 250; // m
+const FEET_ABOVE = 0.025;       // of the screen height: someone's feet sit a little higher than the map's middle of the ground suggests
 let lightKey = '', braking = false, mapBox = null, toldLights = false;
 window.addEventListener('resize', () => { mapBox = null; gaugesShown = {}; navShown = ''; });
+// Where a spot on the ground this far ahead of and beside the person falls on screen, and how big a metre is there: the map's own perspective, centred ahead of them.
+function footSpot(ahead, side, width, height, angle) {
+  const scale = height / (2 * Math.tan(rad(FOV_Y / 2))), t = rad(tilt), fromCentre = ahead - leadDistance(range, tilt, FOV_Y, CAR_BELOW_CENTRE);
+  const depth = range + fromCentre * Math.sin(t);
+  if (depth < range * 0.2) return null;
+  return { x: width / 2 + (scale * side) / depth, y: height * (0.5 - FEET_ABOVE) - (scale * fromCentre * Math.cos(t)) / depth, perMetre: scale / depth, foreshorten: Math.cos(t), angle };
+}
+
+// The parked car, as seen by someone on foot, who is measured from it. Null if it's too far off to matter.
+function parkedCarView({ x, y }, width, height, angle) {
+  if (Math.hypot(x, y) > PARKED_LIGHTS_SEEN) return null;
+  const h = rad(camHeading);
+  return footSpot(-x * Math.sin(h) - y * Math.cos(h), -x * Math.cos(h) + y * Math.sin(h), width, height, angle);
+}
+
 function applyDaylight() {
-  const carried = (!foot?.walker.inside && foot?.light) || null, dark = darknessAt(settings.hour), lit = settings.headlights && !foot; // nobody at the wheel on foot, and the beams sit where the car does on screen
+  const indoors = !!foot?.walker.inside, carried = (!indoors && foot?.light) || null, dark = darknessAt(settings.hour); // nobody at the wheel on foot, and the beams sit where the car does on screen
   mapBox ||= { width: el('map').clientWidth, height: el('map').clientHeight }; // asking every frame would force a layout
   const { width, height } = mapBox;
-  const facing = carried ? foot.posture().facing : car.heading, angle = ((facing - camHeading + 540) % 360) - 180;
+  const carAngle = ((car.heading - camHeading + 540) % 360) - 180;
+  const perMetre = height / (2 * Math.tan(rad(FOV_Y / 2)) * Math.max(range, 1)), foreshorten = Math.cos(rad(tilt));
+  // The car's lights stay on when someone gets out, and on foot the car is wherever it was left, which is the middle of the walker's own map.
+  const carView = foot && !indoors ? parkedCarView(foot.walker, width, height, carAngle) : { x: width / 2, y: height * (0.5 + CAR_BELOW_CENTRE / 2), perMetre, foreshorten, angle: carAngle };
+  const lit = settings.headlights && !indoors && !!carView;
+  const shownBraking = braking && !foot;
+  const personAngle = carried ? ((foot.posture().facing - camHeading + 540) % 360) - 180 : 0;
   // Only the headlights and brake lights depend on the view, so with neither on nothing redraws while driving.
-  const moving = lit || braking || carried ? `${Math.round(range / 2)}|${Math.round(tilt)}|${Math.round(angle * 2)}` : '';
-  const indoors = !!foot?.walker.inside; // a room shows its own hour, so the map's tint mustn't darken it again
-  const key = `${indoors}|${carried}|${settings.hour}|${lit}|${braking}|${settings.carScale}|${settings.carProfile}|${width}x${height}|${moving}`;
+  const moving = lit || shownBraking || carried ? `${Math.round(range / 2)}|${Math.round(tilt)}|${Math.round(carAngle * 2)}|${Math.round(personAngle * 2)}|${Math.round(carView?.x ?? 0)}|${Math.round(carView?.y ?? 0)}` : '';
+  const key = `${indoors}|${carried}|${settings.hour}|${lit}|${shownBraking}|${settings.carScale}|${settings.carProfile}|${width}x${height}|${moving}`;
   if (key === lightKey) return;
   lightKey = key;
   el('lightsButton').setAttribute('aria-pressed', String(settings.headlights));
@@ -1358,17 +1382,11 @@ function applyDaylight() {
   }
   night.style.display = dark > 0.005 && !indoors ? 'block' : 'none';
   beam.style.display = lit || carried ? 'block' : 'none';
-  document.body.classList.toggle('carrying', !!carried);
+  document.body.classList.toggle('beamsOn', lit || !!carried);
   const shape = BODY_SHAPES[settings.carProfile] || BODY_SHAPES.sport;
   const length = shape.l * 2 * settings.carScale, carWidth = shape.w * 2 * settings.carScale;
-  const view = {
-    x: width / 2,
-    y: height * (0.5 + CAR_BELOW_CENTRE / 2 - (carried ? 0.013 : 0)), // someone's feet are a little above where a car's middle is
-    perMetre: height / (2 * Math.tan(rad(FOV_Y / 2)) * Math.max(range, 1)),
-    foreshorten: Math.cos(rad(tilt)),
-    angle,
-  };
-  const pools = beamPools(length, carWidth);
+  const personView = carried ? footSpot(0, 0, width, height, personAngle) : null;
+  const pools = beamPools(length, carWidth, !!foot);
   const tint = night.getContext('2d');
   tint.globalCompositeOperation = 'source-over';
   tint.fillStyle = `rgb(${tintAt(settings.hour).join(',')})`;
@@ -1377,12 +1395,12 @@ function applyDaylight() {
   light.clearRect(0, 0, width, height);
   if (lit) {
     tint.globalCompositeOperation = 'destination-out';
-    drawPools(tint, pools, view, 0.32);
+    drawPools(tint, pools, carView, 0.32);
     // The car's own body, so it can be seen at night. Only the body: this isn't light on the road.
     tint.save();
-    tint.translate(view.x, view.y);
-    tint.scale(view.perMetre, view.perMetre * view.foreshorten);
-    tint.rotate(rad(angle));
+    tint.translate(carView.x, carView.y);
+    tint.scale(carView.perMetre, carView.perMetre * carView.foreshorten);
+    tint.rotate(rad(carAngle));
     tint.scale(carWidth * 0.6, length * 0.55);
     tint.fillStyle = 'rgba(0,0,0,0.55)';
     tint.beginPath();
@@ -1390,20 +1408,20 @@ function applyDaylight() {
     tint.fill();
     tint.restore();
     light.globalCompositeOperation = 'lighter';
-    drawPools(light, pools, view, 0.03 + dark * 0.05, '255,240,190');
+    drawPools(light, pools, carView, 0.03 + dark * 0.05, '255,240,190');
   }
   if (carried) {
     const beamShape = carried === 'flash' ? torchPools(22, 0.36) : torchPools(2.2, 0.28);
     tint.globalCompositeOperation = 'destination-out';
-    drawPools(tint, beamShape, view, 0.75);
+    drawPools(tint, beamShape, personView, 0.75);
     light.globalCompositeOperation = 'lighter';
-    drawPools(light, beamShape, view, 0.05 + dark * 0.08, '255,244,210');
+    drawPools(light, beamShape, personView, 0.05 + dark * 0.08, '255,244,210');
   }
   const tails = el('tails');
   if (tails.width !== width || tails.height !== height) { tails.width = width; tails.height = height; }
   const dots = tails.getContext('2d');
   dots.clearRect(0, 0, width, height);
-  const shown = tailDots(view, length, carWidth, lit, braking);
+  const shown = lit || shownBraking ? tailDots(carView, length, carWidth, lit, shownBraking) : [];
   drawDots(dots, shown);
   tails.style.display = shown.length ? 'block' : 'none'; // an empty canvas over the map still costs the compositor
 }
@@ -1756,9 +1774,8 @@ document.addEventListener('keydown', (e) => {
   }
   if (k === 'p' && !e.repeat) { e.preventDefault(); return setPaused(true); }
   if (k === 'l' && !e.repeat) { e.preventDefault(); return pressL(); }
-  if (foot && !e.repeat && pocket?.pressKey(k)) { e.preventDefault(); return; }
+  if ((foot || (pocket?.bagOpen && /^[0-9]$/.test(k))) && !e.repeat && pocket?.pressKey(k)) { e.preventDefault(); return; }
   if (foot && k === 'f' && !e.repeat) { e.preventDefault(); return pressUse(e.shiftKey); }
-  if (foot && k === 'h' && !e.repeat) { e.preventDefault(); const said = foot.toggleRoomLights(); return notice(said || 'There are no lights to switch out here. V is your flashlight.', 1500); }
   if (foot && k === 'v' && !e.repeat) { e.preventDefault(); return carryLight('flash'); }
   if (!foot && k === 'y' && !e.repeat) { e.preventDefault(); return openStorage(); }
   if (foot && k === ' ') jumpPressed = true; // a quick tap can come and go between two frames

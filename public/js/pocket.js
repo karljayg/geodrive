@@ -47,7 +47,7 @@ export class Pocket {
     this.recentStation = null;
     this.shown = {};       // what the live figures last said, so nothing is written that hasn't changed
     root.innerHTML = `
-      <div class="tray">${TRAY.map((item) => `<button class="trayItem" data-tray="${item.id}" title="${item.label} (${item.key.toUpperCase()})"><span class="trayArt">${picture(item.art)}</span><span class="trayLabel">${item.label}</span><kbd>${item.key.toUpperCase()}</kbd></button>`).join('')}</div>
+      <div class="tray"><div class="trayClock" title="The time here"><div class="trayDial"><i class="hour"></i><i class="minute"></i></div><span class="trayLabel" data-tray-clock></span></div>${TRAY.map((item) => `<button class="trayItem" data-tray="${item.id}" title="${item.label} (${item.key.toUpperCase()})"><span class="trayArt">${picture(item.art)}</span><span class="trayLabel">${item.label}</span><kbd>${item.key.toUpperCase()}</kbd></button>`).join('')}</div>
       <div class="device" hidden>
         <div class="screen">
           <div class="statusBar"><span data-clock></span><span class="island"></span><button data-close aria-label="Put the phone away">✕</button></div>
@@ -125,6 +125,16 @@ export class Pocket {
     return this.app === app ? this.closePhone() : this.openApp(app);
   }
 
+  // A number with the bag open: the thing in that slot. The flashlight turns on and the bag closes, so Y then a number is all it takes while walking.
+  pressBagNumber(key) {
+    const item = this.data.bag[key === '0' ? 9 : Number(key) - 1];
+    if (!item) return;
+    if (item.id === 'Flashlight' && this.calls.onFoot()) {
+      this.calls.flashlight();
+      this.close();
+    } else this.pressSlot(item.id, 'bag');
+  }
+
   pressSlot(id, side) {
     if (!this.calls.nearCar()) {
       if (id === 'Flashlight') this.calls.flashlight();
@@ -145,6 +155,10 @@ export class Pocket {
 
   // A hotkey. True if it was one of these. 1 to 9 open the phone's apps, and 0 goes back to its home screen.
   pressKey(key) {
+    if (this.bagOpen && /^[0-9]$/.test(key)) {
+      this.pressBagNumber(key);
+      return true;
+    }
     if (key === 'n') {
       this.toggleMusic();
       return true;
@@ -347,14 +361,14 @@ export class Pocket {
 
   // Your bag, and the car's storage beside it when you're in or next to the car. Clicking something moves it across; the flashlight, away from the car, turns on.
   renderBag() {
-    const { bag, car } = this.data, near = this.calls.nearCar(), slots = (list, size, side) => Array.from({ length: size }, (_, i) => list[i]).map((item) => (item
-      ? `<button class="bagSlot full" data-slot="${esc(item.id)}" data-side="${side}" title="${esc(item.name)}"><span>${esc(item.name)}</span>${item.count > 1 ? `<b>${item.count}</b>` : ''}</button>`
+    const { bag, car } = this.data, near = this.calls.nearCar(), slots = (list, size, side) => Array.from({ length: size }, (_, i) => list[i]).map((item, i) => (item
+      ? `<button class="bagSlot full" data-slot="${esc(item.id)}" data-side="${side}" title="${esc(item.name)}">${side === 'bag' && i < 10 ? `<kbd>${(i + 1) % 10}</kbd>` : ''}<span>${esc(item.name)}</span>${item.count > 1 ? `<b>${item.count}</b>` : ''}</button>`
       : '<div class="bagSlot"></div>')).join('');
     this.nearShown = near;
     this.bagPanel.classList.toggle('withCar', near);
     this.bagPanel.innerHTML = `<div class="bagHead"><span class="bagArt">${picture('bag')}</span><h2>Bag</h2><small>${bag.length} of ${BAG_SLOTS}</small><button data-close-bag aria-label="Close">✕</button></div>
       <div class="bagGrid">${slots(bag, BAG_SLOTS, 'bag')}</div>
-      <p class="empty">${near ? 'Click something to move it between your bag and the car.' : 'Stand next to the car to reach its storage.'}${!near && this.data.bagHas('Flashlight') ? ' Click the flashlight, or press V, to turn it on.' : ''}</p>
+      <p class="empty">${near ? 'Click something, or press its number, to move it between your bag and the car.' : 'Stand next to the car to reach its storage.'}${this.data.bagHas('Flashlight') ? ` Press ${(this.data.bag.findIndex((i) => i.id === 'Flashlight') + 1) % 10} or V to turn on the flashlight.` : ''}</p>
       ${near ? `<div class="bagHead carHead"><h2>Car storage</h2><small>${car.length} of ${CAR_SLOTS}</small></div><div class="bagGrid carGrid">${slots(car, CAR_SLOTS, 'car')}</div>` : ''}`;
   }
 
@@ -386,6 +400,12 @@ export class Pocket {
       this.turnCard(this.card, facing);
     }
     if (this.bagOpen && this.calls.nearCar() !== this.nearShown) this.renderBag();
+    const time = clockText(at.hour);
+    if (this.shown.trayClock !== time) {
+      this.write('trayClock', this.root.querySelector('[data-tray-clock]'), time);
+      this.root.querySelector('.trayDial .hour').style.transform = `rotate(${(at.hour % 12) * 30}deg)`;
+      this.root.querySelector('.trayDial .minute').style.transform = `rotate(${(at.hour % 1) * 360}deg)`;
+    }
     if (this.app) this.write('clock', this.root.querySelector('[data-clock]'), clockText(at.hour));
     const metres = Math.hypot(on.x, on.y), bearing = bearingToCar(on.x, on.y);
     const carLine = metres < 3 ? 'Your car is right here' : `Car ${distanceText(metres)} ${compassName(bearing)}`;

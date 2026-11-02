@@ -10,7 +10,7 @@ html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background:
 /* On foot the map stays. This canvas is clear over it, except for a room while indoors, and takes the mouse. */
 #foot { display: none; width: 100%; height: calc(100% - var(--dash)); z-index: 1; touch-action: none; cursor: grab; }
 body.onFoot #foot { display: block; }
-body.onFoot #shield, body.onFoot:not(.carrying) #beam, body.onFoot #tails { display: none !important; }
+body.onFoot #shield, body.onFoot:not(.beamsOn) #beam, body.onFoot:not(.beamsOn) #tails { display: none !important; }
 #footHint { display: none; position: absolute; left: 50%; bottom: 20px; transform: translateX(-50%); padding: 5px 12px; border-radius: 999px; background: #0d1621cc; border: 1px solid #ffffff26; font-size: 12px; color: #e7eef3; white-space: nowrap; }
 body.onFoot #footHint { display: block; }
 /* The dashboard is in the car. On foot the view takes its place. */
@@ -226,6 +226,11 @@ body.onFoot #pockets { display: block; }
 #pockets .trayItem { position: relative; display: flex; flex-direction: column; align-items: center; gap: 3px; width: 66px; padding: 6px 2px 5px; border-radius: 11px; }
 #pockets .trayItem:hover, #pockets .trayItem:focus-visible { background: #ffffff1c; }
 .trayArt { width: 44px; height: 44px; filter: drop-shadow(0 2px 3px #0008); }
+.trayClock { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; width: 66px; padding: 6px 2px 5px; }
+.trayDial { position: relative; width: 44px; height: 44px; border-radius: 50%; background: #0a1119; border: 2px solid #cfdae2; box-sizing: border-box; }
+.trayDial i { position: absolute; left: calc(50% - 1px); bottom: 50%; width: 2px; border-radius: 1px; background: #eef3f6; transform-origin: 50% 100%; }
+.trayDial .hour { height: 11px; }
+.trayDial .minute { height: 16px; background: #9fd4ff; }
 .trayLabel { font-size: 11px; font-weight: 600; color: #d5e0e8; }
 .trayItem kbd { position: absolute; top: 3px; right: 3px; min-width: 15px; padding: 0 3px; border-radius: 4px; background: #ffffff24; font: 600 9px system-ui, sans-serif; line-height: 14px; color: #d5e0e8; }
 .device { position: absolute; left: 0; bottom: calc(100% + 8px); width: 286px; height: min(590px, calc(100vh - 150px)); padding: 9px; border-radius: 42px; background: linear-gradient(145deg, #59636e, #21272d 45%, #3d4650); box-shadow: 0 16px 44px #000a, inset 0 0 0 1.5px #ffffff30; }
@@ -354,7 +359,8 @@ body.onFoot #pockets { display: block; }
 #pockets.storageOnly .tray { visibility: hidden; height: 0; padding: 0; border: 0; }
 #pockets.storageOnly .bagPanel { bottom: 8px; }
 .bagPanel.withCar { width: 372px; max-height: calc(100vh - var(--dash) - 110px); overflow-y: auto; }
-#pockets button.bagSlot { width: 100%; cursor: pointer; }
+#pockets button.bagSlot { position: relative; width: 100%; cursor: pointer; }
+.bagSlot kbd { position: absolute; top: 3px; left: 3px; min-width: 14px; padding: 0 3px; border-radius: 4px; background: #ffffff2e; font: 600 10px system-ui, sans-serif; text-align: center; }
 #pockets button.bagSlot:hover { background: #ffffff33; }
 .carHead { margin-top: 12px; padding-top: 10px; border-top: 1px solid #c79a6866; }
 .carGrid { grid-template-columns: repeat(5, 1fr); }

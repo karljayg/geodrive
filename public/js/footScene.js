@@ -2,6 +2,7 @@
 // A mesh is a flat list of x, y, z, nx, ny, nz, r, g, b per vertex. A triangle's normal always comes from its winding,
 // so a face that points the wrong way can't look right by accident.
 import { triangulate } from './footData.js';
+import { switchSpots } from './footActions.js';
 import { colourFor, frameOf, hexColour, worldBearing } from './furnish.js';
 import { ITEMS, bake } from './furniture.js';
 import { ROOM_HEIGHT } from './footWalker.js';
@@ -15,6 +16,8 @@ const INNER_WALL_HEIGHT = 1.1; // m, waist high, so walls never hide the person 
 const INNER_WALL_THICK = 0.12; // m
 const ZONE_FLOOR_LIFT = 0.04;  // m
 const WINDOW_GLASS = [0.62, 0.8, 0.95], WINDOW_FRAME = [0.93, 0.92, 0.88];
+const SWITCH_COLOUR = [1, 0.94, 0.62];
+const SWITCH_HALF = 0.11, SWITCH_LOW = 0.85, SWITCH_HIGH = 1.32; // m
 const CORE_SCHEME = { wood: 'a58a6c', fabric: '6f7a80', accent: '6f7a80', floor: 'a8a8a0' }; // stairs and lifts belong to no room
 
 export class Mesh {
@@ -84,8 +87,19 @@ export function clipToRect(points, { u0, v0, u1, v1 }) {
   return out;
 }
 
+// A light switch, thick enough to show on both sides of a wall and from the camera above, which only sees the tops of inner walls.
+function addSwitch(mesh, frame, { u, v, post }) {
+  const corners = [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([a, b]) => frame.toWorld(u + a * SWITCH_HALF, v + b * SWITCH_HALF));
+  const low = post ? 0 : SWITCH_LOW, at = (p, z) => [p.x, p.y, z];
+  mesh.quad(...corners.map((p) => at(p, SWITCH_HIGH)), SWITCH_COLOUR);
+  corners.forEach((p, i) => {
+    const q = corners[(i + 1) % 4];
+    mesh.quad(at(p, low), at(q, low), at(q, SWITCH_HIGH), at(p, SWITCH_HIGH), SWITCH_COLOUR);
+  });
+}
+
 // Each room's floor, its inner walls and what stands in it. A thing no longer in the catalogue is left out.
-function addFurnishing(mesh, pieces, record, { models, colours }) {
+function addFurnishing(mesh, pieces, record, { models, colours }, core) {
   const frame = frameOf(pieces, record.axis), inner = record.look?.wall ? hexColour(record.look.wall) : INNER_WALL_COLOUR;
   for (const [zone, u0, v0, u1, v1, scheme] of record.zones) {
     const colour = hexColour(scheme.floor);
@@ -105,6 +119,7 @@ function addFurnishing(mesh, pieces, record, { models, colours }) {
     const a = frame.toWorld(u0, v0), b = frame.toWorld(u1, v1);
     lowWall(mesh, a.x, a.y, b.x, b.y, inner);
   }
+  for (const spot of switchSpots(record, core)) addSwitch(mesh, frame, spot);
   for (const [item, name, u, v, z, rot, zoneIndex, shade] of record.items) {
     const model = models[name];
     if (!model || !ITEMS[item]) continue;
@@ -149,6 +164,6 @@ export function roomMesh(place, building, floor, furnishing) {
       addWindows(mesh, w, floor, doorSpots);
     }
   }
-  if (furnishing) addFurnishing(mesh, pieces, furnishing.record, furnishing.furniture);
+  if (furnishing) addFurnishing(mesh, pieces, furnishing.record, furnishing.furniture, building.plan?.core);
   return mesh.floats();
 }

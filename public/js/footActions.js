@@ -7,6 +7,13 @@ const REACH = 1.2;       // m from a thing's edge that it can be used
 const EMPTY_CHANCE = 0.3; // of something that can be opened having nothing in it
 const DONE = new Set(['sit', 'sleep', 'open', 'search', 'pick up', 'use', 'switch', 'write']);
 const NOT_USED_HERE = new Set(['stairs', 'stairwell', 'lift']); // L does those
+export const SWITCH_REACH = 1.5; // m from a light switch that it can be used
+export const BUILDING_KEY = 'Building key'; // turns on a light switch that needs one
+const KEY_CHANCE = 0.25;      // of a large building's switches needing a key
+const LARGE_FOOTPRINT = 500;  // m² on one floor
+const LARGE_TOTAL = 1500;     // m² over all its floors
+const HOMES = new Set(['home', 'shed']);
+const DOOR_GAP_LEAST = 0.6, DOOR_GAP_MOST = 3.2, BESIDE_FRONT_DOOR = 0.85; // m
 
 const NAMES = {
   tv: 'TV', tvStand: 'TV stand', screen: 'computer', frontDesk: 'front desk', atm: 'cash machine', bin: 'bin', bath: 'bath', basin: 'basin', bathCabinet: 'bathroom cabinet',
@@ -18,8 +25,8 @@ const nameOf = (item) => NAMES[item] || item.replace(/[A-Z]/g, (c) => ` ${c.toLo
 const FINDS = {
   fridge: ['Milk', 'Leftover pizza', 'Orange juice', 'Cold soda'], counter: ['Can of soup', 'Box of cereal', 'Cutlery'], wardrobe: ['Old jacket', 'Spare keys', 'Shoebox'],
   nightstand: ['Flashlight', 'Paperback', 'Reading glasses'], sideTable: ['Batteries', 'Pack of cards', 'Old letters'], tvStand: ['TV remote', 'Old DVD'], bathCabinet: ['Toothpaste', 'Plasters', 'Aspirin'],
-  bookcase: ['Novel', 'Atlas', 'Photo album'], desk: ['Stapler', 'Notebook', 'USB stick'], filingCabinet: ['Old invoices', 'Paperclips', 'Sealed envelope'], locker: ['Gym towel', 'Padlock', 'Trainers'],
-  box: ['Old newspapers', 'Packing tape', 'Holiday lights'], bin: ['Crumpled receipt', 'Empty can'], cashCart: ['Bundle of cash'], toolChest: ['Wrench', 'Screwdriver', 'Tape measure'], medCart: ['Bandages', 'Thermometer'],
+  bookcase: ['Novel', 'Atlas', 'Photo album'], desk: ['Stapler', 'Notebook', 'USB stick', BUILDING_KEY], filingCabinet: ['Old invoices', 'Paperclips', 'Sealed envelope', BUILDING_KEY], locker: ['Gym towel', 'Padlock', 'Trainers', BUILDING_KEY],
+  box: ['Old newspapers', 'Packing tape', 'Holiday lights'], bin: ['Crumpled receipt', 'Empty can'], cashCart: ['Bundle of cash'], toolChest: ['Wrench', 'Screwdriver', 'Tape measure', BUILDING_KEY], medCart: ['Bandages', 'Thermometer'],
   storeShelf: ['Tin of beans', 'Bottle of water', 'Pack of batteries'], clothesRack: ['Denim jacket', 'Silk scarf'], displayTable: ['Gift card', 'Sunglasses'], displayCase: ['Old coin', 'Museum guide'],
   palletRack: ['Box of parts', 'Roll of tape'], bookStack: ['Library book', 'Old atlas'], gearRack: ['Fire helmet', 'Gloves'], walkInFridge: ['Tray of steaks', 'Crate of milk'], toyBox: ['Toy car', 'Teddy bear'],
   produceStand: ['Apple', 'Banana'], fridgeCase: ['Sandwich', 'Cold drink'], breadRack: ['Fresh loaf', 'Croissant'], vendingMachine: ['Candy bar'], petCage: ['Dog biscuit'],
@@ -43,6 +50,54 @@ const stateOf = (plan, floor) => ((plan.state ||= {})[floor] ||= { taken: [], op
 export function withoutTaken(record, plan, floor) {
   const taken = plan.state?.[floor]?.taken;
   return taken?.length ? { ...record, items: record.items.filter((entry) => !taken.includes(key(entry))) } : record;
+}
+
+// Where a floor's light switches are, in the frame: on the wall beside each front door and each gap left for a door, and for a floor with no front door, by the stairs.
+// post: it stands on its own rather than on a wall.
+export function switchSpots(record, core) {
+  const spots = [], add = (u, v, post = false) => {
+    if (!spots.some((s) => Math.hypot(s.u - u, s.v - v) < 1)) spots.push({ u, v, post });
+  };
+  const fronts = record.items.filter((entry) => entry[0] === 'frontDoor');
+  for (const [, , u, v, , rot] of fronts) (Math.round(rot / 90) % 2 === 0 ? add(u + BESIDE_FRONT_DOOR, v) : add(u, v + BESIDE_FRONT_DOOR));
+  const lines = new Map();
+  for (const [u0, v0, u1, v1] of record.walls) {
+    const alongU = Math.abs(v1 - v0) < 0.01;
+    if (!alongU && Math.abs(u1 - u0) >= 0.01) continue;
+    const key = `${alongU ? 'v' : 'u'}${(alongU ? v0 : u0).toFixed(2)}`, list = lines.get(key) || [];
+    list.push(alongU ? [Math.min(u0, u1), Math.max(u0, u1)] : [Math.min(v0, v1), Math.max(v0, v1)]);
+    lines.set(key, list);
+  }
+  for (const [key, list] of lines) {
+    const at = Number(key.slice(1));
+    list.sort((a, b) => a[0] - b[0]);
+    list.slice(1).forEach(([start], i) => {
+      const end = list[i][1], gap = start - end;
+      if (gap < DOOR_GAP_LEAST || gap > DOOR_GAP_MOST) return;
+      if (key[0] === 'v') add(end - 0.2, at);
+      else add(at, end - 0.2);
+    });
+  }
+  if (!fronts.length && core) add(core.clear[0] - 0.3, core.clear[1] - 0.3, true);
+  return spots;
+}
+
+// Whether a building's light switches need a key: about one large building in four, always the same ones. Homes never do.
+export function switchNeedsKey(plan, footprint, buildingId) {
+  if (!plan || HOMES.has(plan.type)) return false;
+  if (footprint < LARGE_FOOTPRINT && footprint * (plan.floors || 1) < LARGE_TOTAL) return false;
+  return dice(hashText(`${buildingId}:switch`))() < KEY_CHANCE;
+}
+
+// F at a switch. hasKey: there's one in the bag, which, once used, leaves this building's switches working. Returns what to say.
+export function useSwitch(plan, floor, needsKey, hasKey) {
+  if (needsKey && !plan.switchesOn) {
+    if (!hasKey) return 'Light switch not enabled, find key.';
+    plan.switchesOn = true;
+  }
+  const state = stateOf(plan, floor);
+  state.lights = !state.lights;
+  return state.lights ? 'Lights on.' : 'Lights off.';
 }
 
 // What can be done with a thing, as the catalogue says, in the order it says it: the first is F, the second Shift+F.

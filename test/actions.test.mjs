@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { actionsOf, usableNear, usePrompt, useThing, withoutTaken } from '../public/js/footActions.js';
+import { actionsOf, usableNear, usePrompt, useThing, withoutTaken, switchNeedsKey, switchSpots, useSwitch } from '../public/js/footActions.js';
 import { ITEMS, parseFurniture } from '../public/js/furniture.js';
 import { frameOf } from '../public/js/furnish.js';
 import { SIT_FRAME, personParts, poseAt } from '../public/js/footPerson.js';
@@ -77,4 +77,40 @@ test('the sitting person has feet on the floor, knees ahead at about seat height
     assert.ok(Math.abs(leg.ankle[2] - 0.06) < 0.05, 'and the foot down');
   }
   assert.ok(personParts(SIT_FRAME).some((part) => part.pos.length));
+});
+
+test('switches sit by front doors and door gaps, and by the stairs on a floor with no front door', () => {
+  const record = { items: [['frontDoor', 'frontDoor', 0, 0, 0, 0, -1, 1]], walls: [[0, 5, 4, 5], [5, 5, 9, 5], [12, 0, 12, 3], [20, 0, 20, 9]] };
+  const spots = switchSpots(record, null);
+  assert.ok(spots.some((s) => Math.hypot(s.u, s.v) < 1), 'beside the front door');
+  assert.ok(spots.some((s) => s.v === 5 && s.u > 3 && s.u <= 4), 'on the wall at a door gap');
+  assert.equal(spots.length, 2, 'and not along plain walls');
+  const upstairs = switchSpots({ items: [], walls: [] }, { clear: [3, 4, 6, 7] });
+  assert.equal(upstairs.length, 1);
+  assert.equal(upstairs[0].post, true);
+  assert.ok(Math.hypot(upstairs[0].u - 3, upstairs[0].v - 4) < 1);
+});
+
+test('about a quarter of large buildings need a key for their switches, and never homes or small places', () => {
+  let need = 0;
+  for (let i = 0; i < 2000; i++) need += switchNeedsKey({ type: 'office', floors: 3 }, 800, `b${i}`) ? 1 : 0;
+  assert.ok(need > 400 && need < 600, `${need} of 2000`);
+  assert.equal(switchNeedsKey({ type: 'office', floors: 3 }, 800, 'b1'), switchNeedsKey({ type: 'office', floors: 3 }, 800, 'b1'), 'always the same answer');
+  for (let i = 0; i < 300; i++) {
+    assert.equal(switchNeedsKey({ type: 'home', floors: 2 }, 900, `h${i}`), false);
+    assert.equal(switchNeedsKey({ type: 'cafe', floors: 1 }, 120, `c${i}`), false);
+  }
+  assert.ok(Array.from({ length: 300 }, (_, i) => switchNeedsKey({ type: 'office', floors: 8 }, 300, `t${i}`)).some(Boolean), 'a tall small office counts');
+});
+
+test('a switch that needs a key says so, works with one, and stays working', () => {
+  const plan = {};
+  assert.equal(useSwitch(plan, 1, true, false), 'Light switch not enabled, find key.');
+  assert.ok(!plan.state?.[1]?.lights);
+  assert.equal(useSwitch(plan, 1, true, true), 'Lights on.');
+  assert.equal(plan.state[1].lights, true);
+  assert.equal(useSwitch(plan, 1, true, false), 'Lights off.', 'without the key now');
+  assert.equal(useSwitch(plan, 2, true, false), 'Lights on.', 'on any floor');
+  const open = {};
+  assert.equal(useSwitch(open, 1, false, false), 'Lights on.');
 });

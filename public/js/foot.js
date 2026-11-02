@@ -7,7 +7,7 @@ import { tintAt } from './daylight.js';
 import { FootGl, bearing, lookAt, multiply, perspective, swing, translate } from './footGl.js';
 import { Place, fromLocal, parseTile, toLocal } from './footData.js';
 import { SIT_FRAME, personFloats } from './footPerson.js';
-import { poseSpot, usableNear, usePrompt, useThing, withoutTaken } from './footActions.js';
+import { SWITCH_REACH, switchNeedsKey, switchSpots, useSwitch, poseSpot, usableNear, usePrompt, useThing, withoutTaken } from './footActions.js';
 import { roomMesh } from './footScene.js';
 import { FURNISHED, coreNear, coreOf, frameOf as buildingFrame, layoutFloor, plainFloor, solidsOf, upgradeFloor, worldBearing } from './furnish.js';
 import { parseFurniture } from './furniture.js';
@@ -50,7 +50,8 @@ function personMesh(frame) {
 
 export class Foot {
   // tiles: the RoadTiles that fetches the same map tiles for driving. view: the camera to match.
-  constructor({ canvas, origin, heading, profile, scale, tiles, view, onLocked, onFound, onSlept }) {
+  constructor({ canvas, origin, heading, profile, scale, tiles, view, onLocked, onFound, onSlept, hasKey }) {
+    this.hasKey = hasKey;
     if (!gl) gl = new FootGl(canvas);
     gl.onRestored = () => this.rebuildAll();
     this.view = view;
@@ -275,6 +276,7 @@ export class Foot {
   // F, or Shift+F for a thing's second use. Returns what to say, or null if there's nothing to use.
   useHere(second = false) {
     if (this.pose) return this.standUp();
+    if (!second && this.switchHere()) return this.useLightSwitch();
     const entry = this.thingHere();
     if (!entry) return null;
     const building = this.walker.inside, { plan } = building, result = useThing(entry, plan, this.level, building.buildingId, second);
@@ -403,18 +405,25 @@ export class Foot {
     gl.setLightMap(lightMap(box, windows, walls, hour));
   }
 
+  // A room with no plan has no switches to find, so it's simply lit.
   roomLightsOn() {
-    return !!this.walker.inside?.plan?.state?.[this.level]?.lights;
+    const { plan } = this.walker.inside || {};
+    return !plan || !!plan.state?.[this.level]?.lights;
   }
 
-  // H indoors: the lights on this floor, kept with the building. Says what happened, or null outdoors.
-  toggleRoomLights() {
-    const { plan } = this.walker.inside || {};
-    if (!plan) return null;
-    const state = ((plan.state ||= {})[this.level] ||= { taken: [], opened: [] });
-    state.lights = !state.lights;
+  // Whether the person is close enough to a light switch to use it.
+  switchHere() {
+    const building = this.walker.inside, record = this.room?.furnishing?.record;
+    if (!building?.plan || !record) return false;
+    const frame = buildingFrame(building.pieces, record.axis), { u, v } = frame.toFrame(this.walker.x, this.walker.y);
+    return switchSpots(record, building.plan.core).some((spot) => Math.hypot(spot.u - u, spot.v - v) <= SWITCH_REACH);
+  }
+
+  useLightSwitch() {
+    const building = this.walker.inside, pieces = building.pieces, footprint = pieces.reduce((sum, p) => sum + (p.maxX - p.minX) * (p.maxY - p.minY), 0);
+    const said = useSwitch(building.plan, this.level, switchNeedsKey(building.plan, footprint, building.buildingId), this.hasKey?.());
     saved.saveIndex();
-    return state.lights ? 'Lights on.' : 'Lights off.';
+    return said;
   }
 
   // Which light is being carried: 'flash', 'phone', or null. Asking for the one that's on turns it off.
@@ -503,6 +512,7 @@ export class Foot {
       if (this.picking) return `Lift · floor ${this.picking.floor} of ${plan.floors} · click a floor, or type it · L goes`;
       const here = planLabel(plan, this.level), near = this.coreHere();
       if (this.pose) return `${here} · press F or walk to get up`;
+      if (this.switchHere()) return `${here} · F to switch the lights ${this.roomLightsOn() ? 'off' : 'on'}`;
       const thing = this.thingHere();
       if (thing && !near) return `${here} · ${usePrompt(thing)}`;
       if (near === 'lift') return `${here} · press L for the lift`;
@@ -510,8 +520,7 @@ export class Foot {
         if (this.level >= plan.floors) return `${here} · press L to go downstairs`;
         return this.level > GROUND_FLOOR ? `${here} · L upstairs, Shift+L downstairs` : `${here} · press L to go upstairs`;
       }
-      const lights = this.roomLightsOn() ? 'H lights off' : 'H lights on';
-      return this.level > GROUND_FLOOR ? `${here} · ${lights} · find the stairs to go down` : `${here} · ${lights} · press L to go back out`;
+      return this.level > GROUND_FLOOR ? `${here} · find the stairs to go down` : `${here} · press L to go back out`;
     }
     if (this.canGetIn()) return 'Press L to get in';
     const near = buildingWithin(this.walker, this.world);
