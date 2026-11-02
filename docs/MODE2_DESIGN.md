@@ -1,6 +1,6 @@
 # Mode 2, the private shared world: detailed design
 
-Status: design, not built. `docs/SHARED_WORLD.md` holds the decisions, the reasons, the test results and the stages. This document is the detail behind them: what a player experiences, then what's stored, what's sent and what the code does. Table columns, message names and small numbers not in that plan are proposals, and can change as they're built. Stage 0 is laying the groundwork (`world.js`, the building-centred layout, starting on foot), so names here may shift to match it.
+Status: mostly built and live, and changed in places since: see `docs/FEATURES.md` for what the game does now. `docs/SHARED_WORLD.md` holds the decisions, the reasons, the test results and the stages. This document is the detail behind them: what a player experiences, then what's stored, what's sent and what the code does. Table columns, message names and small numbers not in that plan are proposals, and can change as they're built. Stage 0 is laying the groundwork (`world.js`, the building-centred layout, starting on foot), so names here may shift to match it.
 
 ## In one page
 A creator makes a world and invites friends, one at a time, by one-use links. Up to 8 play at once. Everyone starts on foot, finds each other by phone, and takes cars from the roadside. What they do to buildings, cars and dropped things stays for everyone. Crashes can kill. Each player has 3 lives while testing, and after the last one, that character and name are gone for good.

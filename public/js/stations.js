@@ -39,3 +39,19 @@ export function stationFor(at, stations, electric, config = GAME.stations) {
   const { station } = real || usable[0];
   return { station, works: station.kind === 'charger' || stationWorks(station, config) };
 }
+
+// A tile's building outlines, for what cars can hit: rings of [lng, lat], only those standing on the ground, as something up on stilts can be driven under. Outer edges only: a courtyard is solid too.
+export function footprintsFromTile(bytes, tx, ty, zoom = VECTOR_ZOOM) {
+  const layer = readLayer(bytes, 'building');
+  if (!layer) return [];
+  const { toLat, toLng } = tileToGeo(tx, ty, layer.extent, zoom), rings = [];
+  for (const { tags, type, geometry } of layer.features) {
+    if (type !== 3 || tags.hide_3d || (tags.render_min_height ?? 0) > GAME.damage.buildingClearance) continue;
+    for (const line of decodeLines(geometry)) {
+      let area = 0;
+      for (let i = 0, j = line.length - 1; i < line.length; j = i++) area += line[j][0] * line[i][1] - line[i][0] * line[j][1];
+      if (area > 0 && line.length >= 3) rings.push(line.map(([x, y]) => [toLng(x), toLat(y)])); // positive in tile pixels is an outer ring
+    }
+  }
+  return rings;
+}

@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { crashOutcome } from '../public/js/worldOps.js';
 import { CAR_REASONS, cleanCar, cleanStorage, plantCars, rescueCar } from '../public/js/worldCars.js';
 import { FLAG_BRIDGE } from '../public/js/road.js';
 import { GAME } from '../public/js/gameConfig.js';
@@ -8,7 +9,7 @@ import { SharedCars } from '../public/js/sharedWorld.js';
 import { seatsPicture } from '../public/js/carSeats.js';
 import { stationFor, stationWorks } from '../public/js/stations.js';
 import { carDamageAt, coastDistance, coastPlace, cutsOut, drivable, healthLossHit, healthLossInCar, offRoadSlowing, offRoadWear, powerOf, reliabilityText } from '../public/js/carDamage.js';
-import { BumpLimit, carTouchesPerson, carsTouch, closingSpeed, firstHit } from '../public/js/collide.js';
+import { BumpLimit, FootprintIndex, buildingHit, carTouchesPerson, carsTouch, closingSpeed, firstHit } from '../public/js/collide.js';
 import { metresApart } from '../public/js/protocol.js';
 
 const METRE = 1 / 111320;
@@ -245,4 +246,36 @@ test('an electric car charges at a real charger, always, or at a gas station if 
   assert.equal(real.works, true);
   const atPumps = stationFor(AT, [shop(10)], true);
   assert.equal(atPumps.works, stationWorks(atPumps.station));
+});
+
+const box = (lat, lng, metres) => { const d = metres / 111320, e = d / Math.cos((lat * Math.PI) / 180); return [[lng - e, lat - d], [lng + e, lat - d], [lng + e, lat + d], [lng - e, lat + d]]; };
+
+test('outlines can be asked about a point, quickly and rightly', () => {
+  const index = new FootprintIndex([box(38.9, -77.4, 20), box(38.91, -77.41, 5)]);
+  assert.equal(index.contains(38.9, -77.4), true);
+  assert.equal(index.contains(38.9 + 19 / 111320, -77.4), true);
+  assert.equal(index.contains(38.9 + 21 / 111320, -77.4), false);
+  assert.equal(index.contains(38.91, -77.41), true);
+  assert.equal(index.contains(38.905, -77.405), false, 'and between them, nothing');
+  assert.equal(new FootprintIndex([]).contains(38.9, -77.4), false);
+});
+
+test('a car stops short of a wall, a little inside the outline, and never jumps over one', () => {
+  const index = new FootprintIndex([box(38.9, -77.4, 20)]), contains = (lat, lng) => index.contains(lat, lng), south = 38.9 - 20 / 111320;
+  const me = (metresShort, heading = 0) => ({ lat: south - metresShort / 111320, lng: -77.4, heading, ...CAR_BOX });
+  assert.equal(buildingHit(me(10), 0.5, contains, 1), null, 'still short of it');
+  assert.equal(buildingHit(me(1.6), 0.5, contains, 1), null, 'its bonnet can poke over, as the outline may not match the picture');
+  assert.ok(buildingHit(me(0), 0.5, contains, 1), 'but not further');
+  const fast = buildingHit(me(-5 - 40), 50, contains, 1);
+  assert.ok(fast, 'a whole 50 m in one frame still hits');
+  assert.ok(fast.back > 20, `and it goes back to the wall: ${fast.back}`);
+  assert.equal(buildingHit({ ...me(5), lng: -77.4 - 40 / 111320 }, 10, contains, 1), null, 'going past the side, nothing');
+  assert.equal(buildingHit({ lat: 38.9, lng: -77.4, heading: 90, ...CAR_BOX }, 0.5, contains, 1), null, 'and a car that finds itself inside can always drive out');
+});
+
+test('hitting a building takes the car, not the building', () => {
+  const { kill, wreck } = crashOutcome('building', 50, GAME.crash);
+  assert.deepEqual(kill, ['me']);
+  assert.deepEqual(wreck, ['me']);
+  assert.deepEqual(crashOutcome('building', 20, GAME.crash).hurt, ['me']);
 });

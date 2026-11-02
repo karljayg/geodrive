@@ -24,9 +24,9 @@ import { Soundtrack } from './musicPlayer.js';
 import { needsEntry, openWorld } from './world.js';
 import { FLAGS } from './protocol.js';
 import { bearingBetween, initialsOf, statusLine } from './people.js';
-import { BOUNCE, BumpLimit, firstHit } from './collide.js';
+import { BOUNCE, BumpLimit, FootprintIndex, buildingHit, firstHit } from './collide.js';
 import { seatsPicture } from './carSeats.js';
-import { stationFor, stationsFromTile } from './stations.js';
+import { footprintsFromTile, stationFor, stationsFromTile } from './stations.js';
 import { vectorTileAt } from './vector.js';
 import { coastPlace, cutsOut, drivable, offRoadSlowing, offRoadWear, powerOf, reliabilityText } from './carDamage.js';
 import { DEFAULTS, saveSettings, settings } from './settings.js';
@@ -2742,6 +2742,33 @@ let peopleView = null, chatView = null, firstAppearance = false;
 const SIT_GAIT = 17; // SIT_FRAME in footPerson.js, which only those who walk load
 const badgeColour = (member) => member.colours?.jacket ?? '#5a6470';
 
+// Buildings stop a car too. From the same free tile as the roads, read when the car comes to it. On a road nothing counts, as a road through or under something is meant to go there.
+const footprints = new Map();
+function hitBuilding(me, meters) {
+  if (match && (match.dist ?? Infinity) < GAME.damage.onRoadWithin) return null;
+  if (onBridge) return null;
+  const { x, y } = vectorTileAt(me.lat, me.lng), key = `${x}_${y}`, index = footprints.get(key);
+  if (index === undefined) {
+    loadFootprints(key, x, y);
+    return null;
+  }
+  return index ? buildingHit(me, meters, (lat, lng) => {
+    const t = vectorTileAt(lat, lng), there = t.x === x && t.y === y ? index : footprints.get(`${t.x}_${t.y}`);
+    return !!there && there.contains(lat, lng);
+  }, GAME.damage.buildingInset) : null;
+}
+
+async function loadFootprints(key, x, y) {
+  footprints.set(key, null); // once
+  try {
+    const bytes = await tiles.tileBytes(x, y), began = performance.now();
+    if (bytes) footprints.set(key, new FootprintIndex(footprintsFromTile(bytes, x, y)));
+    perfLog.spend('tile', performance.now() - began);
+  } catch (err) {
+    setTimeout(() => footprints.delete(key), 15000); // cars just drive through until it's tried again, as they do with no tile at all
+  }
+}
+
 // Everything a car could hit right now: parked cars, others' cars and people, where they are this instant.
 const bumps = new BumpLimit(), PERSON_REACH = 0.35;
 function carShape(type) {
@@ -2777,8 +2804,15 @@ function carsDrivenNear(at, now) {
 // Each frame at the wheel. Stops this car at whatever it hits, and tells the other game.
 function hitAnything(meters) {
   if (!meters) return;
-  const now = performance.now(), hit = firstHit({ ...pos, heading: car.heading, speed: car.speed, ...carShape(myCar?.type) }, meters, obstacles(now));
-  if (!hit) return;
+  const now = performance.now(), me = { ...pos, heading: car.heading, speed: car.speed, ...carShape(myCar?.type) }, hit = firstHit(me, meters, obstacles(now));
+  if (!hit) {
+    const wall = hitBuilding(me, meters);
+    if (wall) {
+      Object.assign(pos, move(pos.lat, pos.lng, car.heading, -wall.back));
+      stoppedByHit({ id: 'building', kind: 'building' }, Math.abs(me.speed));
+    }
+    return;
+  }
   Object.assign(pos, move(pos.lat, pos.lng, car.heading, -hit.back));
   stoppedByHit(hit.other, hit.closing);
 }

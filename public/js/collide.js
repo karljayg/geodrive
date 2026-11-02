@@ -83,3 +83,68 @@ export class BumpLimit {
     return true;
   }
 }
+
+// --- Buildings: outlines from the same free map tiles as the roads ------------------------------------------------
+
+const CELLS = 48; // to a side of a tile, so a test looks at a few outlines rather than thousands
+
+function inRing(ring, x, y) {
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const [xi, yi] = ring[i], [xj, yj] = ring[j];
+    if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
+  }
+  return inside;
+}
+
+// The outlines in one tile, for testing a point fast. rings: arrays of [lng, lat], outer edges only.
+export class FootprintIndex {
+  constructor(rings) {
+    this.cells = new Map();
+    let west = Infinity, east = -Infinity, south = Infinity, north = -Infinity;
+    for (const ring of rings) {
+      for (const [x, y] of ring) {
+        west = Math.min(west, x); east = Math.max(east, x); south = Math.min(south, y); north = Math.max(north, y);
+      }
+    }
+    Object.assign(this, { west, south, stepX: (east - west || 1) / CELLS, stepY: (north - south || 1) / CELLS });
+    for (const ring of rings) {
+      const xs = ring.map((p) => p[0]), ys = ring.map((p) => p[1]);
+      const from = this.cell(Math.min(...xs), Math.min(...ys)), to = this.cell(Math.max(...xs), Math.max(...ys));
+      for (let cx = from.cx; cx <= to.cx; cx++) {
+        for (let cy = from.cy; cy <= to.cy; cy++) {
+          const key = cx * 1000 + cy;
+          if (!this.cells.has(key)) this.cells.set(key, []);
+          this.cells.get(key).push(ring);
+        }
+      }
+    }
+  }
+
+  cell(x, y) {
+    return { cx: Math.max(0, Math.min(CELLS, Math.floor((x - this.west) / this.stepX))), cy: Math.max(0, Math.min(CELLS, Math.floor((y - this.south) / this.stepY))) };
+  }
+
+  contains(lat, lng) {
+    const { cx, cy } = this.cell(lng, lat);
+    return (this.cells.get(cx * 1000 + cy) ?? []).some((ring) => inRing(ring, lng, lat));
+  }
+}
+
+// Where along this frame's movement the car first goes into a building, or null. Outlines don't line up exactly with the picture, so the car counts as a little smaller than it is, and
+// nobody is killed by thin air. contains(lat, lng): whether there's a building there. Returns { back: metres to go back }.
+export function buildingHit(me, moved, contains, inset) {
+  const { fx, fy, rx, ry } = axes(me.heading), halfWidth = Math.max(0.2, me.halfWidth - inset), halfLength = Math.max(0.2, me.halfLength - inset);
+  const corners = [[1, 1], [1, -1], [-1, 1], [-1, -1], [1, 0], [-1, 0]];
+  const steps = Math.max(1, Math.ceil(Math.abs(moved) / STEP)), east = METRES_PER_DEGREE * Math.cos((me.lat * Math.PI) / 180);
+  // Already in one, as outlines and pictures don't agree, it's free to drive out: nobody should ever be stuck.
+  if (contains(me.lat - (fy * moved) / METRES_PER_DEGREE, me.lng - (fx * moved) / east)) return null;
+  for (let i = 1; i <= steps; i++) {
+    const back = moved * (1 - i / steps);
+    for (const [f, r] of corners) {
+      const x = -fx * back + fx * f * halfLength + rx * r * halfWidth, y = -fy * back + fy * f * halfLength + ry * r * halfWidth;
+      if (contains(me.lat + y / METRES_PER_DEGREE, me.lng + x / east)) return { back: back + moved / steps };
+    }
+  }
+  return null;
+}
