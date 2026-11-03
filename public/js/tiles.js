@@ -76,7 +76,7 @@ export class RoadTiles {
   async fetchTile(key) {
     const [x, y] = key.split('_').map(Number);
     const bytes = await this.tileBytes(x, y);
-    if (!bytes) return { ways: [], parking: { aisles: [], driveways: [], kerbs: [], shoulders: [] } };
+    if (!bytes) return { ways: [], parking: { aisles: [], driveways: [], kerbs: [], shoulders: [], roads: [] } };
     const began = performance.now();
     const ways = roadsFromTile(bytes, x, y), parking = parkingFromTile(bytes, x, y);
     this.onWork?.(performance.now() - began);

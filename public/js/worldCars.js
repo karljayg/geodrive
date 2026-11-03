@@ -57,11 +57,47 @@ function along(c, first, gap, at) {
 const lengthOf = (c) => along(c, Infinity, () => 1, () => {});
 const shifted = (lat, lng, cos, north, east) => [lat + north / METRES_PER_DEGREE, lng + east / (METRES_PER_DEGREE * cos)];
 
+// Whether a place keeps off every road: at least its half width and a parked car's half width from each line, by a grid of 25 m cells.
+const CELL = 25, CAR_HALF = 1.1;
+function offRoads(roads) {
+  if (!roads.length) return () => true;
+  const lat0 = roads[0].c[0], cos = Math.cos((lat0 * Math.PI) / 180), lng0 = roads[0].c[1];
+  const toXY = (lat, lng) => [(lng - lng0) * METRES_PER_DEGREE * cos, (lat - lat0) * METRES_PER_DEGREE];
+  const cells = new Map();
+  for (const { c, half } of roads) {
+    const reach = half + CAR_HALF;
+    for (let i = 0; i + 3 < c.length; i += 2) {
+      const [ax, ay] = toXY(c[i], c[i + 1]), [bx, by] = toXY(c[i + 2], c[i + 3]), seg = { ax, ay, bx, by, reach };
+      for (let gx = Math.floor((Math.min(ax, bx) - reach) / CELL); gx <= Math.floor((Math.max(ax, bx) + reach) / CELL); gx++) {
+        for (let gy = Math.floor((Math.min(ay, by) - reach) / CELL); gy <= Math.floor((Math.max(ay, by) + reach) / CELL); gy++) {
+          const key = `${gx}_${gy}`;
+          if (!cells.has(key)) cells.set(key, []);
+          cells.get(key).push(seg);
+        }
+      }
+    }
+  }
+  return (lat, lng) => {
+    const [x, y] = toXY(lat, lng);
+    for (const { ax, ay, bx, by, reach } of cells.get(`${Math.floor(x / CELL)}_${Math.floor(y / CELL)}`) ?? []) {
+      const dx = bx - ax, dy = by - ay, t = Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / (dx * dx + dy * dy || 1)));
+      if (Math.hypot(x - ax - t * dx, y - ay - t * dy) < reach - 0.01) return false;
+    }
+    return true;
+  };
+}
+
 // The cars a map tile holds, all where a car is meant to be left: in the bays either side of a car park's aisles, at the top of driveways,
 // at the kerb of quiet streets, away from their ends, where junctions are, and now and then pulled over on a bigger road's shoulder. parking: what parkingFromTile reads.
 // Which bays are taken comes from the line's own first point, so a tile is planted the same for everyone.
-export function plantCars({ aisles = [], driveways = [], kerbs = [], shoulders = [] }, config = GAME.worldCars) {
-  const cars = new Map(), plant = (lat, lng, heading) => { const car = plantedAt(lat, lng, (heading + 360) % 360, config); cars.set(car.id, car); };
+// None is kept that would stand on any road of the tile, as a bay or a driveway can run up to another street.
+export function plantCars({ aisles = [], driveways = [], kerbs = [], shoulders = [], roads = [] }, config = GAME.worldCars) {
+  const cars = new Map(), clear = offRoads(roads);
+  const plant = (lat, lng, heading) => {
+    if (!clear(lat, lng)) return;
+    const car = plantedAt(lat, lng, (heading + 360) % 360, config);
+    cars.set(car.id, car);
+  };
   for (const c of aisles) {
     if (c.length < 4) continue;
     const roll = rolls(`aisle:${c[0]},${c[1]}`);
@@ -76,13 +112,13 @@ export function plantCars({ aisles = [], driveways = [], kerbs = [], shoulders =
     // Up the driveway, short of its far end, which is the garage or the house. Facing the house, as people pull in.
     along(c, Math.max(config.driveMin / 2, length - config.driveBack), () => Infinity, (lat, lng, heading) => plant(lat, lng, heading));
   }
-  for (const c of kerbs) {
+  for (const { c, out, oneway } of kerbs) {
     if (c.length < 4) continue;
-    const roll = rolls(`kerb:${c[0]},${c[1]}`), length = lengthOf(c), side = roll() < 0.5 ? 1 : -1;
+    const roll = rolls(`kerb:${c[0]},${c[1]}`), length = lengthOf(c), side = roll() < 0.5 || oneway ? 1 : -1;
     along(c, config.clearOfEnds + roll() * config.every, () => config.every * (0.6 + roll() * 0.8), (lat, lng, heading, rightN, rightE, cos) => {
       if (metresBetween(lat, lng, c[c.length - 2], c[c.length - 1]) < config.clearOfEnds || length < config.clearOfEnds * 2) return;
       // On the right, facing the way traffic goes on that side.
-      plant(...shifted(lat, lng, cos, rightN * config.kerb * side, rightE * config.kerb * side), heading + (side < 0 ? 180 : 0));
+      plant(...shifted(lat, lng, cos, rightN * out * side, rightE * out * side), heading + (side < 0 ? 180 : 0));
     });
   }
   for (const { c, out } of shoulders) {

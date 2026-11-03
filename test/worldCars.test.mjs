@@ -14,7 +14,7 @@ import { metresApart } from '../public/js/protocol.js';
 const METRE = 1 / 111320;
 // A long straight road north, from a given start, in the shape vector.js gives.
 const line = (lat = 38.9, lng = -77.4, metres = 30000) => [lat, lng, lat + metres * METRE, lng];
-const road = (lat, lng, metres) => ({ kerbs: [line(lat, lng, metres)] });
+const road = (lat, lng, metres) => ({ kerbs: [{ c: line(lat, lng, metres), out: 4.6 }] });
 
 test('everyone gets the same cars from the same road', () => {
   assert.deepEqual(plantCars(road()), plantCars(road()));
@@ -24,7 +24,7 @@ test('everyone gets the same cars from the same road', () => {
 test('cars are spaced along a road at about the set distance, none on bridges', () => {
   const cars = plantCars(road()), expected = 30000 / GAME.worldCars.every;
   assert.ok(cars.length > expected * 0.7 && cars.length < expected * 1.4, `${cars.length}`);
-  assert.equal(plantCars({ kerbs: [[1, 2]] }).length, 0, 'a road with one point');
+  assert.equal(plantCars({ kerbs: [{ c: [1, 2], out: 4.6 }] }).length, 0, 'a road with one point');
   assert.equal(plantCars(road(38.9, -77.4, 30)).length, 0, 'nor a street too short to be clear of its junctions');
   assert.equal(plantCars({}).length, 0, 'nothing where nobody may park');
 });
@@ -42,7 +42,7 @@ test('about 2 in 5 run and about 1 in 4 hold a sledgehammer, and those that don\
 
 test('a car sits at the kerb on the right, facing the way traffic goes there, and clear of junctions', () => {
   for (const car of plantCars(road(38.9, -77.4, 2000))) {
-    assert.ok(Math.abs(metresApart(car, { lat: car.lat, lng: -77.4 }) - GAME.worldCars.kerb) < 0.05, 'beside the road');
+    assert.ok(Math.abs(metresApart(car, { lat: car.lat, lng: -77.4 }) - 4.6) < 0.05, 'beside the road');
     assert.ok(car.heading === 0 ? car.lng > -77.4 : Math.abs(car.heading - 180) < 1e-6 && car.lng < -77.4, `${car.heading}`);
     assert.ok(car.lat - 38.9 > GAME.worldCars.clearOfEnds * METRE * 0.99 && 38.9 + 2000 * METRE - car.lat > GAME.worldCars.clearOfEnds * METRE * 0.99);
   }
@@ -77,6 +77,14 @@ test('on a bigger road, now and then a car is pulled over on the shoulder, facin
     assert.ok(Math.abs(metresApart(car, { lat: car.lat, lng: -77.4 }) - 8) < 0.05 && car.lng > -77.4, 'on the right shoulder');
     assert.equal(car.heading, 0);
   }
+});
+
+test('no car is kept that would stand on any road, its own or another', () => {
+  const street = { c: line(), half: 3.5 }, other = { c: line(38.9, -77.4 + 6 / (111320 * Math.cos((38.9 * Math.PI) / 180))), half: 4 };
+  assert.ok(plantCars({ ...road(), roads: [street] }).length > 100, 'a kerb car beside its own street is fine');
+  assert.equal(plantCars({ ...road(), roads: [street, other] }).length, 0, 'but not on the next road over');
+  assert.equal(plantCars({ kerbs: [{ c: line(), out: 2 }], roads: [street] }).length, 0, 'nor in the street itself');
+  assert.equal(plantCars({ aisles: [line()], roads: [{ c: line(38.9, -77.4 + 5.6 / (111320 * Math.cos((38.9 * Math.PI) / 180))), half: 4 }] }).filter((car) => car.lng > -77.4).length, 0, 'a bay that\'s really a street is left empty');
 });
 
 test('a rescue car is pulled in to the kerb on the right', () => {

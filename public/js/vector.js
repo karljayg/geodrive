@@ -162,11 +162,14 @@ export function roadsFromTile(bytes, tx, ty, zoom = VECTOR_ZOOM) {
   return ways;
 }
 
-// Where cars may be parked in one tile, as lines of [lat, lng, ...]: parking aisles, driveways (each from its street end), quiet streets' kerbs,
-// and the shoulders of bigger roads, { c, out } with out the metres from the line to a pulled-over car, as wide roads put it further out. Nothing on a bridge, in a tunnel, covered or indoors, as a car there couldn't be reached.
-const SHOULDER_OUT = { motorway: 10, trunk: 9, primary: 8, secondary: 6.5, tertiary: 5 }; // m from a two-way road's line to its shoulder, with no lane data
+// Where cars may be parked in one tile, as lines of [lat, lng, ...]: parking aisles and driveways (each from its street end); quiet streets' kerbs
+// and bigger roads' shoulders as { c, out }, out being the metres from the line to a parked car's middle, clear of the road's edge; and every
+// road at ground level as { c, half }, its half width, which a parked car must keep off. Nothing on a bridge, in a tunnel, covered or indoors.
+// There's no lane data, so widths are by class: a one-way line is one carriageway of a split road, so it's narrower than the same class both ways.
+const HALF_WIDTH = { motorway: [9, 6], trunk: [8, 5.5], primary: [7, 4.5], secondary: [5.5, 4], tertiary: [4.5, 3.5], minor: [3.5, 3], service: [2.5, 2.5] }; // m, [both ways, one way]
+const PARKING_AISLE_HALF = 3, CAR_CLEAR = 1.6; // m from a road's edge to a parked car's middle: half a car and a little
 export function parkingFromTile(bytes, tx, ty, zoom = VECTOR_ZOOM) {
-  const layer = readLayer(bytes, 'transportation'), out = { aisles: [], driveways: [], kerbs: [], shoulders: [] };
+  const layer = readLayer(bytes, 'transportation'), out = { aisles: [], driveways: [], kerbs: [], shoulders: [], roads: [] };
   if (!layer) return out;
   const { toLat, toLng } = tileToGeo(tx, ty, layer.extent, zoom), streetPixels = new Set(), drives = [];
   const geo = (line) => line.flatMap(([x, y]) => [Math.round(toLat(y) * 1e6) / 1e6, Math.round(toLng(x) * 1e6) / 1e6]);
@@ -175,15 +178,15 @@ export function parkingFromTile(bytes, tx, ty, zoom = VECTOR_ZOOM) {
     if (feature.type !== 2 || !DRIVABLE.has(tags.class)) continue;
     const lines = decodeLines(feature.geometry).filter((line) => line.length > 1);
     if (tags.service !== 'driveway') for (const line of lines) for (const [x, y] of line) streetPixels.add(`${x}_${y}`);
-    if (tags.brunnel || tags.indoor || tags.covered || (tags.access === 'private' && tags.service !== 'driveway') || (tags.layer ?? 0) !== 0) continue;
+    if (tags.brunnel || tags.indoor || (tags.layer ?? 0) !== 0) continue;
+    const oneway = tags.oneway === 1 || tags.oneway === -1;
+    const half = tags.service === 'parking_aisle' ? PARKING_AISLE_HALF : HALF_WIDTH[tags.class][oneway ? 1 : 0];
+    if (tags.service !== 'driveway') for (const line of lines) out.roads.push({ c: geo(line), half });
+    if (tags.covered || (tags.access === 'private' && tags.service !== 'driveway')) continue;
     if (tags.service === 'parking_aisle') for (const line of lines) out.aisles.push(geo(line));
     else if (tags.service === 'driveway') drives.push(...lines);
-    else if (tags.class === 'minor' && !tags.service) for (const line of lines) out.kerbs.push(geo(line));
-    else if (SHOULDER_OUT[tags.class] && !tags.ramp) {
-      // A one-way line is one carriageway of a split road, so its shoulder is nearer the line than a two-way road's.
-      const oneway = tags.oneway === 1 || tags.oneway === -1, away = SHOULDER_OUT[tags.class] * (oneway ? 0.6 : 1);
-      for (const line of lines) out.shoulders.push({ c: geo(tags.oneway === -1 ? [...line].reverse() : line), out: away });
-    }
+    else if (tags.class === 'minor' && !tags.service) for (const line of lines) out.kerbs.push({ c: geo(tags.oneway === -1 ? [...line].reverse() : line), out: half + CAR_CLEAR, oneway });
+    else if (tags.class !== 'minor' && tags.class !== 'service' && !tags.ramp) for (const line of lines) out.shoulders.push({ c: geo(tags.oneway === -1 ? [...line].reverse() : line), out: half + CAR_CLEAR });
   }
   // A driveway is drawn from the street: the end that meets one comes first.
   for (const line of drives) {
