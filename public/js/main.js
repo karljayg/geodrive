@@ -24,7 +24,7 @@ import { Soundtrack } from './musicPlayer.js';
 import { needsEntry, openWorld } from './world.js';
 import { FLAGS } from './protocol.js';
 import { bearingBetween, initialsOf, statusLine } from './people.js';
-import { BOUNCE, BumpLimit, FootprintIndex, buildingHit, firstHit } from './collide.js';
+import { BOUNCE, BumpLimit, FootprintIndex, buildingHit, firstHit, sameLevel } from './collide.js';
 import { seatsPicture, seatsShown } from './carSeats.js';
 import { footprintsFromTile, stationFor, stationsFromTile } from './stations.js';
 import { solidsFromTile, tilesAhead } from './solids.js';
@@ -2790,6 +2790,11 @@ function carShape(type) {
   const shape = BODY_SHAPES[type] || BODY_SHAPES.sport;
   return { halfWidth: shape.w * DEFAULTS.carScale, halfLength: shape.l * DEFAULTS.carScale };
 }
+// On or beside a bridge or tunnel, by the map's own lines, as the road match can pick the road below or none.
+function nearBridgeNow() {
+  const here = vectorTileAt(pos.lat, pos.lng);
+  return onBridge || !!solidTiles.get(`${here.x}_${here.y}`)?.solids.nearBridge(pos.lat, pos.lng);
+}
 function obstacles(now) {
   const list = world.cars.around(pos, 40, 12).filter((known) => known.id !== myCar?.id).map((known) => ({ id: known.id, kind: 'parked', lat: known.lat, lng: known.lng, heading: known.heading, speed: 0, record: known, ...carShape(known.type) }));
   for (const member of world.people.othersOnline) {
@@ -2801,9 +2806,9 @@ function obstacles(now) {
     }
     const driven = [...world.cars.records.values()].find((known) => known.driver === member.id);
     if (!driven) continue; // riding in someone's car, which is here anyway
-    list.push({ id: member.id, member: member.id, kind: 'car', lat: there.lat, lng: there.lng, heading: there.heading, speed: there.speed, ...carShape(driven?.type) });
+    list.push({ id: member.id, member: member.id, kind: 'car', lat: there.lat, lng: there.lng, heading: there.heading, speed: there.speed, onBridge: !!(there.flags & FLAGS.bridge), ...carShape(driven?.type) });
   }
-  return list;
+  return nearBridgeNow() ? sameLevel(list, onBridge) : list;
 }
 
 // What's solid about others' cars to someone on foot.

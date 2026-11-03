@@ -1,5 +1,5 @@
-// What stops a car that nothing draws: the rows of a parking lot and woods, the lumps of the 3D map. Nobody can read where the map's own cars and trees stand, so these come from the free tiles: a
-// row of parking is where one should be beside a mapped aisle. They're only numbers, with no models, and a car asks only about the few grid cells along its own path. Pure, tested in node.
+// Where a car is on or beside a bridge, tunnel or highway, so that things on the ground don't stop it, from the free tiles. Also rows of parking and woods as solid things nothing draws, turned off in
+// GAME.solids: nobody can read where the map's own cars and trees stand, so a row stopped cars in empty lots (2026-11-03). They're only numbers, and a car asks only about the grid cells along its path. Pure, tested.
 import { GAME } from './gameConfig.js';
 import { FootprintIndex } from './collide.js';
 import { decodeLines, readLayer, tileToGeo, VECTOR_ZOOM } from './vector.js';
@@ -114,14 +114,14 @@ export function solidsFromTile(bytes, tx, ty, zoom = VECTOR_ZOOM) {
       if (!roads.has(clear)) roads.set(clear, []);
       for (const line of decodeLines(geometry)) {
         const points = line.map(([x, y]) => [toLng(x), toLat(y)]);
-        if (tags.brunnel === 'bridge') bridges.push(points);
+        if (tags.brunnel === 'bridge' || tags.brunnel === 'tunnel') bridges.push(points);
         if (tags.class === 'motorway' || tags.class === 'trunk') highways.push(points);
-        if (tags.service === 'parking_aisle' && !tags.brunnel) aisles.push(points); // an aisle in a garage's upper deck has no row on the ground
+        if (tags.service === 'parking_aisle' && !tags.brunnel) { if (GAME.solids.rows) aisles.push(points); } // an aisle in a garage's upper deck has no row on the ground
         else roads.get(clear).push(points);
       }
     }
   }
-  if (landLayer) {
+  if (landLayer && GAME.solids.woods) {
     const { toLat, toLng } = tileToGeo(tx, ty, landLayer.extent, zoom);
     for (const { tags, type, geometry } of landLayer.features) {
       if (type !== 3 || tags.class !== 'wood') continue;

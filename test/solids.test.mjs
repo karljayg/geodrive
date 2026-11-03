@@ -2,7 +2,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { TileSolids, tilesAhead } from '../public/js/solids.js';
-import { buildingHit } from '../public/js/collide.js';
+import { buildingHit, sameLevel } from '../public/js/collide.js';
+import { GAME } from '../public/js/gameConfig.js';
 
 const LAT = 39, LNG = -77.4, NORTH = 1 / 111320, EAST = 1 / (111320 * Math.cos((LAT * Math.PI) / 180));
 const at = (x, y) => [LNG + x * EAST, LAT + y * NORTH]; // metres east and north, as [lng, lat]
@@ -111,4 +112,15 @@ test('the tiles wanted are the one here and those about to be reached, each once
   const ahead = tilesAhead(39.0095, -77.005, 0, 400, tileAt);
   assert.equal(ahead.length, 2, 'the next one, before the car gets there');
   assert.deepEqual(ahead[1], tileAt(39.0095 + 400 / 111320, -77.005));
+});
+
+test('parking rows and woods are off, as an empty lot stopped cars', () => {
+  assert.equal(GAME.solids.rows, false);
+  assert.equal(GAME.solids.woods, false);
+});
+
+test('on or beside a bridge only another driver at the same level can be hit', () => {
+  const parked = { id: 'p', kind: 'parked' }, person = { id: 'q', kind: 'person' }, below = { id: 'r', kind: 'car', onBridge: false }, above = { id: 's', kind: 'car', onBridge: true };
+  assert.deepEqual(sameLevel([parked, person, below, above], true), [above], 'on top');
+  assert.deepEqual(sameLevel([parked, person, below, above], false), [below], 'beside or below');
 });

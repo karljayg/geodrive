@@ -67,6 +67,10 @@ export function firstHit(me, moved, obstacles) {
   return null;
 }
 
+// What can really be hit on or beside a bridge or tunnel, where things at another level stand in the same place on the map. Everything parked or on foot is on the ground, as nothing's planted on a
+// bridge and nobody can get out on one, and a driver only counts if both are on a bridge or both aren't. Better to pass through something below than stop for it on top.
+export const sameLevel = (list, onBridge) => list.filter((other) => other.kind === 'car' && !!other.onBridge === !!onBridge);
+
 // Others' places, for the walker: those near enough to matter.
 export const within = (at, list, metres) => list.filter((other) => metresApart(at, other) < metres);
 
