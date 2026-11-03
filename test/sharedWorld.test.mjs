@@ -287,8 +287,8 @@ test('the line back says where someone is again, and everything is caught up', (
   assert.equal(b.buildings.get(HANGAR).state[1].lights, true);
 }));
 
-const [A_CAR, ANOTHER] = plantCars([{ f: 0, c: [38.9, -77.4, 38.95, -77.4] }]).filter((car) => car.runs).concat(plantCars([{ f: 0, c: [39.9, -77.4, 39.95, -77.4] }]).filter((car) => car.runs));
-const DEAD_CAR = plantCars([{ f: 0, c: [38.9, -77.4, 38.95, -77.4] }]).find((car) => !car.runs);
+const [A_CAR, ANOTHER] = plantCars({ kerbs: [[38.9, -77.4, 38.95, -77.4]] }).filter((car) => car.runs).concat(plantCars({ kerbs: [[39.9, -77.4, 39.95, -77.4]] }).filter((car) => car.runs));
+const DEAD_CAR = plantCars({ kerbs: [[38.9, -77.4, 38.95, -77.4]] }).find((car) => !car.runs);
 
 test('one driver: two people at one car, the first takes the wheel and the other rides', () => pair(async ({ create, join }) => {
   const a = await create(), b = await join(a, 'Dana');

@@ -161,3 +161,29 @@ export function roadsFromTile(bytes, tx, ty, zoom = VECTOR_ZOOM) {
   }
   return ways;
 }
+
+// Where cars may be parked in one tile, as lines of [lat, lng, ...]: parking aisles, driveways (each from its street end) and quiet streets' kerbs.
+// Nothing busier than a minor street, and nothing on a bridge, in a tunnel, covered or indoors, as a car there couldn't be reached.
+export function parkingFromTile(bytes, tx, ty, zoom = VECTOR_ZOOM) {
+  const layer = readLayer(bytes, 'transportation'), out = { aisles: [], driveways: [], kerbs: [] };
+  if (!layer) return out;
+  const { toLat, toLng } = tileToGeo(tx, ty, layer.extent, zoom), streetPixels = new Set(), drives = [];
+  const geo = (line) => line.flatMap(([x, y]) => [Math.round(toLat(y) * 1e6) / 1e6, Math.round(toLng(x) * 1e6) / 1e6]);
+  for (const feature of layer.features) {
+    const { tags } = feature;
+    if (feature.type !== 2 || !DRIVABLE.has(tags.class)) continue;
+    const lines = decodeLines(feature.geometry).filter((line) => line.length > 1);
+    if (tags.service !== 'driveway') for (const line of lines) for (const [x, y] of line) streetPixels.add(`${x}_${y}`);
+    if (tags.brunnel || tags.indoor || tags.covered || (tags.access === 'private' && tags.service !== 'driveway') || (tags.layer ?? 0) !== 0) continue;
+    if (tags.service === 'parking_aisle') for (const line of lines) out.aisles.push(geo(line));
+    else if (tags.service === 'driveway') drives.push(...lines);
+    else if (tags.class === 'minor' && !tags.service) for (const line of lines) out.kerbs.push(geo(line));
+  }
+  // A driveway is drawn from the street: the end that meets one comes first.
+  for (const line of drives) {
+    const [x, y] = line[line.length - 1];
+    if (streetPixels.has(`${x}_${y}`) && !streetPixels.has(`${line[0][0]}_${line[0][1]}`)) line.reverse();
+    out.driveways.push(geo(line));
+  }
+  return out;
+}

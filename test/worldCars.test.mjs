@@ -2,7 +2,6 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { crashOutcome } from '../public/js/worldOps.js';
 import { CAR_REASONS, cleanCar, cleanStorage, plantCars, rescueCar } from '../public/js/worldCars.js';
-import { FLAG_BRIDGE } from '../public/js/road.js';
 import { GAME } from '../public/js/gameConfig.js';
 import { SAYINGS } from '../public/js/sayingsConfig.js';
 import { SharedCars } from '../public/js/sharedWorld.js';
@@ -14,22 +13,24 @@ import { metresApart } from '../public/js/protocol.js';
 
 const METRE = 1 / 111320;
 // A long straight road north, from a given start, in the shape vector.js gives.
-const road = (lat = 38.9, lng = -77.4, metres = 30000, f = 0) => ({ id: 'w', f, n: [], c: [lat, lng, lat + metres * METRE, lng] });
+const line = (lat = 38.9, lng = -77.4, metres = 30000) => [lat, lng, lat + metres * METRE, lng];
+const road = (lat, lng, metres) => ({ kerbs: [line(lat, lng, metres)] });
 
 test('everyone gets the same cars from the same road', () => {
-  assert.deepEqual(plantCars([road()]), plantCars([road()]));
-  assert.notDeepEqual(plantCars([road(39)]).map((c) => c.id), plantCars([road()]).map((c) => c.id), 'and different ones on another road');
+  assert.deepEqual(plantCars(road()), plantCars(road()));
+  assert.notDeepEqual(plantCars(road(39)).map((c) => c.id), plantCars(road()).map((c) => c.id), 'and different ones on another road');
 });
 
 test('cars are spaced along a road at about the set distance, none on bridges', () => {
-  const cars = plantCars([road()]), expected = 30000 / GAME.worldCars.every;
+  const cars = plantCars(road()), expected = 30000 / GAME.worldCars.every;
   assert.ok(cars.length > expected * 0.7 && cars.length < expected * 1.4, `${cars.length}`);
-  assert.equal(plantCars([road(38.9, -77.4, 30000, FLAG_BRIDGE)]).length, 0);
-  assert.equal(plantCars([{ f: 0, c: [1, 2] }]).length, 0, 'a road with one point');
+  assert.equal(plantCars({ kerbs: [[1, 2]] }).length, 0, 'a road with one point');
+  assert.equal(plantCars(road(38.9, -77.4, 30)).length, 0, 'nor a street too short to be clear of its junctions');
+  assert.equal(plantCars({}).length, 0, 'nothing where nobody may park');
 });
 
 test('about 2 in 5 run and about 1 in 4 hold a sledgehammer, and those that don\'t run say why', () => {
-  const cars = Array.from({ length: 40 }, (_, i) => plantCars([road(38 + i * 0.5)])).flat();
+  const cars = Array.from({ length: 40 }, (_, i) => plantCars(road(38 + i * 0.5))).flat();
   const share = (fits) => cars.filter(fits).length / cars.length;
   assert.ok(cars.length > 1000);
   assert.ok(Math.abs(share((c) => c.runs) - GAME.worldCars.runningChance) < 0.05, `${share((c) => c.runs)}`);
@@ -39,15 +40,44 @@ test('about 2 in 5 run and about 1 in 4 hold a sledgehammer, and those that don\
   for (const car of cars) assert.ok(car.fuel >= 25 && car.fuel <= 95);
 });
 
-test('a car sits at the kerb, in line with the road', () => {
-  for (const car of plantCars([road()])) {
+test('a car sits at the kerb on the right, facing the way traffic goes there, and clear of junctions', () => {
+  for (const car of plantCars(road(38.9, -77.4, 2000))) {
     assert.ok(Math.abs(metresApart(car, { lat: car.lat, lng: -77.4 }) - GAME.worldCars.kerb) < 0.05, 'beside the road');
-    assert.ok(car.heading === 0 || Math.abs(car.heading - 180) < 1e-6, `${car.heading}`);
+    assert.ok(car.heading === 0 ? car.lng > -77.4 : Math.abs(car.heading - 180) < 1e-6 && car.lng < -77.4, `${car.heading}`);
+    assert.ok(car.lat - 38.9 > GAME.worldCars.clearOfEnds * METRE * 0.99 && 38.9 + 2000 * METRE - car.lat > GAME.worldCars.clearOfEnds * METRE * 0.99);
   }
 });
 
+test('in a car park, cars stand in the bays either side of the aisle, side by side and square to it', () => {
+  const cars = plantCars({ aisles: [line(38.9, -77.4, 3000)] }), { bay, bayOut, bayTaken } = GAME.worldCars;
+  const bays = (3000 / bay) * 2;
+  assert.ok(Math.abs(cars.length / bays - bayTaken) < 0.05, `${cars.length} of ${bays}`);
+  for (const car of cars) {
+    assert.ok(Math.abs(metresApart(car, { lat: car.lat, lng: -77.4 }) - bayOut) < 0.05, 'a bay\'s depth off the aisle');
+    assert.ok(Math.abs(car.heading - 90) < 1e-6 || Math.abs(car.heading - 270) < 1e-6, `${car.heading}`);
+    assert.ok(Math.abs(((car.lat - 38.9) / METRE) % bay - bay / 2) < 0.05, 'in the middle of a bay');
+  }
+});
+
+test('a driveway holds at most one car, up by the house and facing it', () => {
+  const drives = Array.from({ length: 400 }, (_, i) => [38.9 + i * 0.001, -77.4, 38.9 + i * 0.001 + 30 * METRE, -77.4]);
+  const cars = plantCars({ driveways: drives }), { driveTaken, driveBack } = GAME.worldCars;
+  assert.ok(Math.abs(cars.length / drives.length - driveTaken) < 0.07, `${cars.length}`);
+  for (const car of cars) {
+    assert.equal(car.heading, 0);
+    assert.ok(Math.abs((((car.lat - 38.9) / 0.001) % 1) * 0.001 / METRE - (30 - driveBack)) < 0.1, 'short of the far end');
+  }
+  assert.equal(plantCars({ driveways: [[38.9, -77.4, 38.9 + 3 * METRE, -77.4]] }).length, 0, 'none in a driveway too short for one');
+});
+
+test('a rescue car is pulled in to the kerb on the right', () => {
+  const car = rescueCar(38.9, -77.4, 0, 'me-2');
+  assert.ok(Math.abs(metresApart(car, { lat: 38.9, lng: -77.4 }) - GAME.worldCars.kerb) < 0.05);
+  assert.ok(car.lng > -77.4 && Math.abs(car.lat - 38.9) < 1e-9);
+});
+
 test('a car needs a good id, place and look before it\'s kept', () => {
-  const [car] = plantCars([road()]);
+  const [car] = plantCars(road());
   assert.equal(cleanCar(car).id, car.id);
   assert.equal(cleanCar(car).driver, null, 'nobody can claim to be driving');
   for (const bad of [null, {}, { ...car, id: '../x' }, { ...car, lat: 200 }, { ...car, lng: NaN }, { ...car, type: 'tank' }, { ...car, colour: 'red' }, { ...car, runs: 'yes' }]) assert.equal(cleanCar(bad), null);
@@ -63,8 +93,8 @@ test('storage must be a short list of plain things', () => {
 });
 
 test('around shows parked cars, a moved one where it now is, and not those being driven', () => {
-  const planted = plantCars([road()]), first = planted[0], cars = new SharedCars(null, 'me');
-  cars.plantFrom(new Map([['t', [road()]]]));
+  const planted = plantCars(road()), first = planted[0], cars = new SharedCars(null, 'me');
+  cars.plantFrom(new Map([['t', road()]]));
   assert.equal(cars.around(first, 1)[0].id, first.id);
   cars.heard({ ...first, lat: 40, lng: -70, driver: null });
   assert.equal(cars.around(first, 1).length, 0, 'it\'s gone from there');

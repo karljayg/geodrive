@@ -2986,7 +2986,7 @@ async function iDied({ lives, how, by, at }) {
 // Nobody should start out stranded: once the roads are in, a running car within walking distance.
 function makeSureOfACar() {
   setTimeout(() => {
-    world.cars.plantFrom(tiles.waysOf);
+    world.cars.plantFrom(tiles.parkingOf);
     const at = foot ? foot.where() : pos, road = roads.nearest(at.lat, at.lng, 0, GAME.world.appearWithin);
     if (road) world.cars.makeSureOfOne(at, { lat: road.lat, lng: road.lng, heading: road.heading });
   }, 4000);
@@ -3147,7 +3147,7 @@ async function startPeople() {
     setFsd(false);
   };
   setInterval(() => {
-    world.cars.plantFrom(tiles.waysOf);
+    world.cars.plantFrom(tiles.parkingOf);
     if (foot) foot.setCars(worldCarsNear(pos));
     syncCarStorage();
     syncSeats();

@@ -242,10 +242,10 @@ export class SharedCars {
     this.onChange = null;
   }
 
-  // New road tiles' cars, once each. Tiles let go of aren't missed: their cars are out of sight.
-  plantFrom(waysOf) {
-    for (const [key, ways] of waysOf) if (!this.plantedTiles.has(key)) this.plantedTiles.set(key, plantCars(ways));
-    for (const key of this.plantedTiles.keys()) if (!waysOf.has(key)) this.plantedTiles.delete(key);
+  // New road tiles' cars, once each, from where each lets cars be left (RoadTiles.parkingOf). Tiles let go of aren't missed: their cars are out of sight.
+  plantFrom(parkingOf) {
+    for (const [key, parking] of parkingOf) if (!this.plantedTiles.has(key)) this.plantedTiles.set(key, plantCars(parking));
+    for (const key of this.plantedTiles.keys()) if (!parkingOf.has(key)) this.plantedTiles.delete(key);
   }
 
   // News can cross: an answer and a later change can arrive together, so only something newer counts.
@@ -278,8 +278,10 @@ export class SharedCars {
 
   // Parked cars within this far, nearest first. Those being driven aren't parked: they're where their drivers are.
   around(at, within, most = Infinity) {
-    const found = [];
+    // Car parks hold thousands, and this runs every frame, so a cheap box comes first.
+    const found = [], dLat = within / 111000, dLng = dLat / Math.max(0.01, Math.cos((at.lat * Math.PI) / 180));
     const consider = (car) => {
+      if (Math.abs(car.lat - at.lat) > dLat || Math.abs(car.lng - at.lng) > dLng) return;
       const away = metresApart(at, car);
       if (away <= within) found.push({ car, away });
     };

@@ -1,7 +1,7 @@
 // Loads roads into a RoadNet around the car from OpenFreeMap's vector tiles. Any failure is tolerated:
 // without a tile the car drives freely until a retry works.
 import { move } from './camera.js';
-import { namesFromTile, roadsFromTile, VECTOR_ZOOM, vectorTileAt } from './vector.js';
+import { namesFromTile, parkingFromTile, roadsFromTile, VECTOR_ZOOM, vectorTileAt } from './vector.js';
 
 const TILEJSON = 'https://tiles.openfreemap.org/planet';
 const RETRY_AFTER = 15000; // ms before a tile that failed is tried again
@@ -20,6 +20,7 @@ export class RoadTiles {
     this.loading = new Map();
     this.template = null;
     this.waysOf = new Map(); // tile key -> its ways, so one tile can be released
+    this.parkingOf = new Map(); // tile key -> where cars may be left there (parkingFromTile), for a shared world's cars
     this.onWork = null;      // called with the ms each tile cost the main thread
     this.namesOf = new Map(); // tile key -> its named roads
     this.namesFailedAt = new Map();
@@ -39,7 +40,8 @@ export class RoadTiles {
     if (this.loaded.has(key)) return Promise.resolve(true);
     if (this.loading.has(key)) return this.loading.get(key);
     const job = this.fetchTile(key)
-      .then((ways) => {
+      .then(({ ways, parking }) => {
+        this.parkingOf.set(key, parking);
         const began = performance.now();
         this.net.add(ways);
         this.onWork?.(performance.now() - began);
@@ -74,11 +76,11 @@ export class RoadTiles {
   async fetchTile(key) {
     const [x, y] = key.split('_').map(Number);
     const bytes = await this.tileBytes(x, y);
-    if (!bytes) return [];
+    if (!bytes) return { ways: [], parking: { aisles: [], driveways: [], kerbs: [] } };
     const began = performance.now();
-    const ways = roadsFromTile(bytes, x, y);
+    const ways = roadsFromTile(bytes, x, y), parking = parkingFromTile(bytes, x, y);
     this.onWork?.(performance.now() - began);
-    return ways;
+    return { ways, parking };
   }
 
   // Street names within reach of a point, for the phone's Map. They aren't needed to drive, so they're read only when asked for
@@ -137,6 +139,7 @@ export class RoadTiles {
       this.net.remove(this.waysOf.get(key));
       this.onWork?.(performance.now() - began);
       this.waysOf.delete(key);
+      this.parkingOf.delete(key);
       this.loaded.delete(key);
     }
   }

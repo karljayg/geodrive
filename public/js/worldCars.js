@@ -1,7 +1,6 @@
-// The cars of a shared world. Each is planted by a hash of its place on the road, so everyone sees the same ones with nothing stored, until someone touches one.
+// The cars of a shared world. Each is planted by a hash of its place in a car park, a driveway or at a quiet kerb, so everyone sees the same ones with nothing stored, until someone touches one.
 // Pure, tested in node. Keeping them on the server is in sharedWorld.js, drawing them in peopleView.js.
 import { GAME } from './gameConfig.js';
-import { FLAG_BRIDGE } from './road.js';
 
 const METRES_PER_DEGREE = 111320;
 const ID_GRID = 2e-5; // degrees, about 2 m, as buildings' ids
@@ -39,33 +38,61 @@ function plantedAt(lat, lng, heading, config) {
   };
 }
 
-// The cars along these road ways, from one map tile. Bridges have none. Which side, and how far along, come from the way's own first point, so a way is planted the same for everyone.
-export function plantCars(ways, config = GAME.worldCars) {
-  const cars = new Map();
-  for (const { c, f } of ways) {
-    if (f & FLAG_BRIDGE || c.length < 4) continue;
-    const roll = rolls(`way:${c[0]},${c[1]}`), side = roll() < 0.5 ? 1 : -1;
-    let walked = 0, next = roll() * config.every;
-    for (let i = 0; i + 3 < c.length; i += 2) {
-      const lat0 = c[i], lng0 = c[i + 1], lat1 = c[i + 2], lng1 = c[i + 3], length = metresBetween(lat0, lng0, lat1, lng1);
-      while (length > 0 && next <= walked + length) {
-        const t = (next - walked) / length, north = (lat1 - lat0) * METRES_PER_DEGREE, east = (lng1 - lng0) * METRES_PER_DEGREE * Math.cos((lat0 * Math.PI) / 180);
-        const heading = ((Math.atan2(east, north) * 180) / Math.PI + (side < 0 ? 180 : 0) + 360) % 360;
-        const offNorth = (-east / length) * config.kerb * side, offEast = (north / length) * config.kerb * side;
-        const lat = lat0 + (lat1 - lat0) * t + offNorth / METRES_PER_DEGREE, lng = lng0 + (lng1 - lng0) * t + offEast / (METRES_PER_DEGREE * Math.cos((lat0 * Math.PI) / 180));
-        const car = plantedAt(lat, lng, heading, config);
-        cars.set(car.id, car);
-        next += config.every * (0.6 + roll() * 0.8);
-      }
-      walked += length;
+// Steps along a line: calls at(lat, lng, heading, rightNorth, rightEast, cos) every `gap` metres, the first `first` metres in, where right* is a unit step to the right in metres.
+function along(c, first, gap, at) {
+  let walked = 0, next = first;
+  for (let i = 0; i + 3 < c.length; i += 2) {
+    const lat0 = c[i], lng0 = c[i + 1], lat1 = c[i + 2], lng1 = c[i + 3], length = metresBetween(lat0, lng0, lat1, lng1);
+    const cos = Math.cos((lat0 * Math.PI) / 180), north = (lat1 - lat0) * METRES_PER_DEGREE, east = (lng1 - lng0) * METRES_PER_DEGREE * cos;
+    while (length > 0 && next <= walked + length) {
+      const t = (next - walked) / length;
+      at(lat0 + (lat1 - lat0) * t, lng0 + (lng1 - lng0) * t, ((Math.atan2(east, north) * 180) / Math.PI + 360) % 360, -east / length, north / length, cos);
+      next += gap();
     }
+    walked += length;
+  }
+  return walked;
+}
+
+const lengthOf = (c) => along(c, Infinity, () => 1, () => {});
+const shifted = (lat, lng, cos, north, east) => [lat + north / METRES_PER_DEGREE, lng + east / (METRES_PER_DEGREE * cos)];
+
+// The cars a map tile holds, all where a car is meant to be left: in the bays either side of a car park's aisles, at the top of driveways,
+// and at the kerb of quiet streets, away from their ends, where junctions are. Never on a busy road. parking: what parkingFromTile reads.
+// Which bays are taken comes from the line's own first point, so a tile is planted the same for everyone.
+export function plantCars({ aisles = [], driveways = [], kerbs = [] }, config = GAME.worldCars) {
+  const cars = new Map(), plant = (lat, lng, heading) => { const car = plantedAt(lat, lng, (heading + 360) % 360, config); cars.set(car.id, car); };
+  for (const c of aisles) {
+    if (c.length < 4) continue;
+    const roll = rolls(`aisle:${c[0]},${c[1]}`);
+    along(c, config.bay / 2, () => config.bay, (lat, lng, heading, rightN, rightE, cos) => {
+      for (const side of [1, -1]) if (roll() < config.bayTaken) plant(...shifted(lat, lng, cos, rightN * config.bayOut * side, rightE * config.bayOut * side), heading + (roll() < 0.5 ? 90 : -90));
+    });
+  }
+  for (const c of driveways) {
+    if (c.length < 4) continue;
+    const roll = rolls(`drive:${c[0]},${c[1]}`), length = lengthOf(c);
+    if (length < config.driveMin || roll() >= config.driveTaken) continue;
+    // Up the driveway, short of its far end, which is the garage or the house. Facing the house, as people pull in.
+    along(c, Math.max(config.driveMin / 2, length - config.driveBack), () => Infinity, (lat, lng, heading) => plant(lat, lng, heading));
+  }
+  for (const c of kerbs) {
+    if (c.length < 4) continue;
+    const roll = rolls(`kerb:${c[0]},${c[1]}`), length = lengthOf(c), side = roll() < 0.5 ? 1 : -1;
+    along(c, config.clearOfEnds + roll() * config.every, () => config.every * (0.6 + roll() * 0.8), (lat, lng, heading, rightN, rightE, cos) => {
+      if (metresBetween(lat, lng, c[c.length - 2], c[c.length - 1]) < config.clearOfEnds || length < config.clearOfEnds * 2) return;
+      // On the right, facing the way traffic goes on that side.
+      plant(...shifted(lat, lng, cos, rightN * config.kerb * side, rightE * config.kerb * side), heading + (side < 0 ? 180 : 0));
+    });
   }
   return [...cars.values()];
 }
 
-// A running car for someone with none in walking distance, at this place on the road.
+// A running car for someone with none in walking distance, near this place on the road.
+// It's pulled in to the kerb on the right, not left in the lane.
 export function rescueCar(lat, lng, heading, nonce, config = GAME.worldCars) {
-  return { ...plantedAt(lat, lng, heading, config), id: `x_${nonce}`, runs: true, why: null, fuel: 80 };
+  const r = (heading * Math.PI) / 180, [kLat, kLng] = shifted(lat, lng, Math.cos((lat * Math.PI) / 180), -Math.sin(r) * config.kerb, Math.cos(r) * config.kerb);
+  return { ...plantedAt(kLat, kLng, heading, config), id: `x_${nonce}`, runs: true, why: null, fuel: 80 };
 }
 
 // A planted car over its server record, once someone has touched it: the record wins.
