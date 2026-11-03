@@ -84,6 +84,13 @@ Settings' Diagnostics tab shows FPS, the slowest frame in the last second, and J
 
 **Send log** in Settings' Diagnostics tab sends the performance log to the server for review. The game records frame rate, slow frames, where the time went, map and road loading, and the car's position every 5 seconds, keeping the last 5 hours in that browser across refreshes. Nothing leaves the browser until the button is pressed, and a sent log is cleared from it. Anyone playing can press the button, so the server caps what it holds at 200 MB.
 
+## Test views
+A way to judge weather and a ruined look before any of it is part of the game. Off unless the address has `testview`. Nothing is saved, and a normal visit does no overlay work: the game loop calls an empty function.
+
+Add it to the address, for example `?testview=snow`. Other values: `rain`, `apocalypse`, `vines`, `cracks`, `ruin` (apocalypse, dead vines and cracks together), `off`. A comma list mixes them, such as `?testview=rain,cracks`. A **Test view** bar in the corner switches without reloading, so it doesn't charge for another map load. The choice stays in the address.
+
+The map is a photograph, so these sit on top of it. Rain, snow and ash are drawn on a canvas over the view. Cracks, and snow, ash or weeds on the ground, are drawn where the ground is in this view, filled past the top of the picture so driving doesn't show them appearing. Vines are small models standing on the map. A colour grade tints the map. Indoors the canvas hides. None of it is solid. While one is on, the cost seen so far is that canvas, plus the plant models for vines and ruin. `testView.js`, tested.
+
 ## Shared worlds
 `J` in the sandbox makes a shared world: a name for it, then your own name, male or female, and a colour for each part of your person. The sandbox stays as it is. Your start is chosen once, in the usual dialog, and only places you: it isn't kept. In a world, New start, Back to start, the time slider, `T` and Forget interiors aren't there, and everyone starts on foot.
 

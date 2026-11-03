@@ -12,6 +12,7 @@ import { engineFadeAt } from './engineMix.js';
 import { BODY_SHAPES, buildCarGlb, buildPersonGlb, carPicture } from './carModel.js';
 import { beamPools, brakeLit, drawDots, drawPools, tailDots, torchPools } from './headlights.js';
 import { clockText, darknessAt, tintAt } from './daylight.js';
+import { mountTestView } from './testView.js';
 import { drawGauge, drawNav, navBehind, revRange, speedRange, speedStep } from './dash.js';
 import { EngineAudio } from './engineSound.js';
 import { bagSound } from './sounds.js';
@@ -151,6 +152,11 @@ let people = null, foot = null, footLoading = false, lookX = 0, lookY = 0, touch
 const scenes = new Scenes(MUSIC);
 let soundtrack = null, darkSince = null, musicTest = null; // musicTest: the mood picked in Settings, heard over everything
 const debug = { hold: false, car, pos, keys, roads, tiles, perfLog }; // window.__geodrive, for checks from the console
+// A look over the map for judging weather and ruin. Idle unless the address has ?testview=.
+const testView = mountTestView({
+  canvas: el('viewFx'), bar: el('testViews'), box: () => el('map'),
+  view: () => ({ lat: foot ? foot.where().lat : pos.lat, lng: foot ? foot.where().lng : pos.lng, heading: camHeading, tilt, range, fovY: FOV_Y, below: CAR_BELOW_CENTRE, indoors: !!foot?.walker.inside }),
+});
 
 function loadStart() {
   try {
@@ -809,6 +815,7 @@ function frame(t) {
     const profile = profileFor(carType());
     if (!previewing()) engine.update({ rpm: gearbox.rpm, load: 0, speedMph: 0, car: profile, running: false });
   }
+  testView.tick(dt);
   perfLog.frame(t, performance.now() - began);
   if (perfLog.due(t)) sampleLog(t);
 }
@@ -3148,6 +3155,7 @@ async function boot() {
     map = new maps3d.Map3DElement({ center: { ...pos, altitude: ground }, heading: car.heading, tilt, range, fov: FOV_Y, mode: 'HYBRID', defaultUIHidden: true });
     applyGraphics();
     el('map').replaceChildren(map);
+    testView.attach({ map, maps3d, glbUrl });
     if (maps3d.Model3DElement && world.rules.ownCar) {
       model = new maps3d.Model3DElement({ position: { ...pos, altitude: 0 }, altitudeMode: 'RELATIVE_TO_GROUND', orientation: { heading: car.heading, tilt: 0, roll: 0 }, scale: carSize() });
       map.append(model);

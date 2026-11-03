@@ -18,10 +18,24 @@ body.onFoot { --dash: 0px; }
 body.onFoot #dash { display: none; }
 #hud { z-index: 2; pointer-events: none; }
 /* Evening and headlights: a tint over the map with the beams cut out of it. */
-#night, #beam, #tails { position: absolute; left: 0; top: 0; width: 100%; height: calc(100% - var(--dash)); pointer-events: none; display: none; }
+#night, #beam, #tails, #viewFx { position: absolute; left: 0; top: 0; width: 100%; height: calc(100% - var(--dash)); pointer-events: none; display: none; }
 #night { mix-blend-mode: multiply; z-index: 1; }
 #beam { mix-blend-mode: screen; z-index: 1; }
 #tails { display: block; z-index: 1; }
+#viewFx { z-index: 1; }
+#testViews { position: absolute; top: 46px; right: 12px; z-index: 6; display: none; flex-wrap: wrap; justify-content: flex-end; gap: 2px; max-width: min(420px, calc(100% - 24px)); padding: 3px 6px; border-radius: 9px; background: #0d1621e6; pointer-events: auto; }
+#testViews.open { display: flex; }
+#testViews span { font-size: 10px; font-weight: 800; letter-spacing: .06em; color: #69d9ba; margin: 4px 6px; }
+#testViews button { font: inherit; font-size: 11px; color: #d5e0e8; padding: 4px 8px; background: none; border: 0; border-radius: 6px; cursor: pointer; }
+#testViews button:hover, #testViews button[aria-pressed="true"] { background: #ffffff1f; color: #fff; }
+@media (max-width: 700px) {
+  #testViews { top: auto; bottom: calc(var(--dash) + 8px); left: 8px; right: auto; max-width: calc(100% - 16px); justify-content: flex-start; }
+}
+body.tv-rain #map { filter: saturate(0.68) brightness(0.9) contrast(1.06); }
+body.tv-snow #map { filter: saturate(0.42) brightness(1.12) contrast(1.04); }
+body.tv-apocalypse #map { filter: sepia(0.5) saturate(0.5) contrast(1.16) brightness(0.8); }
+body.tv-vines #map { filter: saturate(1.3) sepia(0.2) hue-rotate(16deg) brightness(0.92); }
+body.tv-cracks #map { filter: saturate(0.76) contrast(1.14) brightness(0.94); }
 
 .pill, .panel { background: #101923dd; border: 1px solid #ffffff26; box-shadow: 0 8px 30px #0004; backdrop-filter: blur(18px); border-radius: 14px; }
 header { position: absolute; top: 8px; left: 8px; display: flex; align-items: center; gap: 2px; max-width: calc(100% - 16px); padding: 3px 6px; border-radius: 9px; background: #0d1621e6; pointer-events: auto; }

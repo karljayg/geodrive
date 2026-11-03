@@ -57,6 +57,7 @@ Google usage and spend can only be seen in Google Cloud Console; the API key can
 | `musicPlayer.js` | Plays and crossfades the soundtrack | Browser (`public/_music.html`, not deployed) |
 | `carModel.js` | Builds car models and pictures by type and colour | Yes |
 | `daylight.js` | Time-of-day tint | Yes |
+| `testView.js` | Optional weather and ruin looks, only with `?testview=` | Yes |
 | `headlights.js` | Headlight beam pattern | Yes |
 | `dash.js` | Draws the gauges and nav screen | Browser |
 | `foot.js` | Walking: loads and drops chunks around the person | Browser |
