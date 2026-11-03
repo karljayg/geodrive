@@ -9,6 +9,7 @@
 <body>
 <div id="map"></div>
 <canvas id="foot"></canvas>
+<div id="grime"></div>
 <canvas id="night"></canvas>
 <canvas id="beam"></canvas>
 <canvas id="tails"></canvas>
@@ -223,6 +224,8 @@
     <label for="mapScale">Map sharpness <span data-value="mapScale"></span></label>
     <input id="mapScale" data-setting="mapScale" type="range" min="0.5" max="1" step="0.05">
     <label class="check"><input id="mapLabels" data-setting="mapLabels" type="checkbox"> Road and place names on the map</label>
+    <label for="mapLook">Look</label>
+    <select id="mapLook" data-setting="mapLook"><option value="today">Today</option><option value="abandoned">Abandoned (trial)</option></select>
   </section>
   <section data-tab="car">
     <h3>Driving</h3>

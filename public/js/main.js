@@ -2164,7 +2164,8 @@ function applyGraphics() {
     map.style.transformOrigin = '0 0';
     map.style.transform = `scale(${settings.mapScale})`;
   }
-  const graphics = `${settings.mapQuality} ${settings.mapMemory} ${settings.mapScale} ${mode}`;
+  document.body.classList.toggle('abandoned', settings.mapLook === 'abandoned');
+  const graphics = `${settings.mapQuality} ${settings.mapMemory} ${settings.mapScale} ${mode} ${settings.mapLook}`;
   if (graphics !== graphicsLogged) perfLog.event('graphics', graphics);
   graphicsLogged = graphics;
 }

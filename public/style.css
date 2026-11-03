@@ -22,6 +22,16 @@ body.onFoot #dash { display: none; }
 #night { mix-blend-mode: multiply; z-index: 1; }
 #beam { mix-blend-mode: screen; z-index: 1; }
 #tails { display: block; z-index: 1; }
+/* The abandoned look, a trial: the map and rooms graded towards dusty olive, with a fixed grime and vignette layer.
+   Both are static, so the compositor does the same work every frame and nothing is redrawn by us. */
+#grime { position: absolute; left: 0; top: 0; width: 100%; height: calc(100% - var(--dash)); pointer-events: none; display: none; z-index: 1; mix-blend-mode: multiply;
+  background:
+    radial-gradient(ellipse at 50% 45%, transparent 45%, #2a2418aa 100%),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='240'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.55 0 0 0 0 0.5 0 0 0 0 0.38 0 0 0 0.35 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' fill='%23fff'/%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='900' height='900'%3E%3Cfilter id='s'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.008' numOctaves='3' seed='7'/%3E%3CfeColorMatrix values='0 0 0 0 0.42 0 0 0 0 0.45 0 0 0 0 0.3 0 0 0 1.4 -0.55'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' fill='%23fff'/%3E%3Crect width='100%25' height='100%25' filter='url(%23s)'/%3E%3C/svg%3E"),
+    #d8d2bc; }
+body.abandoned #grime { display: block; }
+body.abandoned #map, body.abandoned #foot { filter: saturate(0.4) sepia(0.35) hue-rotate(15deg) contrast(1.08) brightness(0.9); }
 
 .pill, .panel { background: #101923dd; border: 1px solid #ffffff26; box-shadow: 0 8px 30px #0004; backdrop-filter: blur(18px); border-radius: 14px; }
 header { position: absolute; top: 8px; left: 8px; display: flex; align-items: center; gap: 2px; max-width: calc(100% - 16px); padding: 3px 6px; border-radius: 9px; background: #0d1621e6; pointer-events: auto; }
