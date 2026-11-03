@@ -25,7 +25,7 @@ import { chooseMusic, Scenes } from './music.js';
 import { MUSIC } from './musicConfig.js';
 import { Soundtrack } from './musicPlayer.js';
 import { needsEntry, openWorld } from './world.js';
-import { FLAGS } from './protocol.js';
+import { FLAGS, metresApart } from './protocol.js';
 import { bearingBetween, initialsOf, statusLine } from './people.js';
 import { BOUNCE, BumpLimit, FootprintIndex, buildingHit, firstHit, sameLevel } from './collide.js';
 import { seatsPicture, seatsShown } from './carSeats.js';
@@ -901,10 +901,10 @@ function runFoot(t, dt) {
   foot.update(live ? dt : 0, live ? footInput(dt) : {}, world.clock.hour);
   if (live) tipAboutPushing(fromX, fromY, dt);
   syncFootScene(dt);
-  // The radio, road and wind stay in the car, though the phone can play music. Getting out switches the engine off: no car runs with nobody in it,
-  // as one heard idling and then found locked made no sense.
-  const profile = profileFor(carType());
-  if (!previewing()) engine.update({ rpm: profile.idle, load: 0, speedMph: 0, car: profile, running: false, outside: true, reach: engineFadeAt(foot.distanceToCar()) });
+  // The radio, road and wind stay in the car, though the phone can play music. The car just got out of idles on, fading with distance from it.
+  // Only that one: measuring to the nearest parked car made every locked car sound as if it were running.
+  const profile = profileFor(carType()), idling = live && idlingNow();
+  if (!previewing()) engine.update({ rpm: profile.idle, load: 0, speedMph: 0, car: profile, running: idling, outside: true, reach: idling ? engineFadeAt(metresApart(foot.where(), idlingCar)) : 0 });
   perfLog.spend('drive', performance.now() - began);
   if (!live) return;
   noteWalk(dt);
@@ -968,7 +968,7 @@ async function getOut() {
     riding = null;
     model?.remove();
   }
-  await startWalking();
+  await startWalking({ lat: pos.lat, lng: pos.lng, id: myCar?.id ?? null });
 }
 
 // The car being driven, or last driven, in a shared world. Its look and size are its own, not Settings'.
@@ -1144,8 +1144,17 @@ function footCars() {
   return [{ x: 0, y: 0, heading: car.heading, halfWidth: shape.w * carSize(), halfLength: shape.l * carSize() }];
 }
 
-// On foot from wherever the car is, or from the start in a world where nobody has a car.
-async function startWalking() {
+// Where the car just got out of stands, idling, until someone else drives it off. Null after a respawn or a teleport: no car runs with nobody in it.
+let idlingCar = null;
+function idlingNow() {
+  if (!idlingCar) return false;
+  if (idlingCar.id && world.cars?.records?.get(idlingCar.id)?.driver) idlingCar = null;
+  return !!idlingCar;
+}
+
+// On foot from wherever the car is, or from the start in a world where nobody has a car. leftCar: the car just got out of, if any, whose engine idles on.
+async function startWalking(leftCar = null) {
+  idlingCar = leftCar;
   footLoading = true;
   try {
     const buildings = await world.openBuildings(), look = ownLook();
