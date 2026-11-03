@@ -106,6 +106,8 @@ export const GAME = {
     'Candy bar': { hunger: 10, energy: 6, say: 'You eat the candy bar.', kind: 'food' },
     'Dog biscuit': { hunger: 4, thirst: -3, say: 'It tastes as you would expect.', kind: 'food' },
     Burger: { hunger: 40, thirst: -4, bowels: -9, say: 'You eat the burger. It\'s cold, and still great.', kind: 'food' },
+    'Raw deer meat': { hunger: 14, health: -8, thirst: -4, bowels: -8, say: 'You eat it raw. It sits badly.', kind: 'food' },
+    'Cooked deer meat': { hunger: 42, bowels: -6, say: 'You eat the cooked deer.', kind: 'food' },
     'Half a burger': { hunger: 20, bowels: -5, say: 'You finish someone\'s burger. Nobody needs to know.', kind: 'food' },
     Fries: { hunger: 18, thirst: -7, bowels: -4, say: 'You eat the fries.', kind: 'food' },
     'Chicken wrap': { hunger: 35, bowels: -7, say: 'You eat the wrap.', kind: 'food' },
@@ -202,6 +204,8 @@ till: ['Cash', 'Bundle of cash'], produceStand: ['Apple', 'Banana', 'Orange', 'G
   // Clips are the Quaternius lengths, in seconds. Nothing is saved or shared.
   deer: {
     every: 600, verge: 14, shownWithin: 300, mostShown: 4, stagChance: 0.4,
+    hitRadius: 0.7, meat: 20, meatReach: 4, // pieces off one deer; metres from the car that F can load them
+    raw: 'Raw deer meat', cooked: 'Cooked deer meat',
     vision: 7.1, hearing: 4.7, wanderSpeed: 0.78, fleeSpeed: 9.75, wanderRadius: 2.8,
     alarmMs: 4000, fearEveryMs: 250, boltStep: 3, wanderWaitMs: 4000,
     idleBelow: 0.2, runAbove: 2.5, walkPace: 1, runPace: 4.5,

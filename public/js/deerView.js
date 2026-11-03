@@ -5,6 +5,7 @@ import { frameOf, newDeer, plantDeer, stepDeer } from './deer.js';
 import { metresApart } from './protocol.js';
 
 const HIDDEN = 0.001, SHOWN = 1;
+const DEAD_STORE = 'geodrive_deer_dead_v1';
 const GAITS = ['idle', 'walk', 'gallop'];
 const METRES_PER_DEGREE = 111320;
 
@@ -22,6 +23,29 @@ export class DeerView {
     this.shown = new Map(); // id -> { deer, frames, gait, frame }
     this.queue = [];
     this.config = GAME.deer;
+    this.dead = new Set();
+    this.bodies = [];
+    this.bodyModels = new Map();
+    this.loadDead();
+  }
+
+  loadDead() {
+    try {
+      const saved = JSON.parse(localStorage.getItem(DEAD_STORE) ?? 'null');
+      if (!saved) return;
+      for (const id of saved.ids ?? []) this.dead.add(id);
+      this.bodies = Array.isArray(saved.bodies) ? saved.bodies : [];
+    } catch (err) {
+      console.warn('deer:', err);
+    }
+  }
+
+  saveDead() {
+    try {
+      localStorage.setItem(DEAD_STORE, JSON.stringify({ ids: [...this.dead], bodies: this.bodies }));
+    } catch (err) {
+      console.warn('saving deer:', err);
+    }
   }
 
   // New road tiles' deer, once each. Spacing comes from config.every (Settings can change it).
@@ -35,6 +59,7 @@ export class DeerView {
     const wanted = new Set();
     for (const planted of this.plantedTiles.values()) {
       for (const spot of planted) {
+        if (this.dead.has(spot.id)) continue;
         wanted.add(spot.id);
         if (!this.live.has(spot.id)) this.live.set(spot.id, newDeer(spot));
       }
@@ -97,6 +122,59 @@ export class DeerView {
     return { ...move(north.lat, north.lng, 90, deer.x), altitude: 0 };
   }
 
+  // Circles the car can hit. Speed is whatever the deer is doing right now.
+  hitList() {
+    const radius = this.config.hitRadius;
+    return [...this.live.values()].map((deer) => {
+      const at = this.where(deer);
+      return { id: deer.id, kind: 'deer', lat: at.lat, lng: at.lng, heading: deer.heading, speed: deer.speed, radius };
+    });
+  }
+
+  // The body stays where it fell. A refresh does not bring that deer back.
+  kill(id) {
+    const deer = this.live.get(id);
+    if (!deer) return null;
+    const at = this.where(deer);
+    const body = { id, lat: at.lat, lng: at.lng, heading: deer.heading, stag: deer.stag, meat: this.config.meat };
+    this.dead.add(id);
+    this.bodies.push(body);
+    this.drop(id);
+    this.saveDead();
+    this.placeBody(body);
+    return body;
+  }
+
+  nearBodies(at, within) {
+    return this.bodies.filter((body) => metresApart(at, body) <= within);
+  }
+
+  removeBody(id) {
+    this.bodies = this.bodies.filter((body) => body.id !== id);
+    this.bodyModels.get(id)?.remove();
+    this.bodyModels.delete(id);
+    this.saveDead();
+  }
+
+  placeBody(body) {
+    if (this.bodyModels.has(body.id) || !this.maps3d) return;
+    const kind = body.stag ? 'stag' : 'deer';
+    const element = new this.maps3d.Model3DElement({
+      position: { lat: body.lat, lng: body.lng, altitude: 0 }, altitudeMode: 'RELATIVE_TO_GROUND',
+      orientation: { heading: body.heading, tilt: 0, roll: 90 }, scale: SHOWN,
+    });
+    element.src = new URL(`models/deer/${kind}-idle-0.glb`, document.baseURI).href;
+    this.map.append(element);
+    this.bodyModels.set(body.id, element);
+  }
+
+  syncBodies(player) {
+    const near = this.nearBodies(player, this.config.shownWithin);
+    const wanted = new Set(near.map((body) => body.id));
+    for (const [id, element] of this.bodyModels) if (!wanted.has(id)) { element.remove(); this.bodyModels.delete(id); }
+    for (const body of near) this.placeBody(body);
+  }
+
   tick(player, dt, now) {
     const { shownWithin, mostShown } = this.config;
     const near = this.around(player, shownWithin, mostShown);
@@ -114,6 +192,7 @@ export class DeerView {
     for (const deer of near) stepDeer(deer, metresFrom(deer, player.lat, player.lng), dt, now, this.config);
     this.addSome(1);
     this.sync();
+    this.syncBodies(player);
   }
 
   dropShown(id) {

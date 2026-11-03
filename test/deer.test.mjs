@@ -1,10 +1,15 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { GAME } from '../public/js/gameConfig.js';
-import { frameOf, newDeer, plantDeer, stepDeer } from '../public/js/deer.js';
+import { cookMeat, cookOffer, frameOf, newDeer, plantDeer, stackInto, stepDeer } from '../public/js/deer.js';
 import { FLAG_BRIDGE } from '../public/js/road.js';
 import { plantCars } from '../public/js/worldCars.js';
 import { metresApart } from '../public/js/protocol.js';
+import { firstHit } from '../public/js/collide.js';
+import { crashOutcome } from '../public/js/worldOps.js';
+import { carDamageAt, healthLossInCar } from '../public/js/carDamage.js';
+import { Vitals } from '../public/js/vitals.js';
+import { BAG_SLOTS } from '../public/js/pocketData.js';
 
 const cfg = GAME.deer;
 const METRE = 1 / 111320;
@@ -47,6 +52,55 @@ test('deer are spaced along a road at about twice the cars\' distance, none on b
     assert.equal(typeof one.stag, 'boolean');
     assert.match(one.id, /^d_/);
   }
+});
+
+const mph = (n) => n / 2.23694;
+
+test('hitting a deer hurts the driver and damages the car, and does not wreck it', () => {
+  const plain = (speed) => { const { mph: _, ...rest } = crashOutcome('deer', mph(speed), GAME.crash); return rest; };
+  assert.deepEqual(plain(4), { kill: [], hurt: [], wreck: [] });
+  assert.deepEqual(plain(30), { kill: [], hurt: ['me'], wreck: [] });
+  assert.deepEqual(plain(100), { kill: [], hurt: ['me'], wreck: [] });
+  assert.ok(carDamageAt(30) > 0 && carDamageAt(30) < carDamageAt(80));
+  assert.ok(healthLossInCar(30) > 0 && healthLossInCar(30) < healthLossInCar(80));
+});
+
+test('the car meets a deer standing in front of it', () => {
+  const lat = 38.9, lng = -77.4;
+  const me = { lat, lng, heading: 0, speed: 12, halfWidth: 0.9, halfLength: 2.2 };
+  const deer = { id: 'd1', kind: 'deer', lat: lat + 1 / 111320, lng, heading: 180, speed: 0, radius: GAME.deer.hitRadius };
+  const hit = firstHit(me, 6, [deer]);
+  assert.equal(hit.other.id, 'd1');
+  assert.ok(hit.closing > 5);
+  const missed = { ...deer, lng: lng + 40 / 111320 };
+  assert.equal(firstHit(me, 6, [missed]), null);
+});
+
+test('one deer is 20 pieces of raw meat, and a stove, range or microwave cooks one', () => {
+  for (const item of ['stove', 'proStove', 'microwave']) assert.equal(cookOffer(item, true), 'Cook the raw deer meat?');
+  assert.equal(cookOffer('fridge', true), null);
+  assert.equal(cookOffer('stove', false), null);
+  const bag = [];
+  assert.equal(stackInto(bag, { id: GAME.deer.raw, name: GAME.deer.raw }, GAME.deer.meat, BAG_SLOTS), true);
+  assert.equal(bag[0].count, 20);
+  assert.equal(cookMeat(bag, BAG_SLOTS), GAME.deer.cooked);
+  assert.equal(bag.find((i) => i.id === GAME.deer.raw).count, 19);
+  assert.equal(bag.find((i) => i.id === GAME.deer.cooked).count, 1);
+  const full = Array.from({ length: BAG_SLOTS }, (_, i) => ({ id: `x${i}`, name: `x${i}`, count: 1 }));
+  full[0] = { id: GAME.deer.raw, name: GAME.deer.raw, count: 3 };
+  assert.equal(cookMeat(full, BAG_SLOTS), null, 'no room for a new kind');
+  assert.equal(full[0].count, 3);
+  const memory = { getItem: () => null, setItem() {} };
+  const vitals = new Vitals(memory);
+  vitals.stats.hunger = 40;
+  vitals.stats.health = 80;
+  const hunger = vitals.stats.hunger, health = vitals.stats.health;
+  vitals.consume(GAME.deer.raw);
+  assert.ok(vitals.stats.hunger > hunger);
+  assert.ok(vitals.stats.health < health);
+  const after = vitals.stats.hunger;
+  vitals.consume(GAME.deer.cooked);
+  assert.ok(vitals.stats.hunger > after);
 });
 
 test('a moving deer steps through its clip', () => {

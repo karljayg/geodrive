@@ -107,6 +107,41 @@ export function stepDeer(deer, player, dt, now, cfg = GAME.deer) {
   return deer;
 }
 
+// What can cook a piece. A house stove is the oven. proStove is a kitchen range. A microwave does one piece too.
+export const COOKERS = ['stove', 'proStove', 'microwave'];
+
+export const cookOffer = (item, hasRaw) => (COOKERS.includes(item) && hasRaw ? 'Cook the raw deer meat?' : null);
+
+// Adds a stack, or more onto the one already there. False if a new kind won't fit.
+export function stackInto(list, item, count, slots) {
+  const known = list.find((i) => i.id === item.id);
+  if (known) {
+    known.count += count;
+    return true;
+  }
+  if (list.length >= slots) return false;
+  list.push({ id: item.id, name: item.name, count });
+  return true;
+}
+
+export function takeOne(list, id) {
+  const item = list.find((i) => i.id === id);
+  if (!item || item.count < 1) return false;
+  if (--item.count <= 0) list.splice(list.indexOf(item), 1);
+  return true;
+}
+
+// One raw piece becomes one cooked piece. Null if there is no raw meat, or the cooked piece won't fit.
+export function cookMeat(list, slots, cfg = GAME.deer) {
+  if (!list.some((i) => i.id === cfg.raw && i.count > 0)) return null;
+  takeOne(list, cfg.raw);
+  if (!stackInto(list, { id: cfg.cooked, name: cfg.cooked }, 1, slots)) {
+    stackInto(list, { id: cfg.raw, name: cfg.raw }, 1, slots + 1);
+    return null;
+  }
+  return cfg.cooked;
+}
+
 export function frameOf(deer, cfg = GAME.deer) {
   const n = cfg.frames[deer.gait], dur = cfg.clips[deer.gait];
   if (!CLIPS.includes(deer.gait) || !n) return 0;
