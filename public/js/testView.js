@@ -1,5 +1,6 @@
-// Looks for judging weather and a ruined world. On only when the address has ?testview=
-// (off, rain, snow, apocalypse, vines, cracks, ruin, or a comma list such as rain,cracks).
+// Looks for judging weather and a ruined world. The switcher is in Settings. A shared world
+// (mode 2) never mounts it. The address can still start one: ?testview=snow, rain,
+// apocalypse, vines, cracks, ruin, or a comma list such as rain,cracks.
 // The map is a photograph, so colour, rain and snow are drawn over it, cracks are drawn on
 // the ground in this view, and vines are models standing on the map. None of it is solid,
 // and indoors the overlay hides so a room stays clear of it.
@@ -440,9 +441,10 @@ function paint(ctx, spec, view, drops, paths, specks) {
   }
 }
 
-export function mountTestView({ canvas, bar, box, view, search }) {
-  const initial = readTestView(search ?? location.search);
-  if (!initial) return { tick() {}, attach() {} };
+export function mountTestView({ canvas, bar, box, view, search, allowed = true }) {
+  // A shared world is mode 2. The looks are a sandbox review tool, so that world never grows the menu or the overlay.
+  if (!allowed) return { tick() {}, attach() {} };
+  const initial = readTestView(search ?? (typeof location === 'undefined' ? '' : location.search)) ?? resolveView('off');
   let spec = initial;
   let map = null, maps3d = null, glbUrl = null, attached = false;
   let drops = [], dropKind = '', sized = '';
@@ -451,10 +453,7 @@ export function mountTestView({ canvas, bar, box, view, search }) {
   const plants = new Map(), kinds = new Map();
   let bushUrl = '', vineUrl = '';
 
-  bar.replaceChildren();
-  const title = document.createElement('span');
-  title.textContent = 'Test view';
-  bar.append(title);
+  bar.querySelector('[data-views]').replaceChildren();
   const buttons = BUTTONS.map(([name, label, hint]) => {
     const button = document.createElement('button');
     button.type = 'button';
@@ -462,11 +461,10 @@ export function mountTestView({ canvas, bar, box, view, search }) {
     button.textContent = label;
     button.title = hint;
     button.addEventListener('click', () => { setMode(name); button.blur(); });
-    bar.append(button);
+    bar.querySelector('[data-views]').append(button);
     return button;
   });
   bar.hidden = false;
-  bar.classList.add('open');
   bar.title = 'Switch the look without reloading. The address can also be ?testview=snow, rain, apocalypse, vines, cracks or ruin.';
   apply(spec);
 
@@ -482,6 +480,7 @@ export function mountTestView({ canvas, bar, box, view, search }) {
     pressed();
     if (!spec.vines) clearPlants();
     else plantKey = '';
+    if (!(spec.drops || spec.cracks || spec.litter || spec.scratches || spec.grade)) canvas.style.display = 'none';
   }
 
   function setMode(name) {
@@ -541,6 +540,7 @@ export function mountTestView({ canvas, bar, box, view, search }) {
 
   function tick(dt) {
     if (!attached) return;
+    if (!(spec.drops || spec.cracks || spec.litter || spec.scratches || spec.grade || spec.vines)) return;
     const at = view();
     const show = !at.indoors && (spec.drops || spec.cracks || spec.litter || spec.scratches || spec.grade);
     canvas.style.display = show ? 'block' : 'none';

@@ -10,6 +10,7 @@ import { Path, brakeFor, pursuitYaw, rerouteWait } from './route.js';
 import { CAR_PROFILES, hornFor, profileFor } from './cars.js';
 import { engineFadeAt } from './engineMix.js';
 import { BODY_SHAPES, buildCarGlb, buildPersonGlb, carPicture } from './carModel.js';
+import { DeerView } from './deerView.js';
 import { beamPools, brakeLit, drawDots, drawPools, tailDots, torchPools } from './headlights.js';
 import { clockText, darknessAt, tintAt } from './daylight.js';
 import { mountTestView } from './testView.js';
@@ -152,9 +153,9 @@ let people = null, foot = null, footLoading = false, lookX = 0, lookY = 0, touch
 const scenes = new Scenes(MUSIC);
 let soundtrack = null, darkSince = null, musicTest = null; // musicTest: the mood picked in Settings, heard over everything
 const debug = { hold: false, car, pos, keys, roads, tiles, perfLog }; // window.__geodrive, for checks from the console
-// A look over the map for judging weather and ruin. Idle unless the address has ?testview=.
+// A look over the map for judging weather and ruin. A shared world (mode 2) has other people, so it never runs there.
 const testView = mountTestView({
-  canvas: el('viewFx'), bar: el('testViews'), box: () => el('map'),
+  canvas: el('viewFx'), bar: el('testViews'), box: () => el('map'), allowed: !world.rules.people,
   view: () => ({ lat: foot ? foot.where().lat : pos.lat, lng: foot ? foot.where().lng : pos.lng, heading: camHeading, tilt, range, fovY: FOV_Y, below: CAR_BELOW_CENTRE, indoors: !!foot?.walker.inside }),
 });
 
@@ -756,6 +757,7 @@ function frame(t) {
   last = t;
   if (foot) runFoot(t, dt);
   peopleView?.update(foot ? foot.where() : pos, performance.now());
+  if (!debug.hold && !dialogOpen && !paused) deerView?.tick(foot ? foot.where() : pos, dt, t);
   if (map && !foot && !debug.hold && !dialogOpen && !paused) {
     const driveBegan = performance.now();
     if (el('hornButton').disabled !== !!riding) el('hornButton').disabled = !!riding;
@@ -798,6 +800,8 @@ function frame(t) {
     if (t - tilesCheckedAt > 1000) {
       tilesCheckedAt = t;
       tiles.ensure(pos.lat, pos.lng, car.heading, car.speed);
+      deerView?.plantFrom(tiles.waysOf, deerPlant());
+      world.cars?.plantFrom(tiles.waysOf, carPlant());
       refreshTown();
       advanceRouteLine();
     }
@@ -929,6 +933,8 @@ function runFoot(t, dt) {
     tilesCheckedAt = t;
     const at = foot.where();
     tiles.ensure(at.lat, at.lng, 0, 0); // for the nav screen
+    deerView?.plantFrom(tiles.waysOf, deerPlant());
+    world.cars?.plantFrom(tiles.waysOf, carPlant());
   }
   const dashBegan = performance.now();
   updateHud(t);
@@ -1781,7 +1787,10 @@ async function placeCar(where) {
   tiles.ensure(pos.lat, pos.lng, car.heading, 0);
   await sampleGround();
   ground = groundTarget;
-  if (map) syncScene(0);
+  if (map) {
+    syncScene(0);
+    placeDeer();
+  }
 }
 
 // --- Saved trip -----------------------------------------------------------------------------------------------
@@ -2043,6 +2052,23 @@ function glbUrl(glb) {
   return `data:model/gltf-binary;base64,${btoa(text)}`;
 }
 
+// Deer along the loaded roads, half as often as parked cars by default. Spacing is Settings. Not saved or shared.
+let deerView = null;
+const carPlant = () => ({ ...GAME.worldCars, every: settings.carEvery });
+const deerPlant = () => ({ ...GAME.deer, every: settings.deerEvery });
+function placeDeer() {
+  if (!map || !maps3d?.Model3DElement) return;
+  deerView ||= new DeerView({ maps3d, map });
+  deerView.plantFrom(tiles.waysOf, deerPlant());
+}
+function replantFrequency() {
+  if (world.cars) {
+    world.cars.replant(tiles.waysOf, carPlant());
+    peopleView?.carsChanged();
+  }
+  deerView?.replant(tiles.waysOf, deerPlant());
+}
+
 // The model is rebuilt only when the type or colour changes, and a colour drag settles before it swaps.
 let carLookKey = '', carLookTimer = null;
 function applyCarLook() {
@@ -2285,6 +2311,8 @@ const settingText = {
   hour: clockText,
   mapMemory: (v) => `${v} MB`,
   enginePitch: (v) => `${Math.round(v * 100)}%`,
+  carEvery: (v) => `${v} m along a road`,
+  deerEvery: (v) => `${v} m along a road`,
 };
 const percent = (v) => `${Math.round(v * 100)}%`;
 
@@ -2320,6 +2348,7 @@ for (const control of document.querySelectorAll('[data-setting]')) {
     showSettings();
     saveSettings();
     previewEngine();
+    if (name === 'carEvery' || name === 'deerEvery') replantFrequency();
   });
 }
 
@@ -2905,7 +2934,7 @@ async function iDied({ lives, how, by, at }) {
 // Nobody should start out stranded: once the roads are in, a running car within walking distance.
 function makeSureOfACar() {
   setTimeout(() => {
-    world.cars.plantFrom(tiles.waysOf);
+    world.cars.plantFrom(tiles.waysOf, carPlant());
     const at = foot ? foot.where() : pos, road = roads.nearest(at.lat, at.lng, 0, GAME.world.appearWithin);
     if (road) world.cars.makeSureOfOne(at, { lat: road.lat, lng: road.lng, heading: road.heading });
   }, 4000);
@@ -3065,7 +3094,8 @@ async function startPeople() {
     setFsd(false);
   };
   setInterval(() => {
-    world.cars.plantFrom(tiles.waysOf);
+    world.cars.plantFrom(tiles.waysOf, carPlant());
+    deerView?.plantFrom(tiles.waysOf, deerPlant());
     if (foot) foot.setCars(worldCarsNear(pos));
     syncCarStorage();
     syncSeats();
@@ -3161,6 +3191,7 @@ async function boot() {
       map.append(model);
     }
     applyCarLook();
+    placeDeer();
     syncScene(0);
     applyDaylight();
     if (saved) {
@@ -3171,7 +3202,7 @@ async function boot() {
     if (!driveTipSeen() && world.rules.ownCar) notice(say('driveTip'), 9000);
     window.__geodrive = Object.assign(debug, {
       foot: () => foot, settings, gearbox, saveTrip, engine, radio, map, model, ground: () => ground, match: () => match, onBridge: () => onBridge, placeCar, pressSignal,
-      vitals, GAME, world, trip: () => trip, paused: () => paused, nav: () => ({ fsd, destination, route, routeIndex, signal, lane, laneNow }),
+      vitals, GAME, world, trip: () => trip, paused: () => paused, deer: () => deerView, nav: () => ({ fsd, destination, route, routeIndex, signal, lane, laneNow }),
       crowdTest: async (options) => (await import('./crowdTest.js')).runCrowdTest({ maps3d, map, at: foot ? foot.where() : pos, glbUrl, log: perfLog, ...options }),
     });
     if (world.rules.people && world.cars.mine()) takeSeat(world.cars.mine()); // they refreshed in a car

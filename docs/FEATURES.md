@@ -13,6 +13,9 @@ With the car stopped (under 1 mph), L gets out. A person stands on a clear side 
 - **Back to the car:** the label at the bottom of the view gives the distance and direction to the car, Within about 3 m of the car, press L. F there asks "Load into car?": F or L says yes and opens the bag beside the car's storage. L only means Load while that's being asked.
 - **While on foot:** Go to asks you to get back in first. New start and Back to start put you back in the car. Time of day, pause and settings all still work. A refresh puts you back in the driver's seat.
 
+## Deer
+Deer are planted along roads as the tiles load, the same way parked cars are, but farther off the verge and half as often by default (about one every 600 m of road). They are the Quaternius deer from Agecraft's 3D world, about as long as a person is tall; about two in five are stags with antlers. They stroll near that spot. Come within about 7 m, on foot or in the car, and they gallop away for a few seconds, then walk back. The poses are idle, walk and gallop. At most a few are drawn at once, near the car or on foot. Nothing is saved, and they are not shared with other players. Settings → For the developer has the metres between parked cars and between deer.
+
 ## Driving
 - Until you first drive, a thought bubble gives the driving keys, as the first walk does for walking.
 - Top speed 500 mph, reached in about 30 seconds. A stopped car can't turn, and reverse steers the other way.
@@ -85,9 +88,9 @@ Settings' Diagnostics tab shows FPS, the slowest frame in the last second, and J
 **Send log** in Settings' Diagnostics tab sends the performance log to the server for review. The game records frame rate, slow frames, where the time went, map and road loading, and the car's position every 5 seconds, keeping the last 5 hours in that browser across refreshes. Nothing leaves the browser until the button is pressed, and a sent log is cleared from it. Anyone playing can press the button, so the server caps what it holds at 200 MB.
 
 ## Test views
-A way to judge weather and a ruined look before any of it is part of the game. Off unless the address has `testview`. Nothing is saved, and a normal visit does no overlay work: the game loop calls an empty function.
+A way to judge weather and a ruined look before any of it is part of the game. A shared world (mode 2) ignores `testview` and has no control for it. Nothing is saved. With none chosen, the game loop returns without drawing.
 
-Add it to the address, for example `?testview=snow`. Other values: `rain`, `apocalypse`, `vines`, `cracks`, `ruin` (apocalypse, dead vines and cracks together), `off`. A comma list mixes them, such as `?testview=rain,cracks`. A **Test view** bar in the corner switches without reloading, so it doesn't charge for another map load. The choice stays in the address.
+Turn one on from Settings, Diagnostics, Test view, or add it to the address, for example `?testview=snow`. Other values: `rain`, `apocalypse`, `vines`, `cracks`, `ruin` (apocalypse, dead vines and cracks together), `off`. A comma list mixes them, such as `?testview=rain,cracks`. The buttons sit in that settings tab, so they don't cover the map or the other controls, and they switch without reloading, so it doesn't charge for another map load. The choice stays in the address.
 
 The map is a photograph, so these sit on top of it. Rain, snow and ash are drawn on a canvas over the view. Cracks, and snow, ash or weeds on the ground, are drawn where the ground is in this view, filled past the top of the picture so driving doesn't show them appearing. Vines are small models standing on the map. A colour grade tints the map. Indoors the canvas hides. None of it is solid. While one is on, the cost seen so far is that canvas, plus the plant models for vines and ruin. `testView.js`, tested.
 

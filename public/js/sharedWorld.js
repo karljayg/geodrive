@@ -242,10 +242,16 @@ export class SharedCars {
     this.onChange = null;
   }
 
-  // New road tiles' cars, once each. Tiles let go of aren't missed: their cars are out of sight.
-  plantFrom(waysOf) {
-    for (const [key, ways] of waysOf) if (!this.plantedTiles.has(key)) this.plantedTiles.set(key, plantCars(ways));
+  // New road tiles' cars, once each. Tiles let go of aren't missed: their cars are out of sight. config.every can come from Settings.
+  plantFrom(waysOf, config = GAME.worldCars) {
+    for (const [key, ways] of waysOf) if (!this.plantedTiles.has(key)) this.plantedTiles.set(key, plantCars(ways, config));
     for (const key of this.plantedTiles.keys()) if (!waysOf.has(key)) this.plantedTiles.delete(key);
+  }
+
+  // Wipe planted tiles so a new every re-rolls the roads. Touched cars in records stay.
+  replant(waysOf, config = GAME.worldCars) {
+    this.plantedTiles.clear();
+    this.plantFrom(waysOf, config);
   }
 
   // News can cross: an answer and a later change can arrive together, so only something newer counts.

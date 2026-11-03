@@ -23,14 +23,11 @@ body.onFoot #dash { display: none; }
 #beam { mix-blend-mode: screen; z-index: 1; }
 #tails { display: block; z-index: 1; }
 #viewFx { z-index: 1; }
-#testViews { position: absolute; top: 46px; right: 12px; z-index: 6; display: none; flex-wrap: wrap; justify-content: flex-end; gap: 2px; max-width: min(420px, calc(100% - 24px)); padding: 3px 6px; border-radius: 9px; background: #0d1621e6; pointer-events: auto; }
-#testViews.open { display: flex; }
-#testViews span { font-size: 10px; font-weight: 800; letter-spacing: .06em; color: #69d9ba; margin: 4px 6px; }
-#testViews button { font: inherit; font-size: 11px; color: #d5e0e8; padding: 4px 8px; background: none; border: 0; border-radius: 6px; cursor: pointer; }
-#testViews button:hover, #testViews button[aria-pressed="true"] { background: #ffffff1f; color: #fff; }
-@media (max-width: 700px) {
-  #testViews { top: auto; bottom: calc(var(--dash) + 8px); left: 8px; right: auto; max-width: calc(100% - 16px); justify-content: flex-start; }
-}
+#testViews p { margin: 0 0 8px; color: #9baebb; font-size: 12px; line-height: 1.4; }
+#testViews [data-views] { display: flex; flex-wrap: wrap; gap: 4px; }
+#testViews button { font: inherit; font-size: 12px; color: #c8d6e0; padding: 4px 9px; background: #ffffff14; border: 0; border-radius: 7px; cursor: pointer; }
+#testViews button:hover { background: #ffffff26; color: #fff; }
+#testViews button[aria-pressed="true"] { color: #0a1720; background: #5cd6b0; font-weight: 650; }
 body.tv-rain #map { filter: saturate(0.68) brightness(0.9) contrast(1.06); }
 body.tv-snow #map { filter: saturate(0.42) brightness(1.12) contrast(1.04); }
 body.tv-apocalypse #map { filter: sepia(0.5) saturate(0.5) contrast(1.16) brightness(0.8); }

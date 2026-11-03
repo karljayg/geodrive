@@ -28,6 +28,30 @@ function rolls(text) {
 
 const metresBetween = (lat0, lng0, lat1, lng1) => Math.hypot((lat1 - lat0) * METRES_PER_DEGREE, (lng1 - lng0) * METRES_PER_DEGREE * Math.cos((lat0 * Math.PI) / 180));
 
+// Spots along these road ways, spaced by `every` metres and set `offset` metres off the line. seedPrefix picks a different phase for deer vs cars. Bridges have none.
+// Which side, and how far along, come from the way's own first point, so a way is planted the same for everyone.
+export function spotsAlongRoads(ways, { every, offset }, seedPrefix = 'way') {
+  const spots = [];
+  for (const { c, f } of ways) {
+    if (f & FLAG_BRIDGE || c.length < 4) continue;
+    const roll = rolls(`${seedPrefix}:${c[0]},${c[1]}`), side = roll() < 0.5 ? 1 : -1;
+    let walked = 0, next = roll() * every;
+    for (let i = 0; i + 3 < c.length; i += 2) {
+      const lat0 = c[i], lng0 = c[i + 1], lat1 = c[i + 2], lng1 = c[i + 3], length = metresBetween(lat0, lng0, lat1, lng1);
+      while (length > 0 && next <= walked + length) {
+        const t = (next - walked) / length, north = (lat1 - lat0) * METRES_PER_DEGREE, east = (lng1 - lng0) * METRES_PER_DEGREE * Math.cos((lat0 * Math.PI) / 180);
+        const heading = ((Math.atan2(east, north) * 180) / Math.PI + (side < 0 ? 180 : 0) + 360) % 360;
+        const offNorth = (-east / length) * offset * side, offEast = (north / length) * offset * side;
+        const lat = lat0 + (lat1 - lat0) * t + offNorth / METRES_PER_DEGREE, lng = lng0 + (lng1 - lng0) * t + offEast / (METRES_PER_DEGREE * Math.cos((lat0 * Math.PI) / 180));
+        spots.push({ lat, lng, heading });
+        next += every * (0.6 + roll() * 0.8);
+      }
+      walked += length;
+    }
+  }
+  return spots;
+}
+
 // What a car is like, from its id.
 function plantedAt(lat, lng, heading, config) {
   const id = `p_${Math.round(lat / ID_GRID)}_${Math.round(lng / ID_GRID)}`, roll = rolls(id);
@@ -39,26 +63,12 @@ function plantedAt(lat, lng, heading, config) {
   };
 }
 
-// The cars along these road ways, from one map tile. Bridges have none. Which side, and how far along, come from the way's own first point, so a way is planted the same for everyone.
+// The cars along these road ways, from one map tile.
 export function plantCars(ways, config = GAME.worldCars) {
   const cars = new Map();
-  for (const { c, f } of ways) {
-    if (f & FLAG_BRIDGE || c.length < 4) continue;
-    const roll = rolls(`way:${c[0]},${c[1]}`), side = roll() < 0.5 ? 1 : -1;
-    let walked = 0, next = roll() * config.every;
-    for (let i = 0; i + 3 < c.length; i += 2) {
-      const lat0 = c[i], lng0 = c[i + 1], lat1 = c[i + 2], lng1 = c[i + 3], length = metresBetween(lat0, lng0, lat1, lng1);
-      while (length > 0 && next <= walked + length) {
-        const t = (next - walked) / length, north = (lat1 - lat0) * METRES_PER_DEGREE, east = (lng1 - lng0) * METRES_PER_DEGREE * Math.cos((lat0 * Math.PI) / 180);
-        const heading = ((Math.atan2(east, north) * 180) / Math.PI + (side < 0 ? 180 : 0) + 360) % 360;
-        const offNorth = (-east / length) * config.kerb * side, offEast = (north / length) * config.kerb * side;
-        const lat = lat0 + (lat1 - lat0) * t + offNorth / METRES_PER_DEGREE, lng = lng0 + (lng1 - lng0) * t + offEast / (METRES_PER_DEGREE * Math.cos((lat0 * Math.PI) / 180));
-        const car = plantedAt(lat, lng, heading, config);
-        cars.set(car.id, car);
-        next += config.every * (0.6 + roll() * 0.8);
-      }
-      walked += length;
-    }
+  for (const spot of spotsAlongRoads(ways, { every: config.every, offset: config.kerb })) {
+    const car = plantedAt(spot.lat, spot.lng, spot.heading, config);
+    cars.set(car.id, car);
   }
   return [...cars.values()];
 }
