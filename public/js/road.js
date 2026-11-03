@@ -118,6 +118,21 @@ export class RoadNet {
     return best;
   }
 
+  // Whether a bridge runs here, the way the car is pointing. Asked apart from match, which favours the road it expected next, and that can be a ramp or side road beside the bridge.
+  bridgeAt(lat, lng, heading, within = 9) {
+    const cy = Math.floor(lat / CELL), cx = Math.floor(lng / CELL);
+    for (let y = cy - 1; y <= cy + 1; y++) {
+      for (let x = cx - 1; x <= cx + 1; x++) {
+        for (const { way, i } of this.grid.get(`${y}_${x}`) || []) {
+          if (!(way.f & FLAG_BRIDGE)) continue;
+          const p = this.project(lat, lng, way, i);
+          if (p.dist <= within && Math.min(angleDiff(heading, p.bearing), angleDiff(heading, p.bearing + 180)) <= 40) return true;
+        }
+      }
+    }
+    return false;
+  }
+
   // Each point further along a road from a position on it, until `distance` metres have passed. At the end of
   // a way it carries on along the straightest connecting way; it stops at dead ends and sharp turns.
   *walk(start, distance) {

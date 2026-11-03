@@ -427,7 +427,9 @@ function steerToward(target, dt, exact = false) {
 // Holding a steering key always wins: that's how to take a junction or leave the road, and it picks up the new road on release.
 function followRoad(steering, guide, dt) {
   match = roads.match(pos.lat, pos.lng, car.speed >= 0 ? car.heading : car.heading + 180, recentWays);
-  onBridge = !!match && match.bridge && match.dist < 15;
+  const wasOnBridge = onBridge, heading = car.speed >= 0 ? car.heading : car.heading + 180;
+  onBridge = (!!match && match.bridge && match.dist < 15) || roads.bridgeAt(pos.lat, pos.lng, heading);
+  if (onBridge !== wasOnBridge) perfLog.event('bridge', { on: onBridge, lat: +pos.lat.toFixed(6), lng: +pos.lng.toFixed(6), heading: Math.round(heading), matched: match?.bridge ?? null });
   const look = match ? roads.ahead(match, Math.max(12, Math.abs(car.speed) * 0.55)) : null;
   if (look) recentWays = look.ways;
 

@@ -49,6 +49,14 @@ test('stops at a dead end', () => {
   assert.ok(Math.abs(a.lng - (LNG + 3 * E)) < 1e-6);
 });
 
+test('a bridge is noticed even when the match prefers the road it expected next', () => {
+  assert.equal(net.bridgeAt(LAT + 0.00005, LNG + 2.5 * E, 85), true, 'on it');
+  assert.equal(net.bridgeAt(LAT + 0.00005, LNG + 2.5 * E, 265), true, 'the other way along it');
+  assert.equal(net.bridgeAt(LAT + 0.00005, LNG + 2.5 * E, 0), false, 'crossing under it');
+  assert.equal(net.bridgeAt(LAT + 0.01, LNG + 2.5 * E, 85), false, 'far off');
+  assert.equal(net.bridgeAt(LAT, LNG + E, 90), false, 'on the road before it');
+});
+
 test('reports bridges, so the car can be put on top of them', () => {
   assert.equal(net.match(LAT, LNG + E, 90).bridge, false);
   assert.equal(net.match(LAT + 0.00005, LNG + 2.5 * E, 85).bridge, true);

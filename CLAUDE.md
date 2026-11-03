@@ -50,6 +50,7 @@ Prices are in `docs/TECH_STACK.md`. Before adding any Google call, work out what
 ## Roads and bridges
 - Road shapes, one-way and bridge tags come from OpenFreeMap vector tiles (OpenStreetMap data, zoom 14, decoded in `vector.js`; about 0.4 s, no key). The attribution on the HUD is required. Nothing may depend on tiles arriving: without one the car drives freely until a retry works. Public Overpass servers were tried first and are too often down. There is no lane data, so a lane change is a fixed sideways shift.
 - `followRoad` in `main.js` matches the car to a road each frame and aims at a point further along it. Holding a steering key overrides it, and that is how to take a junction.
+- `onBridge` also asks `RoadNet.bridgeAt`, because `match` favours roads the look-ahead expected, by 12 m, and that can be a ramp beside the bridge for the whole span, which drew the car on the ground below it. `bridge` events in the log mark each change, with the place.
 - On a way tagged as a bridge the model uses `RELATIVE_TO_MESH`, because ground height there is the valley floor. It stays `RELATIVE_TO_GROUND` elsewhere, because the mesh includes trees and overpasses the car would climb on to.
 
 ## What the map's own lumps are
