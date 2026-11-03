@@ -484,7 +484,8 @@ body.onFoot #pockets { display: block; }
 /* Message previews, like an iPhone's: a rounded card that slides up and fades. Solid, as backdrop-filter over the map is costly. */
 #previews { position: absolute; left: 50%; bottom: 150px; z-index: 10; display: none; flex-direction: column; gap: 8px; width: min(380px, calc(100% - 32px)); transform: translateX(-50%); pointer-events: none; }
 #previews.some { display: flex; }
-body:not(.onFoot) #previews { bottom: auto; top: 76px; }
+body:not(.onFoot) #previews { left: auto; right: 12px; bottom: auto; top: 44px; width: min(300px, 46%); transform: none; }
+@media (max-width: 700px) { body:not(.onFoot) #previews { top: 220px; } }
 .msgCard { display: flex; gap: 10px; align-items: flex-start; padding: 11px 13px; color: #111; background: #f4f4f6f7; border-radius: 20px; box-shadow: 0 8px 24px #0006; cursor: pointer; pointer-events: auto; animation: msgIn .28s cubic-bezier(.2, .9, .3, 1.1); transition: opacity .25s, transform .25s; }
 .msgCard.leaving { opacity: 0; transform: translateY(14px); }
 @keyframes msgIn { from { opacity: 0; transform: translateY(18px) scale(.97); } to { opacity: 1; transform: none; } }
@@ -525,6 +526,9 @@ body:not(.onFoot) #previews { bottom: auto; top: 76px; }
 
 /* Said aloud: a speech bubble in the middle of the view, for a few seconds. In a car it sits above the little car, which lights up who spoke. */
 #speech { position: absolute; left: 50%; top: 14%; z-index: 4; display: flex; flex-direction: column; align-items: center; gap: 8px; width: min(440px, calc(100% - 32px)); transform: translateX(-50%); pointer-events: none; }
+body:not(.onFoot) #speech { left: auto; right: 12px; top: 36%; align-items: flex-end; width: min(300px, 46%); transform: none; }
+body:not(.onFoot) .speechBubble::after { left: auto; right: 22px; }
+@media (max-width: 700px) { body:not(.onFoot) #speech { top: 52%; } }
 .speechBubble { position: relative; max-width: 100%; padding: 8px 14px; color: #111; background: #fffffff5; border-radius: 16px; box-shadow: 0 6px 18px #0005; animation: msgIn .22s ease-out; transition: opacity .25s; }
 .speechBubble::after { content: ""; position: absolute; left: 22px; bottom: -7px; width: 14px; height: 14px; background: inherit; transform: rotate(45deg); border-radius: 2px; }
 .speechBubble b { display: block; font-size: 11px; font-weight: 700; color: #47606f; }

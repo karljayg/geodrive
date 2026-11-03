@@ -107,7 +107,7 @@ Others appear as people in their own colours, with a name tag within 100 m. Each
 
 The world has one clock, 1 game hour per 5 real minutes, stopped when nobody is online. Needs keep their rates. Sleeping skips only your own body unless everyone else online is in bed.
 
-Enter opens a line and Enter says it aloud: a speech bubble in the middle of the view, for those in the same car or within 30 m on foot and on the same floor, for a few seconds. Nothing keeps what's said. In a car the little car shows who spoke. `/w name message` is a DM, and Tab finishes a name; the group chat is in the phone's Messages. Messages come as a card like an iPhone preview: on the dashboard in a car, above the tray on foot, 4 to 10 s by length, click to read a long one. The phone's Messages keeps the last 50 of each thread. A dead phone shows none of this.
+Enter opens a line and Enter says it aloud: a speech bubble, down the right side in a car and in the middle of the view on foot, for those in the same car or within 30 m on foot and on the same floor, for a few seconds. Nothing keeps what's said. In a car the little car shows who spoke. `/w name message` is a DM, and Tab finishes a name; the group chat is in the phone's Messages. Messages come as a card like an iPhone preview: at the top right in a car, above the tray on foot, 4 to 10 s by length, click to read a long one. The phone's Messages keeps the last 50 of each thread. A dead phone shows none of this.
 
 Bag, notes, needs and where you are live on the server. Your sign-in, route and addresses stay in the browser. Lose that browser and you need a rejoin link. If the line drops, you carry on and it comes back by itself, with no reload.
 

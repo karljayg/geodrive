@@ -1,4 +1,4 @@
-// The look of chat: the Enter line, and message previews styled like an iPhone's, on the dashboard in a car and rising from the phone on foot. Cards are solid, as
+// The look of chat: the Enter line, and message previews styled like an iPhone's, at the top right in a car and rising from the phone on foot. Cards are solid, as
 // backdrop-filter over the map is costly, and only move by transform and opacity. All text goes in as text. What's said is in chat.js.
 import { GROUP_THREAD, MOST_CARDS, showFor, threadTitle, withCard } from './chat.js';
 import { readChatLine } from './protocol.js';
