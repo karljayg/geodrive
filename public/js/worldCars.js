@@ -58,9 +58,9 @@ const lengthOf = (c) => along(c, Infinity, () => 1, () => {});
 const shifted = (lat, lng, cos, north, east) => [lat + north / METRES_PER_DEGREE, lng + east / (METRES_PER_DEGREE * cos)];
 
 // The cars a map tile holds, all where a car is meant to be left: in the bays either side of a car park's aisles, at the top of driveways,
-// and at the kerb of quiet streets, away from their ends, where junctions are. Never on a busy road. parking: what parkingFromTile reads.
+// at the kerb of quiet streets, away from their ends, where junctions are, and now and then pulled over on a bigger road's shoulder. parking: what parkingFromTile reads.
 // Which bays are taken comes from the line's own first point, so a tile is planted the same for everyone.
-export function plantCars({ aisles = [], driveways = [], kerbs = [] }, config = GAME.worldCars) {
+export function plantCars({ aisles = [], driveways = [], kerbs = [], shoulders = [] }, config = GAME.worldCars) {
   const cars = new Map(), plant = (lat, lng, heading) => { const car = plantedAt(lat, lng, (heading + 360) % 360, config); cars.set(car.id, car); };
   for (const c of aisles) {
     if (c.length < 4) continue;
@@ -83,6 +83,15 @@ export function plantCars({ aisles = [], driveways = [], kerbs = [] }, config = 
       if (metresBetween(lat, lng, c[c.length - 2], c[c.length - 1]) < config.clearOfEnds || length < config.clearOfEnds * 2) return;
       // On the right, facing the way traffic goes on that side.
       plant(...shifted(lat, lng, cos, rightN * config.kerb * side, rightE * config.kerb * side), heading + (side < 0 ? 180 : 0));
+    });
+  }
+  for (const { c, out } of shoulders) {
+    if (c.length < 4) continue;
+    const roll = rolls(`shoulder:${c[0]},${c[1]}`), length = lengthOf(c);
+    if (length < config.clearOfEnds * 2) continue;
+    along(c, config.clearOfEnds + roll() * config.shoulderEvery, () => config.shoulderEvery * (0.6 + roll() * 0.8), (lat, lng, heading, rightN, rightE, cos) => {
+      if (metresBetween(lat, lng, c[c.length - 2], c[c.length - 1]) < config.clearOfEnds) return;
+      plant(...shifted(lat, lng, cos, rightN * out, rightE * out), heading);
     });
   }
   return [...cars.values()];

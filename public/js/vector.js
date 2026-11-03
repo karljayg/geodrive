@@ -162,10 +162,11 @@ export function roadsFromTile(bytes, tx, ty, zoom = VECTOR_ZOOM) {
   return ways;
 }
 
-// Where cars may be parked in one tile, as lines of [lat, lng, ...]: parking aisles, driveways (each from its street end) and quiet streets' kerbs.
-// Nothing busier than a minor street, and nothing on a bridge, in a tunnel, covered or indoors, as a car there couldn't be reached.
+// Where cars may be parked in one tile, as lines of [lat, lng, ...]: parking aisles, driveways (each from its street end), quiet streets' kerbs,
+// and the shoulders of bigger roads, { c, out } with out the metres from the line to a pulled-over car, as wide roads put it further out. Nothing on a bridge, in a tunnel, covered or indoors, as a car there couldn't be reached.
+const SHOULDER_OUT = { motorway: 10, trunk: 9, primary: 8, secondary: 6.5, tertiary: 5 }; // m from a two-way road's line to its shoulder, with no lane data
 export function parkingFromTile(bytes, tx, ty, zoom = VECTOR_ZOOM) {
-  const layer = readLayer(bytes, 'transportation'), out = { aisles: [], driveways: [], kerbs: [] };
+  const layer = readLayer(bytes, 'transportation'), out = { aisles: [], driveways: [], kerbs: [], shoulders: [] };
   if (!layer) return out;
   const { toLat, toLng } = tileToGeo(tx, ty, layer.extent, zoom), streetPixels = new Set(), drives = [];
   const geo = (line) => line.flatMap(([x, y]) => [Math.round(toLat(y) * 1e6) / 1e6, Math.round(toLng(x) * 1e6) / 1e6]);
@@ -178,6 +179,11 @@ export function parkingFromTile(bytes, tx, ty, zoom = VECTOR_ZOOM) {
     if (tags.service === 'parking_aisle') for (const line of lines) out.aisles.push(geo(line));
     else if (tags.service === 'driveway') drives.push(...lines);
     else if (tags.class === 'minor' && !tags.service) for (const line of lines) out.kerbs.push(geo(line));
+    else if (SHOULDER_OUT[tags.class] && !tags.ramp) {
+      // A one-way line is one carriageway of a split road, so its shoulder is nearer the line than a two-way road's.
+      const oneway = tags.oneway === 1 || tags.oneway === -1, away = SHOULDER_OUT[tags.class] * (oneway ? 0.6 : 1);
+      for (const line of lines) out.shoulders.push({ c: geo(tags.oneway === -1 ? [...line].reverse() : line), out: away });
+    }
   }
   // A driveway is drawn from the street: the end that meets one comes first.
   for (const line of drives) {

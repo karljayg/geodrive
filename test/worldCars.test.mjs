@@ -70,6 +70,15 @@ test('a driveway holds at most one car, up by the house and facing it', () => {
   assert.equal(plantCars({ driveways: [[38.9, -77.4, 38.9 + 3 * METRE, -77.4]] }).length, 0, 'none in a driveway too short for one');
 });
 
+test('on a bigger road, now and then a car is pulled over on the shoulder, facing the traffic\'s way', () => {
+  const cars = plantCars({ shoulders: [{ c: line(), out: 8 }] }), expected = 30000 / GAME.worldCars.shoulderEvery;
+  assert.ok(cars.length > expected * 0.7 && cars.length < expected * 1.4, `${cars.length}`);
+  for (const car of cars) {
+    assert.ok(Math.abs(metresApart(car, { lat: car.lat, lng: -77.4 }) - 8) < 0.05 && car.lng > -77.4, 'on the right shoulder');
+    assert.equal(car.heading, 0);
+  }
+});
+
 test('a rescue car is pulled in to the kerb on the right', () => {
   const car = rescueCar(38.9, -77.4, 0, 'me-2');
   assert.ok(Math.abs(metresApart(car, { lat: 38.9, lng: -77.4 }) - GAME.worldCars.kerb) < 0.05);
