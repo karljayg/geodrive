@@ -7,10 +7,12 @@ import { TripStore } from './session.js';
 import { Vitals } from './vitals.js';
 import { GAME } from './gameConfig.js';
 import { People, presenceRate } from './people.js';
+import { applyOverrides } from './testTools.js';
 import { SharedBuildings, SharedCars, SharedDrops } from './sharedWorld.js';
 import { PROTOCOL, clockHour, packPresence, unpackPresence } from './protocol.js';
 
 const CLOCK_STORE = 'geodrive_clock_v1';
+const OVERRIDES_STORE = 'geodrive_overrides_v1';
 export const TRIAL = 'walktest'; // ?world=walktest: a practice world in this browser, for trying what a shared world will do, with no server
 
 export const RULES = {
@@ -83,6 +85,31 @@ class World {
     this.marks = new Marks(store);
     this.vitals = new Vitals(store);
     this.buildingsOpening = null;
+    this.overrides = {};
+    this.loadOverrides();
+  }
+
+  // Numbers changed from the Testing tab. With no server these are kept with the world's other saves. See testTools.js.
+  loadOverrides() {
+    try {
+      this.overrides = JSON.parse((this.store ?? localStorage).getItem(OVERRIDES_STORE)) ?? {};
+    } catch (err) {
+      this.overrides = {};
+    }
+    applyOverrides(this.overrides);
+  }
+
+  // value null puts it back to what the files say. Answers { why } if it can't be done.
+  async tune(path, value) {
+    if (value === null) delete this.overrides[path];
+    else this.overrides[path] = value;
+    applyOverrides(this.overrides);
+    try {
+      (this.store ?? localStorage).setItem(OVERRIDES_STORE, JSON.stringify(this.overrides));
+    } catch (err) {
+      console.warn('saving overrides:', err);
+    }
+    return {};
   }
 
   // Loaded when first wanted, as only those who walk need any of it.
@@ -222,7 +249,20 @@ export class PrivateWorld extends World {
     return Promise.resolve(this.buildings);
   }
 
-  accept({ members, clock, chat, world }) {
+  loadOverrides() { /* the server sends them, in accept */ }
+
+  async tune(path, value) {
+    return this.link.ask({ t: 'tune', path, value });
+  }
+
+  setOverrides(overrides) {
+    this.overrides = overrides ?? {};
+    applyOverrides(this.overrides);
+    this.on?.tuned?.();
+  }
+
+  accept({ members, clock, chat, world, overrides }) {
+    this.setOverrides(overrides);
     this.people.setMembers(members);
     this.clock.set(clock);
     this.owner = world.owner;
@@ -244,6 +284,8 @@ export class PrivateWorld extends World {
       this.people.setMember(message.member);
       if (known && !message.member.online) this.people.forget(message.member.id);
       this.on.member?.(message.member, known);
+    } else if (message.t === 'overrides') {
+      this.setOverrides(message.overrides);
     } else if (message.t === 'clock') {
       this.clock.set(message.clock);
     } else if (message.t === 'managers') {

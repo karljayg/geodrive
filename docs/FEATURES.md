@@ -173,3 +173,10 @@ Inside, the hint names what's in reach. F doesn't do anything straight away: it 
 
 ## What a car can hit (shared worlds)
 Buildings and water, by their map outlines, and the cars and people of the shared world. On or beside a bridge or tunnel nothing on the ground counts, and on a highway nor do buildings or water. The cars photographed into the map, and its trees, aren't solid: they can't be located. The panel of who's in the car only shows with a passenger aboard, and only the driver can beep. Someone on foot still walks over the map's cars.
+
+## Testing tools
+Settings has a Testing tab, open to everyone for now and meant to become an admin feature. Each tool is a window that stays open while you play.
+- Spawn: type 2 letters to get suggestions, choose how many (up to 50), and they land around you to pick up or leave. A car type makes that many running cars in a shared world, and changes your own car in the sandbox.
+- Config values: search any number in the game's config and change it for this world, or put it back. In a shared world it applies to everyone at once and survives restarts.
+- Players and lives: set or reset anyone's lives, and copy a link back in for someone whose browser forgot the world when they died.
+- Set up a scene: sliders for every need and health, the world's time, repair and refuel, teleport to a place or person, and die now.

@@ -5,6 +5,7 @@ import { GAME } from '../public/js/gameConfig.js';
 import { FLAGS, GROUP_THREAD, cleanLook, clockHour, dmThread, metresApart, nameKey, nameProblem, stampPresence, unpackPresence } from '../public/js/protocol.js';
 import { cleanCar, cleanStorage } from '../public/js/worldCars.js';
 import { carDamageAt, coastDistance, coastPlace, drivable, healthLossHit, healthLossInCar } from '../public/js/carDamage.js';
+import { LIVES_MOST, isTunable, okValue, testToolsAllowed, tunedCopy } from '../public/js/testTools.js';
 import { applyFloorOp, cleanDrop, crashHoldsUp, crashOutcome, emptyFloorState, mergePlan, nextManagers, tileOfBuilding } from '../public/js/worldOps.js';
 
 const FAR = 3000;          // m; past this someone is only a dot on a phone
@@ -14,6 +15,7 @@ const BUILDING_ID = /^-?\d{1,9}_-?\d{1,9}$/;
 const FLOOR_MOST = 300;    // floors up or down
 const TILES_MOST = 200;    // that one person can be watching
 const DROPS_MOST = 5000;   // left around one world
+const CARS_MOST = 2000;    // spawned or touched, in one world
 const TRACK_KEPT = 5000;     // ms of where someone says they've been, to check a crash against
 const STARTING_HOUR = 8;   // a morning, so a new world doesn't begin in the dark
 const KEPT_FROM_TRIP = ['elapsed', 'moving', 'meters', 'fsdMeters', 'offRoadMeters', 'fsdSeconds', 'topSpeed', 'bridges', 'takeovers', 'signals']; // never an address or a town
@@ -28,11 +30,18 @@ const publicMember = (member, online, building = null) => ({ building, id: membe
 
 export class Room {
   constructor(store, { now = Date.now, config = GAME.world } = {}) {
-    Object.assign(this, { store, now, config });
+    Object.assign(this, { store, now, baseConfig: config });
+    this.retune();
     this.clients = new Map();      // member id: { id, send, sendBytes, close, order, at, said, sentAt, count, countFrom, asleep }
     this.clockAt = now();          // when the saved hour was true
     this.world = store.world();
     this.crashes = new Map();      // a pair of ids: when they last crashed, as both games report the same one
+  }
+
+  // What the files say with this world's overrides on top. this.game is GAME for this world, and this.config its world part. Saved overrides of a number since removed are ignored.
+  retune() {
+    this.game = tunedCopy({ ...GAME, world: this.baseConfig }, this.store.overrides());
+    this.config = this.game.world;
   }
 
   // --- The clock: runs while anyone's here ----------------------------------------------------------------------
@@ -141,7 +150,7 @@ export class Room {
       t: 'welcome', you: { id: member.id, order: member.order, name: member.name, lives: member.lives, ...(secret ? { secret } : {}) },
       world: { id: world.id, name: world.name, mode: world.mode, creator: world.creator, owner: world.owner, backup: world.backup },
       members, clock: this.clock(), player: { pocket: player.pocket, vitals: player.vitals, trip: player.trip, lat: player.lat, lng: player.lng },
-      chat: this.store.chatFor(member.id), near: this.appearNear(member.id), drops: this.store.drops(), cars: this.store.cars(),
+      overrides: this.store.overrides(), chat: this.store.chatFor(member.id), near: this.appearNear(member.id), drops: this.store.drops(), cars: this.store.cars(),
     };
   }
 
@@ -226,7 +235,7 @@ export class Room {
     const client = connection.client;
     if (!client || !message || typeof message !== 'object') return;
     const answer = (result) => { if (message.id !== undefined) client.send({ t: result.why ? 'no' : 'ok', id: message.id, ...result }); };
-    const handler = { invite: 'makeInvite', setBackup: 'chooseBackup', say: 'say', sleep: 'sleep', save: 'savePlayer', where: 'where', area: 'area', claimPlan: 'claimPlan', claimFloor: 'claimFloor', floorOp: 'floorOp', switchesOn: 'switchesOn', dropAdd: 'dropAdd', dropTake: 'dropTake', getIn: 'getIn', getOut: 'getOut', carStore: 'carStore', plantCar: 'plantCar', bump: 'bump', crash: 'crash', slide: 'slide', speak: 'speak', carWear: 'carWear', succumb: 'succumb' }[message.t];
+    const handler = { invite: 'makeInvite', setBackup: 'chooseBackup', say: 'say', sleep: 'sleep', save: 'savePlayer', where: 'where', area: 'area', claimPlan: 'claimPlan', claimFloor: 'claimFloor', floorOp: 'floorOp', switchesOn: 'switchesOn', dropAdd: 'dropAdd', dropTake: 'dropTake', getIn: 'getIn', getOut: 'getOut', carStore: 'carStore', plantCar: 'plantCar', bump: 'bump', crash: 'crash', slide: 'slide', speak: 'speak', carWear: 'carWear', succumb: 'succumb', tune: 'tune', setLives: 'setLives', spawnCar: 'spawnCar', setHour: 'setHour', repairCar: 'repairCar', testRejoin: 'testRejoin' }[message.t];
     if (!handler) return answer({ why: 'unknown' });
     answer(this[handler](client, message) ?? {});
   }
@@ -342,7 +351,7 @@ export class Room {
   // A game says it crashed. A wrong death can't be undone, so its word isn't enough: both reported paths have to back it up, or it's only a stop. One crash once, though both games report it.
   crash(client, { kind, other, closing, lat, lng, planted }) {
     if (!['car', 'parked', 'person', 'building'].includes(kind) || !Number.isFinite(closing) || closing < 0 || closing > 1000 || !Number.isFinite(lat) || !Number.isFinite(lng)) return { why: 'bad' };
-    const config = GAME.crash, now = this.now(), fixed = kind === 'parked' || kind === 'building', target = fixed ? null : this.clients.get(other);
+    const config = this.game.crash, now = this.now(), fixed = kind === 'parked' || kind === 'building', target = fixed ? null : this.clients.get(other);
     if (!fixed && !target) return { outcome: 'stop' };
     const pairKey = fixed ? `${client.id}|${other}` : [client.id, other].sort().join('|');
     if (now - (this.crashes.get(pairKey) ?? -Infinity) < config.sameCrashSeconds * 1000) return { outcome: 'same' };
@@ -361,11 +370,11 @@ export class Room {
     const how = kind === 'person' ? 'hit' : 'crash';
     // What's left of the cars, if they survive it.
     if (!outcome.wreck.length && kind !== 'person') {
-      const amount = carDamageAt(outcome.mph);
+      const amount = carDamageAt(outcome.mph, this.game);
       this.damageCar(client.car, amount);
       if (kind !== 'building') this.damageCar(kind === 'parked' ? other : target?.car, amount, planted);
     }
-    const lost = kind === 'person' ? healthLossHit(outcome.mph) : healthLossInCar(outcome.mph);
+    const lost = kind === 'person' ? healthLossHit(outcome.mph, this.game) : healthLossInCar(outcome.mph, this.game);
     for (const person of hurt) person.send({ t: 'injured', how, lost });
     for (const person of killed) this.killMember(person, { how, by: kind === 'person' ? client.id : null, at });
     return { outcome: outcome.kill.length ? 'dead' : 'hurt' };
@@ -414,12 +423,92 @@ export class Room {
     const dead = this.store.member(client.id);
     this.tellAll({ t: 'died', member: client.id, lives, how, by, at });
     this.tellAll({ t: 'member', member: publicMember(dead, this.clients.has(client.id), null) });
-    if (lives > 0) return;
+    if (lives <= 0) this.passOnManagers();
+  }
+
+  passOnManagers() {
     const before = this.store.world(), { owner, backup } = nextManagers(before, this.store.members());
     if (owner !== before.owner || backup !== before.backup) {
       this.store.setManagers(owner, backup);
       this.tellManagers();
     }
+  }
+
+  // --- Test tools: see testToolsAllowed -------------------------------------------------------------------------
+
+  mayTest() {
+    return testToolsAllowed();
+  }
+
+  // Changes a number for this world, for everyone in it. value null puts it back.
+  tune(client, { path, value }) {
+    if (!this.mayTest(client)) return { why: 'not-allowed' };
+    if (typeof path !== 'string' || !isTunable(path) || (value !== null && !okValue(value))) return { why: 'bad' };
+    const clock = path === 'world.clockRate';
+    if (clock) this.settleClock(this.clients.size > 0);
+    this.store.setOverride(path, value);
+    this.retune();
+    if (clock) this.tellClock();
+    this.tellAll({ t: 'overrides', overrides: this.store.overrides() });
+    return {};
+  }
+
+  // Anyone's lives, online or not. Setting 0 on someone here ends them as a death would.
+  setLives(client, { member: id, lives }) {
+    if (!this.mayTest(client)) return { why: 'not-allowed' };
+    const target = typeof id === 'string' ? this.store.member(id) : null, count = lives === 'reset' ? this.config.lives : lives;
+    if (!target) return { why: 'unknown' };
+    if (!Number.isInteger(count) || count < 0 || count > LIVES_MOST) return { why: 'bad' };
+    this.store.setLives(id, count);
+    const online = this.clients.get(id);
+    if (count === 0 && online) {
+      online.car = null;
+      this.tellAll({ t: 'died', member: id, lives: 0, how: 'removed', by: null, at: online.at });
+    }
+    this.tellAll({ t: 'member', member: publicMember(this.store.member(id), !!online, online?.building ?? null) });
+    if (count === 0) this.passOnManagers();
+    return { lives: count };
+  }
+
+  spawnCar(client, { planted }) {
+    if (!this.mayTest(client)) return { why: 'not-allowed' };
+    const car = cleanCar(planted);
+    if (!car || !car.id.startsWith('x_') || !car.runs) return { why: 'bad' };
+    if (this.store.cars().length >= CARS_MOST) return { why: 'too-many' };
+    this.store.saveCar(car);
+    this.tellOthers(client.id, { t: 'car', car });
+    return { car };
+  }
+
+  setHour(client, { hour }) {
+    if (!this.mayTest(client)) return { why: 'not-allowed' };
+    if (!Number.isFinite(hour) || hour < 0 || hour > 24) return { why: 'bad' };
+    this.store.setClockHour(hour % 24);
+    this.clockAt = this.now();
+    this.tellClock();
+    return {};
+  }
+
+  // As new: full of fuel, in full condition and running, even if burnt out.
+  repairCar(client, { car: id, planted }) {
+    if (!this.mayTest(client)) return { why: 'not-allowed' };
+    const car = this.known(id, planted);
+    if (!car) return { why: 'bad' };
+    Object.assign(car, { condition: 100, fuel: 100, runs: true, why: null, wrecked: false });
+    this.store.saveCar(car);
+    this.tellAll({ t: 'car', car });
+    return { car };
+  }
+
+  // A link back in for anyone, as a browser forgets a world when its person dies. makeInvite is for managers, and stays so.
+  testRejoin(client, { member: id }) {
+    if (!this.mayTest(client)) return { why: 'not-allowed' };
+    const member = typeof id === 'string' ? this.store.member(id) : null;
+    if (!member) return { why: 'unknown' };
+    if (member.lives <= 0) return { why: 'dead' };
+    const code = newToken(), expires = this.now() + this.config.inviteHours * 3600000;
+    this.store.addInvite({ codeHash: hashOf(code), madeBy: client.id, expires, rejoinOf: id });
+    return { code, expires, world: this.store.world().id };
   }
 
   // --- Cars ----------------------------------------------------------------------------------------------------
@@ -450,7 +539,7 @@ export class Room {
   // Whether this car's driver is still its driver: here, or gone so recently the line may only have dropped.
   hasDriver(car) {
     if (!car.driver) return false;
-    return this.clients.has(car.driver) || this.now() - (car.driverLeftAt ?? 0) <= GAME.worldCars.driverFreeAfter * 1000;
+    return this.clients.has(car.driver) || this.now() - (car.driverLeftAt ?? 0) <= this.game.worldCars.driverFreeAfter * 1000;
   }
 
   // planted: the car as this browser worked it out, used if nobody has touched it yet.
@@ -474,11 +563,11 @@ export class Room {
       return { car };
     }
     if (this.hasDriver(car)) {
-      if (car.seats.length + 1 >= GAME.worldCars.seats) return { why: 'carFull' };
+      if (car.seats.length + 1 >= this.game.worldCars.seats) return { why: 'carFull' };
       car.seats.push(client.id);
     } else {
       if (!car.runs) return { why: car.why ?? 'carBroken' };
-      if (!drivable(car.condition)) return { why: 'carDead' };
+      if (!drivable(car.condition, this.game)) return { why: 'carDead' };
       Object.assign(car, { driver: client.id, driverLeftAt: null, coast: null });
     }
     this.store.saveCar(car);
@@ -511,7 +600,7 @@ export class Room {
     if (this.hasDriver(car)) return { why: 'carTaken' };
     if (car.wrecked) return { why: 'carWrecked' };
     if (!car.runs) return { why: car.why ?? 'carBroken' };
-    if (!drivable(car.condition)) return { why: 'carDead' };
+    if (!drivable(car.condition, this.game)) return { why: 'carDead' };
     car.seats = car.seats.filter((seat) => seat !== client.id);
     Object.assign(car, { driver: client.id, driverLeftAt: null });
     this.store.saveCar(car);

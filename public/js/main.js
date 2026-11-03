@@ -1,5 +1,8 @@
 import { BUILDING_KEY } from './footActions.js';
 import { parcelParts } from './drops.js';
+import { TestWindows } from './testWindows.js';
+import { rescueCar } from './worldCars.js';
+import { spawnSpots } from './testTools.js';
 import { GAME } from './gameConfig.js';
 import { keyListHtml } from './keyList.js';
 import { say } from './sayings.js';
@@ -2391,6 +2394,90 @@ el('forgetBuildings').addEventListener('click', async () => {
   notice('Buildings forgotten. They will be furnished afresh the next time you get out of the car.', 3000);
 });
 el('settingsDone').addEventListener('click', closeSettings);
+
+// --- Test windows: the Testing tab ----------------------------------------------------------------------------
+
+const hereNow = () => (foot ? foot.where() : pos);
+const testWindows = new TestWindows(world, {
+  spawnItem(name, count) {
+    for (const { bearing, metres } of spawnSpots(count, foot ? 1.5 : GAME.drops.beside + 1, 1, Math.random() * 360)) {
+      if (foot) foot.placeDropAt(name, Math.sin(rad(bearing)) * metres, Math.cos(rad(bearing)) * metres);
+      else drops.add({ name, ...move(pos.lat, pos.lng, bearing, metres), facing: rad(bearing) });
+    }
+    dropsSyncedAt = -Infinity;
+    foot?.dropsChanged();
+    return `${count} × ${name} around you.${count > GAME.drops.mostShown ? ` Only the nearest ${GAME.drops.mostShown} show outdoors at once.` : ''}`;
+  },
+  async spawnCar(type, count) {
+    if (world.rules.ownCar) { // only the one car here, so it becomes this one
+      settings.carProfile = type;
+      el('carProfile').value = type;
+      el('carProfile').dispatchEvent(new Event('input'));
+      return `Your car is now a ${profileFor(type).name}.`;
+    }
+    if (!world.rules.people) return 'There are no cars in this practice world.';
+    const at = hereNow(), spots = spawnSpots(count, 6, 5, Math.random() * 360);
+    const answers = await Promise.all(spots.map(({ bearing, metres }, i) => {
+      const place = move(at.lat, at.lng, bearing, metres), planted = { ...rescueCar(place.lat, place.lng, bearing, `${world.you.id}-${Date.now().toString(36)}-${i}`), type, fuel: 100 };
+      return world.link.ask({ t: 'spawnCar', planted });
+    }));
+    for (const answer of answers) if (answer.car) world.cars.heard(answer.car);
+    const made = answers.filter((answer) => answer.car).length;
+    return made === count ? `${count} × ${profileFor(type).name} around you. They all run.` : `${made} of ${count} made: ${answers.find((answer) => answer.why)?.why}.`;
+  },
+  stat: (key) => vitals.stats[key] ?? 100,
+  setStat(key, value) {
+    vitals.stats[key] = value;
+    vitals.save();
+  },
+  hour: () => Math.round(world.clock.hour * 4) / 4,
+  setHour(hour) {
+    if (world.rules.people) world.link.ask({ t: 'setHour', hour });
+    else {
+      world.clock.hour = hour % 24;
+      world.clock.save();
+    }
+    applyDaylight();
+  },
+  async repairCar() {
+    if (world.rules.ownCar) {
+      trip.fuel = 100;
+      return 'Your car is full.';
+    }
+    const target = riding ?? myCar ?? foot?.carHere()?.record;
+    if (!target) return 'Get in a car, or stand beside one.';
+    const answer = await world.link.ask({ t: 'repairCar', car: target.id, planted: target });
+    if (answer.why) return `Not done: ${answer.why}.`;
+    world.cars.heard(answer.car);
+    if (target === myCar) {
+      trip.fuel = 100;
+      wearWaiting = 0;
+    }
+    return 'Repaired and full.';
+  },
+  where: hereNow,
+  peopleWithPlaces: () => world.people.others.flatMap((member) => {
+    const place = member.lives > 0 ? world.people.lastKnown(member.id) : null;
+    return place ? [{ id: member.id, name: member.name, lat: place.lat, lng: place.lng }] : [];
+  }),
+  async teleport(lat, lng) {
+    if (!world.rules.ownCar && (myCar || riding)) return 'Get out of the car first.';
+    const walking = !!foot;
+    quietStop = true;
+    await placeCar({ lat, lng, heading: car.heading, label: startLabel });
+    quietStop = false;
+    if (walking) await startWalking();
+    return 'You\'re there, on the nearest road.';
+  },
+  dieNow: () => world.link.ask({ t: 'succumb' }),
+  copyInvite: (answer) => copyInvite(answer, 'Rejoin link copied. It works once and lasts a day.'),
+});
+const openTestWindow = (name) => {
+  closeSettings();
+  testWindows.show(name);
+};
+for (const [id, name] of [['testSpawn', 'spawn'], ['testConfig', 'config'], ['testPlayers', 'players'], ['testScene', 'scene']]) el(id).addEventListener('click', () => openTestWindow(name));
+setInterval(() => testWindows.changed('scene'), 1000);
 el('openSettings').addEventListener('click', () => {
   if (el('settings').classList.contains('open')) closeSettings();
   else if (!dialogOpen) openSettings();
@@ -2618,6 +2705,7 @@ document.addEventListener('keydown', (e) => {
     if (['ArrowUp', 'ArrowDown', 'Enter'].includes(e.key)) return;
     e.target.blur();
   }
+  if (e.target.matches?.('.testWin input, .testWin select')) return; // a test window's own keys, and Esc there leaves its box
   if (e.target.matches?.('#pockets textarea, #pockets input[type=text], #chatLine input')) { // typing a note or a message
     if (e.key === 'Escape') e.target.blur();
     return;
@@ -2929,7 +3017,7 @@ async function leaveBelongings(place) {
 function showFinalDeath({ how, by, days, walked }) {
   world.link.close();
   world.forgetHere(browserStorage());
-  const cause = how === 'hit' ? `You were hit by ${world.nameOf(by) ?? 'a car'}.` : how === 'injuries' ? 'You died of your injuries.' : 'You died in a crash.';
+  const cause = how === 'hit' ? `You were hit by ${world.nameOf(by) ?? 'a car'}.` : how === 'injuries' ? 'You died of your injuries.' : how === 'removed' ? 'Your lives were set to none.' : 'You died in a crash.';
   const managers = world.managerNames.filter((name) => name !== world.you.name).join(' or ');
   const box = el('worldEntry');
   box.innerHTML = '<div class="startBox"><h1>You\'re dead</h1><p data-cause></p><dl id="tripStats"><div><dt>Days lived</dt><dd data-days></dd></div><div><dt>Walked</dt><dd data-walked></dd></div></dl><p data-ask></p><div class="row"><button class="primary" type="button" data-sandbox>Play in my sandbox</button></div></div>';
@@ -3037,10 +3125,11 @@ async function startPeople() {
     canShow: (thread) => !(pocket?.app === 'messages' && world.chat.threadWith(pocket.contact === 'group' ? null : pocket.contact) === thread),
   });
   world.whereAmI = whereIAm;
+  world.on.tuned = () => testWindows.changed('config');
   world.on.died = ({ member, lives, how, by, at }) => {
     if (world.you.id !== member) {
       if (at && how === 'crash') { sfxNear(at); peopleView.explode(at); }
-      notice(`${world.nameOf(member)} ${how === 'hit' ? 'was hit by a car' : how === 'injuries' ? 'died of their injuries' : 'died in a crash'}${lives > 0 ? '.' : ', for good.'}`, 5000);
+      notice(`${world.nameOf(member)} ${how === 'hit' ? 'was hit by a car' : how === 'injuries' ? 'died of their injuries' : how === 'removed' ? 'was given no lives' : 'died in a crash'}${lives > 0 ? '.' : ', for good.'}`, 5000);
       return;
     }
     iDied({ lives, how, by, at });
@@ -3089,6 +3178,8 @@ async function startPeople() {
   };
   world.on.missed = (count) => { chatView.missed(count); world.markChatSeen(); };
   world.on.member = (member, known) => {
+    if (member.id === world.you.id) world.you.lives = member.lives;
+    testWindows.changed('players', 'scene');
     if (member.id === world.you.id) return;
     if (!known) notice(`${member.name} has joined this world.`, 4000);
     else if (member.online && !known.online) notice(`${member.name} is here.`, 3000);

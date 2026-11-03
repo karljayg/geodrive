@@ -140,5 +140,6 @@ const ICONS = {
 
 const PARCEL = cardboard;
 
+export const ITEM_NAMES = Object.keys(ICONS);
 export const hasItemIcon = (name) => name in ICONS;
 export const itemIcon = (name) => svg(ICONS[name] ?? PARCEL);

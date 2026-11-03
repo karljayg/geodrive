@@ -16,6 +16,8 @@ const MIGRATIONS = [`
   CREATE TABLE drops (id TEXT PRIMARY KEY, data TEXT NOT NULL);
 `, `
   CREATE TABLE cars (id TEXT PRIMARY KEY, data TEXT NOT NULL);
+`, `
+  CREATE TABLE overrides (path TEXT PRIMARY KEY, value REAL NOT NULL);
 `];
 
 const memberFrom = (row) => row && { id: row.id, name: row.name, secretHash: row.secret_hash, order: row.invite_order, lives: row.lives, figure: row.figure, colours: JSON.parse(row.colours), lastSeen: row.last_seen, lat: row.lat ?? null, lng: row.lng ?? null };
@@ -53,6 +55,17 @@ export class WorldStore {
   world() {
     const row = this.db.prepare('SELECT * FROM world').get();
     return row && { id: row.id, mode: row.mode, name: row.name, creator: row.creator, owner: row.owner, backup: row.backup, clockHour: row.clock_hour, created: row.created };
+  }
+
+  // Numbers changed for this world while testing: { path: value }.
+  overrides() {
+    return Object.fromEntries(this.db.prepare('SELECT path, value FROM overrides').all().map(({ path, value }) => [path, value]));
+  }
+
+  // null puts it back to what the files say.
+  setOverride(path, value) {
+    if (value === null) this.db.prepare('DELETE FROM overrides WHERE path = ?').run(path);
+    else this.db.prepare('INSERT OR REPLACE INTO overrides (path, value) VALUES (?, ?)').run(path, value);
   }
 
   setClockHour(hour) {

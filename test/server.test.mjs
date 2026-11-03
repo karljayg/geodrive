@@ -548,3 +548,36 @@ test('a world is still there after the server restarts', async () => {
   await server.close();
   rmSync(dir, { recursive: true, force: true });
 });
+
+test('an override is kept, told to everyone, and used by that world only', () => harness(async ({ create, invited }) => {
+  const karl = await create(), other = await create('Sam');
+  const ann = await invited(karl, 'Ann');
+  assert.equal((await karl.ask({ t: 'tune', path: 'hammer.item', value: 1 })).why, 'bad');
+  assert.equal((await karl.ask({ t: 'tune', path: 'world.clockRate', value: 60 })).t, 'ok');
+  const heard = await ann.next((m) => m.t === 'overrides');
+  assert.equal(heard.overrides['world.clockRate'], 60);
+  const clock = await ann.next((m) => m.t === 'clock' && m.clock.rate === 60);
+  assert.equal(clock.clock.rate, 60);
+  assert.equal(other.welcome.overrides['world.clockRate'], undefined);
+  assert.equal(GAME.world.clockRate, 12, 'GAME is every world\'s, and is left alone');
+  await karl.ask({ t: 'tune', path: 'world.clockRate', value: null });
+  await karl.next((m) => m.t === 'overrides' && !('world.clockRate' in m.overrides));
+}));
+
+test('anyone\'s lives can be set and reset, and none ends someone', () => harness(async ({ create, invited }) => {
+  const karl = await create(), ann = await invited(karl, 'Ann'), id = ann.welcome.you.id;
+  assert.equal((await karl.ask({ t: 'setLives', member: id, lives: 2 })).lives, 2);
+  assert.equal((await karl.ask({ t: 'setLives', member: id, lives: -1 })).why, 'bad');
+  assert.equal((await karl.ask({ t: 'setLives', member: id, lives: 'reset' })).lives, GAME.world.lives);
+  await karl.ask({ t: 'setLives', member: id, lives: 0 });
+  assert.equal((await ann.next((m) => m.t === 'died')).lives, 0);
+}));
+
+test('a spawned car runs, and is known to others', () => harness(async ({ create, invited }) => {
+  const karl = await create(), ann = await invited(karl, 'Ann');
+  const planted = { id: 'x_test-1', lat: 39, lng: -77, heading: 0, fuel: 100, type: 'truck', colour: '#112233', runs: true, why: null, storage: [] };
+  assert.equal((await karl.ask({ t: 'spawnCar', planted })).car.type, 'truck');
+  assert.equal((await ann.next((m) => m.t === 'car')).car.id, 'x_test-1');
+  const repaired = await karl.ask({ t: 'repairCar', car: 'x_test-1' });
+  assert.equal(repaired.car.condition, 100);
+}));

@@ -337,6 +337,20 @@ export class Foot {
     return id;
   }
 
+  // Leaves one where it's told, in metres from the person, for the Spawn window. Indoors, anything through a wall lands at their feet.
+  placeDropAt(name, east, north) {
+    const w = this.walker, building = w.inside?.buildingId === undefined ? null : w.inside, x = w.x + east, y = w.y + north;
+    if (!building) {
+      const { lat, lng } = fromLocal(this.origin, x, y);
+      return this.drops.add({ name, lat, lng, facing: w.facing });
+    }
+    const clear = this.place.footprintAt(x, y) === building, axis = this.room?.furnishing?.record.axis ?? 0;
+    const { u, v } = buildingFrame(building.pieces, axis).toFrame(clear ? x : w.x, clear ? y : w.y);
+    const id = this.drops.add({ name, buildingId: building.buildingId, floor: this.level, axis, u, v, facing: w.facing });
+    if (this.room) this.room.stale = true;
+    return id;
+  }
+
   // Someone else got this first: what it gave, to take back out of the bag.
   takenBack(key) {
     const name = this.gave.get(key);

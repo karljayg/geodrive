@@ -19,7 +19,7 @@ rsync -rlt --delete --exclude '.DS_Store' --exclude 'config.example.json' --excl
 # The world server, once scripts/install-server.sh has put it there. It only restarts if its code changed, as everyone playing is cut off for a moment and reconnects.
 if "${SSH[@]}" "$HOST" "test -d /opt/geodrive/server"; then
   RSYNC=(rsync -rlti --delete --checksum -e "ssh -i '$KEY' -o BatchMode=yes")
-  changed=$("${RSYNC[@]}" --exclude node_modules --exclude .DS_Store "$HERE/server/" "$HOST:/opt/geodrive/server/"; "${RSYNC[@]}" "$HERE/public/js/protocol.js" "$HERE/public/js/gameConfig.js" "$HERE/public/js/worldOps.js" "$HERE/public/js/worldCars.js" "$HERE/public/js/road.js" "$HERE/public/js/carDamage.js" "$HERE/public/js/physics.js" "$HOST:/opt/geodrive/public/js/")
+  changed=$("${RSYNC[@]}" --exclude node_modules --exclude .DS_Store "$HERE/server/" "$HOST:/opt/geodrive/server/"; "${RSYNC[@]}" "$HERE/public/js/protocol.js" "$HERE/public/js/gameConfig.js" "$HERE/public/js/worldOps.js" "$HERE/public/js/worldCars.js" "$HERE/public/js/road.js" "$HERE/public/js/carDamage.js" "$HERE/public/js/physics.js" "$HERE/public/js/testTools.js" "$HERE/public/js/cars.js" "$HERE/public/js/itemArt.js" "$HOST:/opt/geodrive/public/js/")
   if [ -n "$changed" ]; then
     "${SSH[@]}" "$HOST" "bash -s" < "$HERE/scripts/update-server.sh"
     echo "World server updated and restarted."
