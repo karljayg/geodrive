@@ -901,9 +901,10 @@ function runFoot(t, dt) {
   foot.update(live ? dt : 0, live ? footInput(dt) : {}, world.clock.hour);
   if (live) tipAboutPushing(fromX, fromY, dt);
   syncFootScene(dt);
-  // The radio, road and wind stay in the car, though the phone can play music. The engine idles on, fading with distance.
+  // The radio, road and wind stay in the car, though the phone can play music. Getting out switches the engine off: no car runs with nobody in it,
+  // as one heard idling and then found locked made no sense.
   const profile = profileFor(carType());
-  if (!previewing()) engine.update({ rpm: profile.idle, load: 0, speedMph: 0, car: profile, running: live, outside: true, reach: engineFadeAt(foot.distanceToCar()) });
+  if (!previewing()) engine.update({ rpm: profile.idle, load: 0, speedMph: 0, car: profile, running: false, outside: true, reach: engineFadeAt(foot.distanceToCar()) });
   perfLog.spend('drive', performance.now() - began);
   if (!live) return;
   noteWalk(dt);
