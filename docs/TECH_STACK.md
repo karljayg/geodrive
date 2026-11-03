@@ -82,3 +82,6 @@ The browser's `localStorage` holds the start point, settings, current trip and u
 - Local run: `npm start` (`scripts/serve.mjs`, port 8765)
 - Tests: `npm test` (Node's built-in test runner)
 - Version control: local git repo, no remote yet
+
+## Invisible solids
+Measured 2026-11-02 on seven real tiles, buildings included: 3 to 18 ms to read a tile, about 1.5 to 3 MB held per tile, 12 tiles held at most, and 1 to 27 microseconds a frame for a car at 500 mph. They use no Google call and no map model. The tiles are the free ones already fetched for roads. One tile at Dulles has 31 km of aisles, up to about 24,000 stalls, which is why they aren't models.

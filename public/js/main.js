@@ -27,6 +27,7 @@ import { bearingBetween, initialsOf, statusLine } from './people.js';
 import { BOUNCE, BumpLimit, FootprintIndex, buildingHit, firstHit } from './collide.js';
 import { seatsPicture } from './carSeats.js';
 import { footprintsFromTile, stationFor, stationsFromTile } from './stations.js';
+import { solidsFromTile, tilesAhead } from './solids.js';
 import { vectorTileAt } from './vector.js';
 import { coastPlace, cutsOut, drivable, offRoadSlowing, offRoadWear, powerOf, reliabilityText } from './carDamage.js';
 import { DEFAULTS, saveSettings, settings } from './settings.js';
@@ -2742,30 +2743,42 @@ let peopleView = null, chatView = null, firstAppearance = false;
 const SIT_GAIT = 17; // SIT_FRAME in footPerson.js, which only those who walk load
 const badgeColour = (member) => member.colours?.jacket ?? '#5a6470';
 
-// Buildings stop a car too. From the same free tile as the roads, read when the car comes to it. On a road nothing counts, as a road through or under something is meant to go there.
-const footprints = new Map();
+// Buildings, rows of parking and woods stop a car too. From the same free tile as the roads, fetched just before the car comes to it. On a road nothing counts, as a road through or under something
+// is meant to go there. Nothing is drawn: each frame only the car's own path is tested, so what's held is a few tiles' numbers however many cars a lot has. Self-driving follows a route that may
+// cut a row's corner, and rows are only where cars should be, so it's stopped by buildings alone.
+const solidTiles = new Map();
 function hitBuilding(me, meters) {
+  for (const { x, y } of tilesAhead(me.lat, me.lng, me.heading, GAME.solids.lookAhead, vectorTileAt)) {
+    const key = `${x}_${y}`, known = solidTiles.get(key);
+    if (known === undefined) loadSolids(key, x, y);
+    else if (known) { // most recently wanted last, so the oldest is what goes
+      solidTiles.delete(key);
+      solidTiles.set(key, known);
+    }
+  }
   if (match && (match.dist ?? Infinity) < GAME.damage.onRoadWithin) return null;
   if (onBridge) return null;
-  const { x, y } = vectorTileAt(me.lat, me.lng), key = `${x}_${y}`, index = footprints.get(key);
-  if (index === undefined) {
-    loadFootprints(key, x, y);
-    return null;
-  }
-  return index ? buildingHit(me, meters, (lat, lng) => {
-    const t = vectorTileAt(lat, lng), there = t.x === x && t.y === y ? index : footprints.get(`${t.x}_${t.y}`);
-    return !!there && there.contains(lat, lng);
-  }, GAME.damage.buildingInset) : null;
+  const guessed = !fsd;
+  return buildingHit(me, meters, (lat, lng) => {
+    const t = vectorTileAt(lat, lng), there = solidTiles.get(`${t.x}_${t.y}`);
+    return !!there && (there.buildings.contains(lat, lng) || (guessed && there.solids.contains(lat, lng)));
+  }, GAME.damage.buildingInset);
 }
 
-async function loadFootprints(key, x, y) {
-  footprints.set(key, null); // once
+async function loadSolids(key, x, y) {
+  solidTiles.set(key, null); // once
   try {
     const bytes = await tiles.tileBytes(x, y), began = performance.now();
-    if (bytes) footprints.set(key, new FootprintIndex(footprintsFromTile(bytes, x, y)));
+    if (bytes) {
+      solidTiles.set(key, { buildings: new FootprintIndex(footprintsFromTile(bytes, x, y)), solids: solidsFromTile(bytes, x, y) });
+      for (const old of solidTiles.keys()) {
+        if (solidTiles.size <= GAME.solids.tilesKept) break;
+        if (old !== key && solidTiles.get(old)) solidTiles.delete(old);
+      }
+    }
     perfLog.spend('tile', performance.now() - began);
   } catch (err) {
-    setTimeout(() => footprints.delete(key), 15000); // cars just drive through until it's tried again, as they do with no tile at all
+    setTimeout(() => solidTiles.delete(key), 15000); // cars just drive through until it's tried again, as they do with no tile at all
   }
 }
 
