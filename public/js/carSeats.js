@@ -2,6 +2,9 @@
 const esc = (text) => String(text).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
 const SEATS = [[20, 38], [38, 38], [20, 66], [38, 66]];
 
+// Only with someone riding: alone at the wheel, there's nothing to show.
+export const seatsShown = (car) => (car.seats?.length ?? 0) > 0;
+
 // people: the driver or null, then those riding: { id, name, initials, colour }. Returns the panel's insides.
 export function seatsPicture(colour, people) {
   const badges = people.slice(0, SEATS.length).map((person, i) => {

@@ -55,9 +55,10 @@ class LineGrid {
 
 // One tile's solid things. contains(lat, lng): whether a car can't be there.
 export class TileSolids {
-  // aisles and roads: lines of [lng, lat]. woods: rings of [lng, lat]. Everything drivable clears a way, so a driveway through a wood or a cross aisle through a row stays open.
-  constructor({ aisles, roads, woods }, config = GAME.solids) {
-    const all = [...aisles, ...roads, ...woods];
+  // aisles, bridges: lines of [lng, lat]. woods: rings of [lng, lat]. roads: { clear, lines }, every road by how far it keeps things clear of its middle, as a motorway is far wider than a lane
+  // and its shoulders are still road. A bridge counts as a road as well: what's under one isn't in the way of what's on it.
+  constructor({ aisles = [], roads = [], woods = [], bridges = [], highways = [] }, config = GAME.solids) {
+    const all = [...aisles, ...roads.flatMap(({ lines }) => lines), ...woods, ...bridges, ...highways];
     this.config = config;
     this.west = Infinity;
     this.south = Infinity;
@@ -65,13 +66,29 @@ export class TileSolids {
     this.east = METRES_PER_DEGREE * Math.cos(((all.length ? this.south : 0) * Math.PI) / 180);
     const inMetres = (line) => line.map(([lng, lat]) => [(lng - this.west) * this.east, (lat - this.south) * METRES_PER_DEGREE]);
     this.aisles = aisles.length ? new LineGrid(aisles.map(inMetres), config.rowTo) : null;
-    this.roads = roads.length || aisles.length ? new LineGrid(roads.map(inMetres), config.roadClear) : null;
+    this.roads = aisles.length || woods.length ? roads.filter(({ lines }) => lines.length).map(({ clear, lines }) => ({ clear, grid: new LineGrid(lines.map(inMetres), clear) })) : [];
+    this.bridges = bridges.length ? new LineGrid(bridges.map(inMetres), config.bridgeClear) : null;
+    this.highways = highways.length ? new LineGrid(highways.map(inMetres), config.highwayClear) : null;
     this.woods = woods.length ? new FootprintIndex(woods) : null;
+  }
+
+  // Near a bridge or elevated road nothing at all stops a car, buildings included: everything the tiles say is there is on the ground, and the car may well be above it.
+  nearBridge(lat, lng) {
+    if (!this.bridges) return false;
+    const { bridgeClear } = this.config;
+    return this.bridges.near((lng - this.west) * this.east, (lat - this.south) * METRES_PER_DEGREE, (distance) => distance < bridgeClear);
+  }
+
+  // Where even a building stops nothing: by a bridge, or on a highway's lanes and shoulders, which often run under or between things, and a highway's mapped line can be far from the car on it.
+  overGround(lat, lng) {
+    if (this.nearBridge(lat, lng)) return true;
+    const { highwayClear } = this.config;
+    return !!this.highways?.near((lng - this.west) * this.east, (lat - this.south) * METRES_PER_DEGREE, (distance) => distance < highwayClear);
   }
 
   contains(lat, lng) {
     if (!this.aisles && !this.woods) return false;
-    const x = (lng - this.west) * this.east, y = (lat - this.south) * METRES_PER_DEGREE, { rowFrom, rowTo, roadClear } = this.config;
+    const x = (lng - this.west) * this.east, y = (lat - this.south) * METRES_PER_DEGREE, { rowFrom, rowTo } = this.config;
     let inRow = false, inAisle = false;
     if (this.aisles) {
       this.aisles.near(x, y, (distance, alongIt) => {
@@ -82,18 +99,26 @@ export class TileSolids {
     }
     if (inAisle) return false;
     if (!inRow && !this.woods?.contains(lat, lng)) return false;
-    return !this.roads?.near(x, y, (distance) => distance < roadClear);
+    return !this.nearBridge(lat, lng) && !this.roads.some(({ clear, grid }) => grid.near(x, y, (distance) => distance < clear));
   }
 }
 
 // What's solid in one map tile, from the same free bytes as its roads.
 export function solidsFromTile(bytes, tx, ty, zoom = VECTOR_ZOOM) {
-  const aisles = [], roads = [], woods = [], roadLayer = readLayer(bytes, 'transportation'), landLayer = readLayer(bytes, 'landcover');
+  const aisles = [], bridges = [], highways = [], woods = [], roads = new Map(), roadLayer = readLayer(bytes, 'transportation'), landLayer = readLayer(bytes, 'landcover');
   if (roadLayer) {
-    const { toLat, toLng } = tileToGeo(tx, ty, roadLayer.extent, zoom);
+    const { toLat, toLng } = tileToGeo(tx, ty, roadLayer.extent, zoom), { roadClear, clearOf } = GAME.solids;
     for (const { tags, type, geometry } of roadLayer.features) {
-      if (type !== 2 || tags.class === 'path' || tags.class === 'rail' || tags.brunnel === 'bridge' || tags.brunnel === 'tunnel') continue;
-      for (const line of decodeLines(geometry)) (tags.service === 'parking_aisle' ? aisles : roads).push(line.map(([x, y]) => [toLng(x), toLat(y)]));
+      if (type !== 2 || tags.class === 'path' || tags.class === 'rail' || tags.class === 'transit') continue;
+      const clear = clearOf[tags.class] ?? roadClear;
+      if (!roads.has(clear)) roads.set(clear, []);
+      for (const line of decodeLines(geometry)) {
+        const points = line.map(([x, y]) => [toLng(x), toLat(y)]);
+        if (tags.brunnel === 'bridge') bridges.push(points);
+        if (tags.class === 'motorway' || tags.class === 'trunk') highways.push(points);
+        if (tags.service === 'parking_aisle' && !tags.brunnel) aisles.push(points); // an aisle in a garage's upper deck has no row on the ground
+        else roads.get(clear).push(points);
+      }
     }
   }
   if (landLayer) {
@@ -107,7 +132,7 @@ export function solidsFromTile(bytes, tx, ty, zoom = VECTOR_ZOOM) {
       }
     }
   }
-  return new TileSolids({ aisles, roads, woods });
+  return new TileSolids({ aisles, woods, bridges, highways, roads: [...roads].map(([clear, lines]) => ({ clear, lines })) });
 }
 
 // The tiles a car wants ready: the one it's in, and those it'll reach within lookAhead metres. A car at 500 mph crosses a tile in about 9 s, and one takes about half a second to arrive.

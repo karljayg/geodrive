@@ -25,7 +25,7 @@ import { needsEntry, openWorld } from './world.js';
 import { FLAGS } from './protocol.js';
 import { bearingBetween, initialsOf, statusLine } from './people.js';
 import { BOUNCE, BumpLimit, FootprintIndex, buildingHit, firstHit } from './collide.js';
-import { seatsPicture } from './carSeats.js';
+import { seatsPicture, seatsShown } from './carSeats.js';
 import { footprintsFromTile, stationFor, stationsFromTile } from './stations.js';
 import { solidsFromTile, tilesAhead } from './solids.js';
 import { vectorTileAt } from './vector.js';
@@ -2758,6 +2758,8 @@ function hitBuilding(me, meters) {
   }
   if (match && (match.dist ?? Infinity) < GAME.damage.onRoadWithin) return null;
   if (onBridge) return null;
+  const here = vectorTileAt(me.lat, me.lng), tile = solidTiles.get(`${here.x}_${here.y}`);
+  if (tile?.solids.overGround(me.lat, me.lng)) return null; // the road match can pick the road below, or none, so it isn't left to say where the car is
   const guessed = !fsd;
   return buildingHit(me, meters, (lat, lng) => {
     const t = vectorTileAt(lat, lng), there = solidTiles.get(`${t.x}_${t.y}`);
@@ -2944,11 +2946,11 @@ let seatsKey = '';
 function syncSeats() {
   const here = foot ? null : riding ?? myCar, known = here && (world.cars.get(here.id) ?? here), box = el('carSeats');
   const people = known ? [known.driver, ...(known.seats ?? [])] : [];
-  const key = known ? people.join() + carColour() : '';
+  const shown = known && seatsShown(known), key = shown ? people.join() + carColour() : '';
   if (key === seatsKey) return;
   seatsKey = key;
-  box.classList.toggle('open', !!known);
-  if (!known) return;
+  box.classList.toggle('open', !!shown);
+  if (!shown) return;
   box.innerHTML = seatsPicture(carColour(), people.map((id) => (id ? { id, name: world.nameOf(id) ?? '?', initials: initialsOf(world.nameOf(id) ?? '?'), colour: badgeColour(world.people.member(id) ?? {}) } : null)));
 }
 

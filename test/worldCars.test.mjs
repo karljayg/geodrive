@@ -6,7 +6,7 @@ import { FLAG_BRIDGE } from '../public/js/road.js';
 import { GAME } from '../public/js/gameConfig.js';
 import { SAYINGS } from '../public/js/sayingsConfig.js';
 import { SharedCars } from '../public/js/sharedWorld.js';
-import { seatsPicture } from '../public/js/carSeats.js';
+import { seatsPicture, seatsShown } from '../public/js/carSeats.js';
 import { stationFor, stationWorks } from '../public/js/stations.js';
 import { carDamageAt, coastDistance, coastPlace, cutsOut, drivable, healthLossHit, healthLossInCar, offRoadSlowing, offRoadWear, powerOf, reliabilityText } from '../public/js/carDamage.js';
 import { BumpLimit, FootprintIndex, buildingHit, carTouchesPerson, carsTouch, closingSpeed, firstHit } from '../public/js/collide.js';
@@ -162,6 +162,13 @@ test('bumps between two things come at most once in a while', () => {
   assert.equal(limit.allows('a', 500), false);
   assert.equal(limit.allows('b', 500), true, 'something else is its own');
   assert.equal(limit.allows('a', 1000), true);
+});
+
+test('the seats panel only shows with someone riding', () => {
+  assert.equal(seatsShown({ driver: 'a', seats: [] }), false, 'alone at the wheel');
+  assert.equal(seatsShown({ driver: 'a' }), false, 'a car that has never had seats');
+  assert.equal(seatsShown({ driver: 'a', seats: ['b'] }), true);
+  assert.equal(seatsShown({ driver: null, seats: ['b'] }), true, 'a passenger whose driver has gone still sees it');
 });
 
 test('the seats panel shows who\'s where, and nothing can be written into it', () => {

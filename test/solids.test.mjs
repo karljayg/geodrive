@@ -6,13 +6,14 @@ import { buildingHit } from '../public/js/collide.js';
 
 const LAT = 39, LNG = -77.4, NORTH = 1 / 111320, EAST = 1 / (111320 * Math.cos((LAT * Math.PI) / 180));
 const at = (x, y) => [LNG + x * EAST, LAT + y * NORTH]; // metres east and north, as [lng, lat]
-const CONFIG = { rowFrom: 3.6, rowTo: 9, roadClear: 4 };
+const CONFIG = { rowFrom: 3.6, rowTo: 9, bridgeClear: 30, highwayClear: 15 };
+const road = (...lines) => [{ clear: 4, lines }];
 const solid = (world, x, y) => {
   const [lng, lat] = at(x, y);
   return world.contains(lat, lng);
 };
 // An aisle running east for 100 m.
-const lot = (more = {}) => new TileSolids({ aisles: [[at(0, 0), at(100, 0)]], roads: [], woods: [], ...more }, CONFIG);
+const lot = (more = {}) => new TileSolids({ aisles: [[at(0, 0), at(100, 0)]], ...more }, CONFIG);
 
 test('beside an aisle is a row of parking, and the aisle itself is open', () => {
   const world = lot();
@@ -31,26 +32,58 @@ test('a row only runs as far as its aisle, so the end of a lot can be driven rou
 });
 
 test('a cross aisle cuts through a row, and so does any road', () => {
-  const crossed = new TileSolids({ aisles: [[at(0, 0), at(100, 0)], [at(50, 0), at(50, 40)]], roads: [], woods: [] }, CONFIG);
+  const crossed = new TileSolids({ aisles: [[at(0, 0), at(100, 0)], [at(50, 0), at(50, 40)]] }, CONFIG);
   assert.equal(solid(crossed, 50, 6), false, 'the cross aisle');
   assert.equal(solid(crossed, 40, 6), true, 'the row beside it');
-  const driveway = lot({ roads: [[at(70, -30), at(70, 30)]] });
+  const driveway = lot({ roads: road([at(70, -30), at(70, 30)]) });
   assert.equal(solid(driveway, 70, 6), false, 'a driveway through the row');
   assert.equal(solid(driveway, 60, 6), true);
 });
 
 test('a wood is solid except where something drivable goes through it', () => {
   const wood = [at(0, 0), at(100, 0), at(100, 100), at(0, 100), at(0, 0)];
-  const plain = new TileSolids({ aisles: [], roads: [], woods: [wood] }, CONFIG);
+  const plain = new TileSolids({ woods: [wood] }, CONFIG);
   assert.equal(solid(plain, 50, 50), true);
   assert.equal(solid(plain, 150, 50), false);
-  const tracked = new TileSolids({ aisles: [], roads: [[at(50, -10), at(50, 110)]], woods: [wood] }, CONFIG);
+  const tracked = new TileSolids({ roads: road([at(50, -10), at(50, 110)]), woods: [wood] }, CONFIG);
   assert.equal(solid(tracked, 50, 50), false, 'on the driveway');
   assert.equal(solid(tracked, 30, 50), true, 'off it');
 });
 
+test('a motorway keeps things clear of its shoulders, not only of its middle', () => {
+  const wood = [at(0, 0), at(100, 0), at(100, 100), at(0, 100), at(0, 0)], line = [at(50, -10), at(50, 110)];
+  const narrow = new TileSolids({ woods: [wood], roads: road(line) }, CONFIG);
+  const wide = new TileSolids({ woods: [wood], roads: [{ clear: 25, lines: [line] }] }, CONFIG);
+  assert.equal(solid(narrow, 62, 50), true, 'a lane road has trees 12 m off');
+  assert.equal(solid(wide, 62, 50), false, 'a motorway has lanes there');
+  assert.equal(solid(wide, 90, 50), true, 'and the wood starts beyond them');
+});
+
+test('nothing is solid on or beside a bridge, whatever is on the ground below', () => {
+  const wood = [at(0, 0), at(200, 0), at(200, 200), at(0, 200), at(0, 0)];
+  const bridge = [at(100, -10), at(100, 210)];
+  const world = new TileSolids({ woods: [wood], bridges: [bridge], aisles: [[at(50, 100), at(150, 100)]] }, CONFIG);
+  assert.equal(solid(world, 100, 50), false, 'over the wood');
+  assert.equal(solid(world, 120, 50), false, 'towards its edge');
+  assert.equal(solid(world, 120, 106), false, 'over a row of parking');
+  assert.equal(solid(world, 160, 50), true, 'well away from it the wood is back');
+  const [lng, lat] = at(120, 50);
+  assert.equal(world.nearBridge(lat, lng), true, 'and buildings are ignored here as well');
+  const [farLng, farLat] = at(160, 50);
+  assert.equal(world.nearBridge(farLat, farLng), false);
+});
+
+test('on a highway\'s lanes even a building stops nothing, and off them it does', () => {
+  const world = new TileSolids({ highways: [[at(0, 0), at(100, 0)]] }, CONFIG);
+  const [lng, lat] = at(50, 12), [farLng, farLat] = at(50, 40);
+  assert.equal(world.overGround(lat, lng), true);
+  assert.equal(world.overGround(farLat, farLng), false);
+  const bridged = new TileSolids({ bridges: [[at(0, 0), at(100, 0)]] }, CONFIG), [overLng, overLat] = at(50, 25);
+  assert.equal(bridged.overGround(overLat, overLng), true, 'and a bridge counts too');
+});
+
 test('a tile with nothing mapped stops nothing', () => {
-  const empty = new TileSolids({ aisles: [], roads: [], woods: [] }, CONFIG);
+  const empty = new TileSolids({}, CONFIG);
   assert.equal(empty.contains(LAT, LNG), false);
 });
 
