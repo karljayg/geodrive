@@ -82,6 +82,3 @@ The browser's `localStorage` holds the start point, settings, current trip and u
 - Local run: `npm start` (`scripts/serve.mjs`, port 8765)
 - Tests: `npm test` (Node's built-in test runner)
 - Version control: local git repo, no remote yet
-
-## Invisible solids
-Measured 2026-11-02 on seven real tiles, buildings included: 3 to 18 ms to read a tile, about 1.5 to 3 MB held per tile, 12 tiles held at most, and 1 to 27 microseconds a frame for a car at 500 mph, with no Google call and no map model. Memory was never the problem. Parking rows and woods were turned off on 2026-11-03 because they couldn't match what the picture shows, so those figures are now an upper limit.

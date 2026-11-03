@@ -55,3 +55,19 @@ export function footprintsFromTile(bytes, tx, ty, zoom = VECTOR_ZOOM) {
   }
   return rings;
 }
+
+// A tile's water, for what cars can hit: rings of [lng, lat], outer edges only. Not pools, which a car can't tell from a yard, nor streams that run dry or go underground.
+export function waterFromTile(bytes, tx, ty, zoom = VECTOR_ZOOM) {
+  const layer = readLayer(bytes, 'water');
+  if (!layer) return [];
+  const { toLat, toLng } = tileToGeo(tx, ty, layer.extent, zoom), rings = [];
+  for (const { tags, type, geometry } of layer.features) {
+    if (type !== 3 || tags.class === 'swimming_pool' || tags.intermittent || tags.brunnel) continue;
+    for (const line of decodeLines(geometry)) {
+      let area = 0;
+      for (let i = 0, j = line.length - 1; i < line.length; j = i++) area += line[j][0] * line[i][1] - line[i][0] * line[j][1];
+      if (area > 0 && line.length >= 3) rings.push(line.map(([x, y]) => [toLng(x), toLat(y)]));
+    }
+  }
+  return rings;
+}

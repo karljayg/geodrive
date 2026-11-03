@@ -26,8 +26,8 @@ import { FLAGS } from './protocol.js';
 import { bearingBetween, initialsOf, statusLine } from './people.js';
 import { BOUNCE, BumpLimit, FootprintIndex, buildingHit, firstHit, sameLevel } from './collide.js';
 import { seatsPicture, seatsShown } from './carSeats.js';
-import { footprintsFromTile, stationFor, stationsFromTile } from './stations.js';
-import { solidsFromTile, tilesAhead } from './solids.js';
+import { footprintsFromTile, stationFor, stationsFromTile, waterFromTile } from './stations.js';
+import { levelsFromTile, tilesAhead } from './levels.js';
 import { vectorTileAt } from './vector.js';
 import { coastPlace, cutsOut, drivable, offRoadSlowing, offRoadWear, powerOf, reliabilityText } from './carDamage.js';
 import { DEFAULTS, saveSettings, settings } from './settings.js';
@@ -750,6 +750,7 @@ function frame(t) {
   peopleView?.update(foot ? foot.where() : pos, performance.now());
   if (map && !foot && !debug.hold && !dialogOpen && !paused) {
     const driveBegan = performance.now();
+    if (el('hornButton').disabled !== !!riding) el('hornButton').disabled = !!riding;
     const controls = riding ? { throttle: 0, reverse: false, steer: 0, handbrake: false } : input();
     // The driver can take over at any moment. Steering or braking drops FSD, and steering cancels a signal.
     if (controls.steer) cancelSignal();
@@ -2252,6 +2253,7 @@ function setHeadlights(on) {
 }
 
 function hornDown(button = el('hornButton')) {
+  if (riding) return; // it's the driver's
   engine.start();
   applySound();
   engine.hornOn(hornFor(carType()));
@@ -2743,44 +2745,48 @@ let peopleView = null, chatView = null, firstAppearance = false;
 const SIT_GAIT = 17; // SIT_FRAME in footPerson.js, which only those who walk load
 const badgeColour = (member) => member.colours?.jacket ?? '#5a6470';
 
-// Buildings, rows of parking and woods stop a car too. From the same free tile as the roads, fetched just before the car comes to it. On a road nothing counts, as a road through or under something
-// is meant to go there. Nothing is drawn: each frame only the car's own path is tested, so what's held is a few tiles' numbers however many cars a lot has. Self-driving follows a route that may
-// cut a row's corner, and rows are only where cars should be, so it's stopped by buildings alone.
-const solidTiles = new Map();
+// Buildings and water stop a car too. From the same free tile as the roads, fetched just before the car comes to it. On a road nothing counts, as a road through or under something is meant to go there,
+// and nor does anything by a bridge, tunnel or highway, where the car may be above or below it.
+const mapTiles = new Map();
 function hitBuilding(me, meters) {
-  for (const { x, y } of tilesAhead(me.lat, me.lng, me.heading, GAME.solids.lookAhead, vectorTileAt)) {
-    const key = `${x}_${y}`, known = solidTiles.get(key);
-    if (known === undefined) loadSolids(key, x, y);
+  for (const { x, y } of tilesAhead(me.lat, me.lng, me.heading, GAME.levels.lookAhead, vectorTileAt)) {
+    const key = `${x}_${y}`, known = mapTiles.get(key);
+    if (known === undefined) loadMapTile(key, x, y);
     else if (known) { // most recently wanted last, so the oldest is what goes
-      solidTiles.delete(key);
-      solidTiles.set(key, known);
+      mapTiles.delete(key);
+      mapTiles.set(key, known);
     }
   }
   if (match && (match.dist ?? Infinity) < GAME.damage.onRoadWithin) return null;
   if (onBridge) return null;
-  const here = vectorTileAt(me.lat, me.lng), tile = solidTiles.get(`${here.x}_${here.y}`);
-  if (tile?.solids.overGround(me.lat, me.lng)) return null; // the road match can pick the road below, or none, so it isn't left to say where the car is
-  const guessed = !fsd;
-  return buildingHit(me, meters, (lat, lng) => {
-    const t = vectorTileAt(lat, lng), there = solidTiles.get(`${t.x}_${t.y}`);
-    return !!there && (there.buildings.contains(lat, lng) || (guessed && there.solids.contains(lat, lng)));
+  const here = vectorTileAt(me.lat, me.lng), tile = mapTiles.get(`${here.x}_${here.y}`);
+  if (tile?.levels.overGround(me.lat, me.lng)) return null;
+  let water = false;
+  const wet = !tile?.levels.nearRoad(me.lat, me.lng);
+  const hit = buildingHit(me, meters, (lat, lng) => {
+    const t = vectorTileAt(lat, lng), there = mapTiles.get(`${t.x}_${t.y}`);
+    if (!there) return false;
+    if (there.buildings.contains(lat, lng)) return true;
+    return (water = wet && there.water.contains(lat, lng));
   }, GAME.damage.buildingInset);
+  return hit && { ...hit, water };
 }
 
-async function loadSolids(key, x, y) {
-  solidTiles.set(key, null); // once
+async function loadMapTile(key, x, y) {
+  mapTiles.set(key, null); // once
   try {
     const bytes = await tiles.tileBytes(x, y), began = performance.now();
     if (bytes) {
-      solidTiles.set(key, { buildings: new FootprintIndex(footprintsFromTile(bytes, x, y)), solids: solidsFromTile(bytes, x, y) });
-      for (const old of solidTiles.keys()) {
-        if (solidTiles.size <= GAME.solids.tilesKept) break;
-        if (old !== key && solidTiles.get(old)) solidTiles.delete(old);
+      const water = waterFromTile(bytes, x, y);
+      mapTiles.set(key, { buildings: new FootprintIndex(footprintsFromTile(bytes, x, y)), water: new FootprintIndex(water), levels: levelsFromTile(bytes, x, y, water.length > 0) });
+      for (const old of mapTiles.keys()) {
+        if (mapTiles.size <= GAME.levels.tilesKept) break;
+        if (old !== key && mapTiles.get(old)) mapTiles.delete(old);
       }
     }
     perfLog.spend('tile', performance.now() - began);
   } catch (err) {
-    setTimeout(() => solidTiles.delete(key), 15000); // cars just drive through until it's tried again, as they do with no tile at all
+    setTimeout(() => mapTiles.delete(key), 15000); // cars just drive through until it's tried again, as they do with no tile at all
   }
 }
 
@@ -2793,7 +2799,7 @@ function carShape(type) {
 // On or beside a bridge or tunnel, by the map's own lines, as the road match can pick the road below or none.
 function nearBridgeNow() {
   const here = vectorTileAt(pos.lat, pos.lng);
-  return onBridge || !!solidTiles.get(`${here.x}_${here.y}`)?.solids.nearBridge(pos.lat, pos.lng);
+  return onBridge || !!mapTiles.get(`${here.x}_${here.y}`)?.levels.nearBridge(pos.lat, pos.lng);
 }
 function obstacles(now) {
   const list = world.cars.around(pos, 40, 12).filter((known) => known.id !== myCar?.id).map((known) => ({ id: known.id, kind: 'parked', lat: known.lat, lng: known.lng, heading: known.heading, speed: 0, record: known, ...carShape(known.type) }));
@@ -2829,6 +2835,7 @@ function hitAnything(meters) {
     const wall = hitBuilding(me, meters);
     if (wall) {
       Object.assign(pos, move(pos.lat, pos.lng, car.heading, -wall.back));
+      if (wall.water) notice('That\'s water. The car stops at the edge.', 2500);
       stoppedByHit({ id: 'building', kind: 'building' }, Math.abs(me.speed));
     }
     return;

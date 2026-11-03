@@ -5,11 +5,10 @@ export const GAME = {
   // What a crash does in a shared world: closing speeds in mph. Below injuredFromMph, nothing. Lives are in world. What an injury leads to is still to be decided.
   crash: { carDeadlyMph: 100, personDeadlyMph: 50, injuredFromMph: 5, carHealthLoss: 95, personHealthLoss: 90, respawnSeconds: 3, withinMetres: 20, sameCrashSeconds: 3 },
   // A car's condition, 100 to 0. carDamage.js has the formula. offRoadPerKm: condition lost per km off road. offRoadDrag: speed lost per second there, as a share.
-  // What stops a car that nothing draws. An aisle is about 7 m wide, with stalls 5.5 m deep either side: rowFrom and rowTo are metres from its middle. Solid things stop short of any road by
-  // roadClear, or by clearOf for a wider kind, which has lanes and shoulders either side of its mapped line. Within bridgeClear of a bridge or tunnel, or highwayClear of a motorway or trunk road, nothing stops a car, buildings included.
+  // Where things on the ground don't stop a car: within bridgeClear of a bridge or tunnel, or highwayClear of a motorway or trunk road (buildings and water only). Metres from the mapped line.
   // tilesKept: how many tiles' worth are held at once, as a long drive would otherwise keep them all. lookAhead: metres ahead a tile is fetched before the car reaches it.
-  // rows and woods: whether parking rows and woods stop a car at all. Off since players kept hitting nothing in empty lots, as stalls can be known but not which hold a car.
-  solids: { rows: false, woods: false, rowFrom: 3.6, rowTo: 9, roadClear: 4, clearOf: { motorway: 25, trunk: 25, primary: 15, secondary: 12, tertiary: 9, minor: 6 }, bridgeClear: 30, highwayClear: 15, tilesKept: 12, lookAhead: 400 },
+  // waterRoadClear: metres from any road that water doesn't stop a car, as docks and causeways are mapped with water all round.
+  levels: { bridgeClear: 30, highwayClear: 15, waterRoadClear: 12, tilesKept: 12, lookAhead: 400 },
   damage: { notDrivableAt: 10, unreliableBelow: 30, wornBelow: 70, leastPower: 0.4, mostCutOut: 0.35, offRoadPerKm: 2, offRoadDrag: 0.09, coastBrake: 1.5, reportEvery: 5, buildingInset: 1, buildingClearance: 3, onRoadWithin: 5 },
   stations: { workingChance: 0.5, within: 55 }, // m from a gas station or charger's point on the map that a car can use it
   worldCars: { every: 300, runningChance: 0.4, hammerChance: 0.25, kerb: 3.4, shownWithin: 300, mostShown: 20, rescueWithin: 150, driverFreeAfter: 10, seats: 4 }, // m along a road between them, and a car's chance of running or holding a sledgehammer
