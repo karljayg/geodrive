@@ -1,14 +1,10 @@
 // Bakes Agecraft's Quaternius deer into still frames the map can show. The map's model has no animation of its own.
 // Source glbs are not in this repo: pass the Agecraft public3d/models directory.
 //   NODE_PATH=/tmp/deer-bake/node_modules node scripts/bake-deer.mjs /tmp/deer-src
-import { writeFileSync, mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-
-const LENGTH = { deer: 1.45, stag: 1.65 }; // metres, nose to tail, as Agecraft public3d/animals-view.js
-const CLIPS = { idle: ['Idle', 4], walk: ['Walk', 6], gallop: ['Gallop', 4] };
-const outDir = process.argv[3] || join(import.meta.dirname, '../public/models/deer');
 
 async function readGlb(file) {
   const { readFileSync } = await import('node:fs');
@@ -96,38 +92,52 @@ function restBox(scene) {
   return { min, max };
 }
 
-const srcDir = process.argv[2];
-if (!srcDir) throw new Error('pass the directory with deer.glb and stag.glb');
-mkdirSync(outDir, { recursive: true });
+// Deer and stag use exact clip names. Chicken and rabbit match by name; they have no gallop.
+const SPECIES = [
+  { file: 'deer.glb', kind: 'deer', length: 1.45, clips: { idle: ['Idle', 4], walk: ['Walk', 6], gallop: ['Gallop', 4] } },
+  { file: 'stag.glb', kind: 'stag', length: 1.65, clips: { idle: ['Idle', 4], walk: ['Walk', 6], gallop: ['Gallop', 4] } },
+  { file: 'chicken.glb', kind: 'chicken', length: 0.42, clips: { idle: [/idle/i, 4], walk: [/walk/i, 4] } },
+  { file: 'rabbit.glb', kind: 'rabbit', length: 0.45, clips: { idle: [/idle/i, 4], walk: [/walk/i, 4] } },
+];
 
-for (const kind of ['deer', 'stag']) {
-  const gltf = await readGlb(join(srcDir, `${kind}.glb`));
+function findClip(animations, spec) {
+  const [name, frames] = spec;
+  const clip = animations.find((a) => (name instanceof RegExp ? name.test(a.name) : a.name === name));
+  return clip ? [clip, frames] : null;
+}
+
+const srcDir = process.argv[2];
+if (!srcDir) throw new Error('pass the directory with the glbs');
+const root = process.argv[3] || join(import.meta.dirname, '../public/models');
+
+for (const species of SPECIES) {
+  const src = join(srcDir, species.file);
+  if (!existsSync(src)) continue;
+  const gltf = await readGlb(src);
   const scene = gltf.scene;
   scene.updateMatrixWorld(true);
   const box = restBox(scene);
   // bake() already swapped three's y-up z-forward into y-forward z-up, so length is along y.
   const length = box.max[1] - box.min[1], height = box.max[2] - box.min[2];
-  const scale = LENGTH[kind] / length, lift = -box.min[2] * scale;
-  const head = scene.getObjectByName('Head');
-  head?.updateWorldMatrix(true, false);
-  const hp = new THREE.Vector3();
-  head?.getWorldPosition(hp);
-  console.log(kind, 'rest length', length.toFixed(3), 'height', height.toFixed(3), 'scale', scale.toFixed(3), 'head', hp.toArray().map((n) => n.toFixed(2)).join(','));
+  const scale = species.length / length, lift = -box.min[2] * scale;
+  console.log(species.kind, 'rest length', length.toFixed(3), 'height', height.toFixed(3), 'scale', scale.toFixed(3));
+  const dest = species.kind === 'stag' ? join(root, 'deer') : join(root, species.kind);
+  mkdirSync(dest, { recursive: true });
   const mixer = new THREE.AnimationMixer(scene);
-  for (const [gait, [clipName, frames]] of Object.entries(CLIPS)) {
-    const clip = gltf.animations.find((a) => a.name === clipName);
-    if (!clip) throw new Error(`${kind} has no ${clipName}`);
+  for (const [gait, spec] of Object.entries(species.clips)) {
+    const found = findClip(gltf.animations, spec);
+    if (!found) throw new Error(`${species.kind} has no ${gait}`);
+    const [clip, frames] = found;
     const action = mixer.clipAction(clip);
     action.play();
     for (let i = 0; i < frames; i++) {
       action.time = (i / frames) * clip.duration;
       mixer.update(0);
-      const groups = bake(scene, scale, lift);
-      const file = join(outDir, `${kind}-${gait}-${i}.glb`);
-      writeFileSync(file, glbOf(groups));
+      writeFileSync(join(dest, `${species.kind}-${gait}-${i}.glb`), glbOf(bake(scene, scale, lift)));
     }
     action.stop();
     mixer.uncacheAction(clip);
+    console.log(' ', gait, clip.name, clip.duration.toFixed(3), frames);
   }
 }
-console.log('wrote', outDir);
+console.log('wrote', root);

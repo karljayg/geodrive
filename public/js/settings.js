@@ -29,6 +29,8 @@ export const DEFAULTS = {
   mapLook: 'today', // or 'abandoned': a trial colour grade and grime over the map, no models
   carEvery: 300, // m along a road between parked cars; matches GAME.worldCars.every
   deerEvery: 600, // m along a road between deer; matches GAME.deer.every (half as common as cars)
+  chickenEvery: 1200, // m along a road; matches GAME.chicken.every
+  rabbitEvery: 1200, // m along a road; matches GAME.rabbit.every
   radioOn: false,
   radioStation: { id: 'a4d806b2-8d6a-4cd1-9000-3224e106a0bb', name: 'HOT 995 - WIHT-FM 99.5 Washington', url: 'https://stream.revma.ihrhls.com/zc2509', band: 'FM', frequency: 99.5, local: true },
 };

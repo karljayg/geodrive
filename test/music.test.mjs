@@ -44,13 +44,18 @@ test('the clock picks the mood, and the late night runs past midnight', () => {
 
 test('a mood with no songs uses its fallback until it has some', () => {
   assert.equal(clockMood(19, MUSIC), 'dusk');
-  assert.equal(chooseMusic({ hour: 19 }, MUSIC).mood, 'afternoon');
+  assert.equal(playable('dusk', MUSIC), 'afternoon');
+  assert.equal(chooseMusic({ hour: 19 }, MUSIC).mood, 'along', 'the playlist plays, not the clock');
   const loop = { moods: { a: { songs: [], fallback: 'b' }, b: { songs: [], fallback: 'a' } } };
   assert.equal(playable('a', loop), null);
 });
 
-test('background music waits for the radio or phone, and the late night does too', () => {
-  assert.deepEqual(chooseMusic({ hour: 12, radio: 'off' }, MUSIC), { mood: 'day', holdRadio: false });
+test('background music waits for the radio or phone, and walks the playlist', () => {
+  assert.ok(MUSIC.moods.along.songs.length > 4, 'day, afternoon, night and late night');
+  assert.equal(MUSIC.moods.along.songs[0].file, MUSIC.moods.day.songs[0].file);
+  assert.equal(MUSIC.moods.along.songs.at(-1).file, MUSIC.moods.lateNight.songs.at(-1).file);
+  assert.deepEqual(chooseMusic({ hour: 12, radio: 'off' }, MUSIC), { mood: 'along', holdRadio: false });
+  assert.deepEqual(chooseMusic({ hour: 23.5, radio: 'off' }, MUSIC), { mood: 'along', holdRadio: false });
   assert.deepEqual(chooseMusic({ hour: 12, radio: 'playing' }, MUSIC), { mood: null, holdRadio: false });
   assert.deepEqual(chooseMusic({ hour: 12, radio: 'starting' }, MUSIC), { mood: KEEP, holdRadio: false });
   assert.deepEqual(chooseMusic({ hour: 23.5, radio: 'playing' }, MUSIC), { mood: null, holdRadio: false });
@@ -133,7 +138,7 @@ test('standing at the edge of the window light does not flip it', () => {
 test('the dark room plays foreboding over the radio, and light gives back the mood or the radio', () => {
   const asked = [MUSIC.darkRoom.mood];
   assert.deepEqual(chooseMusic({ hour: 12, radio: 'playing', scenes: asked }, MUSIC), { mood: 'foreboding', holdRadio: true });
-  assert.deepEqual(chooseMusic({ hour: 12, radio: 'off', scenes: [] }, MUSIC), { mood: 'day', holdRadio: false });
+  assert.deepEqual(chooseMusic({ hour: 12, radio: 'off', scenes: [] }, MUSIC), { mood: 'along', holdRadio: false });
   assert.deepEqual(chooseMusic({ hour: 12, radio: 'starting', scenes: [] }, MUSIC), { mood: KEEP, holdRadio: false });
   assert.equal(chooseMusic({ hour: 12, scenes: [...asked, 'chase'] }, MUSIC).mood, 'chase', 'a chase beats the dark');
 });

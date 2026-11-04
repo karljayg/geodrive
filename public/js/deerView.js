@@ -5,7 +5,6 @@ import { frameOf, newDeer, plantDeer, stepDeer } from './deer.js';
 import { metresApart } from './protocol.js';
 
 const HIDDEN = 0.001, SHOWN = 1;
-const DEAD_STORE = 'geodrive_deer_dead_v1';
 const GAITS = ['idle', 'walk', 'gallop'];
 const METRES_PER_DEGREE = 111320;
 
@@ -15,9 +14,11 @@ const metresFrom = (home, lat, lng) => ({
 });
 
 export class DeerView {
-  constructor({ maps3d, map }) {
+  constructor({ maps3d, map, store = 'geodrive_deer_dead_v1', key = 'deer' }) {
     this.maps3d = maps3d;
     this.map = map;
+    this.storeKey = store;
+    this.key = key;
     this.plantedTiles = new Map(); // road tile key -> planted spots
     this.live = new Map(); // id -> deer state
     this.shown = new Map(); // id -> { deer, frames, gait, frame }
@@ -31,7 +32,7 @@ export class DeerView {
 
   loadDead() {
     try {
-      const saved = JSON.parse(localStorage.getItem(DEAD_STORE) ?? 'null');
+      const saved = JSON.parse(localStorage.getItem(this.storeKey) ?? 'null');
       if (!saved) return;
       for (const id of saved.ids ?? []) this.dead.add(id);
       this.bodies = Array.isArray(saved.bodies) ? saved.bodies : [];
@@ -42,7 +43,7 @@ export class DeerView {
 
   saveDead() {
     try {
-      localStorage.setItem(DEAD_STORE, JSON.stringify({ ids: [...this.dead], bodies: this.bodies }));
+      localStorage.setItem(this.storeKey, JSON.stringify({ ids: [...this.dead], bodies: this.bodies }));
     } catch (err) {
       console.warn('saving deer:', err);
     }
@@ -95,9 +96,10 @@ export class DeerView {
   }
 
   enqueue(animal) {
-    const kind = animal.deer.stag ? 'stag' : 'deer';
+    const file = animal.deer.stag && this.config.stagModel ? this.config.stagModel : this.config.model;
+    const dir = this.config.dir || 'deer';
     for (const gait of GAITS) {
-      for (let i = 0; i < this.config.frames[gait]; i++) this.queue.push({ animal, gait, i, url: `models/deer/${kind}-${gait}-${i}.glb` });
+      for (let i = 0; i < this.config.frames[gait]; i++) this.queue.push({ animal, gait, i, url: `models/${dir}/${file}-${gait}-${i}.glb` });
     }
     const rank = (job) => (job.gait === 'idle' && job.i === 0 ? 2 : job.gait === 'idle' ? 1 : 0);
     this.queue.sort((a, b) => rank(a) - rank(b));
@@ -136,7 +138,11 @@ export class DeerView {
     const deer = this.live.get(id);
     if (!deer) return null;
     const at = this.where(deer);
-    const body = { id, lat: at.lat, lng: at.lng, heading: deer.heading, stag: deer.stag, meat: this.config.meat };
+    const file = deer.stag && this.config.stagModel ? this.config.stagModel : this.config.model;
+    const body = {
+      id, lat: at.lat, lng: at.lng, heading: deer.heading, stag: deer.stag, meat: this.config.meat,
+      raw: this.config.raw, file, dir: this.config.dir || 'deer', down: this.config.down,
+    };
     this.dead.add(id);
     this.bodies.push(body);
     this.drop(id);
@@ -150,6 +156,7 @@ export class DeerView {
   }
 
   removeBody(id) {
+    if (!this.bodies.some((body) => body.id === id)) return;
     this.bodies = this.bodies.filter((body) => body.id !== id);
     this.bodyModels.get(id)?.remove();
     this.bodyModels.delete(id);
@@ -158,12 +165,12 @@ export class DeerView {
 
   placeBody(body) {
     if (this.bodyModels.has(body.id) || !this.maps3d) return;
-    const kind = body.stag ? 'stag' : 'deer';
+    const file = body.file || (body.stag ? 'stag' : 'deer');
     const element = new this.maps3d.Model3DElement({
       position: { lat: body.lat, lng: body.lng, altitude: 0 }, altitudeMode: 'RELATIVE_TO_GROUND',
       orientation: { heading: body.heading, tilt: 0, roll: 90 }, scale: SHOWN,
     });
-    element.src = new URL(`models/deer/${kind}-idle-0.glb`, document.baseURI).href;
+    element.src = new URL(`models/${body.dir || 'deer'}/${file}-idle-0.glb`, document.baseURI).href;
     this.map.append(element);
     this.bodyModels.set(body.id, element);
   }
@@ -175,7 +182,7 @@ export class DeerView {
     for (const body of near) this.placeBody(body);
   }
 
-  tick(player, dt, now) {
+  tick(player, dt, now, load = true) {
     const { shownWithin, mostShown } = this.config;
     const near = this.around(player, shownWithin, mostShown);
     const wanted = new Set(near.map((deer) => deer.id));
@@ -190,7 +197,7 @@ export class DeerView {
       this.enqueue(animal);
     }
     for (const deer of near) stepDeer(deer, metresFrom(deer, player.lat, player.lng), dt, now, this.config);
-    this.addSome(1);
+    if (load) this.addSome(1);
     this.sync();
     this.syncBodies(player);
   }

@@ -444,6 +444,7 @@ function paint(ctx, spec, view, drops, paths, specks) {
 export function mountTestView({ canvas, bar, box, view, search, allowed = true }) {
   // A shared world is mode 2. The looks are a sandbox review tool, so that world never grows the menu or the overlay.
   if (!allowed) return { tick() {}, attach() {} };
+  // Off unless the address asks. The buttons live in Settings, Testing, and a normal visit draws nothing.
   const initial = readTestView(search ?? (typeof location === 'undefined' ? '' : location.search)) ?? resolveView('off');
   let spec = initial;
   let map = null, maps3d = null, glbUrl = null, attached = false;

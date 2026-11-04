@@ -24,8 +24,8 @@ export function frameFor(speed, running, phase) {
   return 1 + at + (running ? CYCLE_FRAMES : 0);
 }
 
-// Cycles a second: quicker at higher speed, but less than in proportion, as people lengthen their stride first.
-export const cadenceOf = (speed, running) => (running ? 1.4 * Math.sqrt(speed / 4.2) : Math.sqrt(speed / 1.5));
+// Cycles a second. The baked stride doesn't get longer, so the rate follows the speed or the feet slide.
+export const cadenceOf = (speed, running) => speed / (running ? 3.2 : 1.5);
 
 function leg(g, phi, side) {
   const hip = (g.hipAhead + g.hipSwing * Math.sin(phi)) * deg;

@@ -6,6 +6,10 @@ import { bakeOrder, lengthOf, play, SOUNDS, takesOf } from './sounds.js';
 
 const UPDATE_EVERY = 0.03; // s; the audio engine smooths in between, so this needn't match the frame rate
 const ATTACK = 0.03, RELEASE = 0.08, RATE_GLIDE = 0.05, BLEND_GLIDE = 0.08;
+// Pixabay Content License. Chicken: Alex_Jauk, "Chicken Noise". Rabbit: u_3yocsblk00, "Rat Squeaking" (used for the rabbit).
+const ANIMAL_FILES = { chicken: 'audio/animals/chicken.mp3', rabbit: 'audio/animals/rabbit.mp3' };
+const ANIMAL_TRIM = 2; // the files peak near 0.4, so a close one sits with the other effects
+const ANIMAL_GAP = [0.6, 1.8]; // s of quiet after a call, so a two-second clip doesn't stitch into a loop
 const ENGINE_TRIM = 4;     // loops are normalised quiet, this brings them up to the mix
 const KEEP_AWAKE = 0.0004; // about -68 dB of high hiss, which nobody hears: headphones, speakers and displays can doze in true silence and take a second or two to wake
 
@@ -195,6 +199,43 @@ export class EngineAudio {
         takes.push(await offline.startRendering());
       }
       this.baked.set(name, takes);
+    }
+  }
+
+  // Chicken and rabbit calls. levels are 0..1 from nearestFade: full beside one, gone at the same distance as an engine heard outside.
+  animals(levels) {
+    if (!this.ctx) return;
+    this.ensureAnimals();
+    const now = this.ctx.currentTime;
+    if (now - (this.animalAt || 0) < UPDATE_EVERY) return;
+    this.animalAt = now;
+    for (const [name, voice] of Object.entries(this.animalVoices)) {
+      const heard = Math.max(0, Math.min(1, levels[name] || 0));
+      voice.gain.gain.setTargetAtTime(heard * ANIMAL_TRIM, now, 0.12);
+      if (!voice.buffer || voice.playing || heard < 0.04 || now < voice.nextAt) continue;
+      const source = this.ctx.createBufferSource();
+      source.buffer = voice.buffer;
+      source.connect(voice.gain);
+      voice.playing = true;
+      source.onended = () => {
+        voice.playing = false;
+        voice.nextAt = this.ctx.currentTime + ANIMAL_GAP[0] + Math.random() * (ANIMAL_GAP[1] - ANIMAL_GAP[0]);
+        source.disconnect();
+      };
+      source.start();
+    }
+  }
+
+  ensureAnimals() {
+    if (this.animalVoices) return;
+    this.animalVoices = {};
+    for (const [name, file] of Object.entries(ANIMAL_FILES)) {
+      const gain = this.ctx.createGain();
+      gain.gain.value = 0;
+      gain.connect(this.fxBus);
+      const voice = { gain, buffer: null, playing: false, nextAt: 0 };
+      this.animalVoices[name] = voice;
+      this.fetchBuffer(file).then((buffer) => { voice.buffer = buffer; });
     }
   }
 

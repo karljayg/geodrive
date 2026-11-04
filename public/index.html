@@ -159,11 +159,6 @@
 <div id="settings" role="dialog" aria-label="Settings">
   <h2>Settings</h2>
   <div id="settingsTabs" role="tablist"><button type="button" data-tab="car">Car <span class="keyHint">(1)</span></button><button type="button" data-tab="foot">On foot <span class="keyHint">(2)</span></button><button type="button" data-tab="world">World <span class="keyHint">(3)</span></button><button type="button" data-tab="sound">Sound <span class="keyHint">(4)</span></button><button type="button" data-tab="graphics">Graphics <span class="keyHint">(5)</span></button><button type="button" data-tab="diagnostics">Diagnostics <span class="keyHint">(6)</span></button><button type="button" data-tab="testing">Testing <span class="keyHint">(7)</span></button></div>
-  <section data-tab="world">
-    <h3>Start location</h3>
-    <div id="settingsStart"></div>
-    <button class="link" id="changeStart" type="button" data-hotkey="c"><u>C</u>hange start location</button>
-  </section>
   <section data-tab="car">
     <h3>Car</h3>
     <label for="carProfile">Car profile</label>
@@ -174,41 +169,58 @@
     <label for="carScale">Size <span data-value="carScale"></span></label>
     <input id="carScale" data-setting="carScale" type="range" min="0.3" max="5" step="0.1">
   </section>
+  <section data-tab="car">
+    <h3>Driving</h3>
+    <label class="check"><input id="roadFollow" data-setting="roadFollow" type="checkbox"> Follow the road when not steering</label>
+    <button class="link" id="newTrip" type="button" data-hotkey="t">Reset <u>t</u>rip stats</button>
+  </section>
   <section data-tab="foot">
-    <h3>On foot</h3>
+    <h3>Movement</h3>
     <label for="walkSpeed">Walking speed <span data-value="walkSpeed"></span></label>
     <input id="walkSpeed" data-setting="walkSpeed" type="range" min="1" max="15" step="0.5">
     <label for="runSpeed">Running speed (Shift) <span data-value="runSpeed"></span></label>
     <input id="runSpeed" data-setting="runSpeed" type="range" min="2" max="30" step="0.2">
   </section>
+  <section data-tab="foot">
+    <h3>Buildings</h3>
+    <button class="link" id="forgetBuildings" type="button" data-hotkey="f"><u>F</u>orget building interiors</button>
+  </section>
   <section data-tab="world">
-    <h3>Time of day</h3>
+    <h3>Place</h3>
+    <div id="settingsStart"></div>
+    <button class="link" id="changeStart" type="button" data-hotkey="c"><u>C</u>hange start location</button>
+  </section>
+  <section data-tab="world">
+    <h3>Time</h3>
     <label for="hour">Time <span data-value="hour"></span></label>
     <input id="hour" data-setting="hour" type="range" min="0" max="24" step="0.25">
     <label class="check"><input id="headlights" data-setting="headlights" type="checkbox"> Headlights on</label>
   </section>
   <section data-tab="sound">
-    <h3>Sound</h3>
+    <h3>Output</h3>
     <label class="check"><input id="muted" data-setting="muted" type="checkbox"> Mute all sound</label>
+    <label for="masterVolume">Master volume <span data-value="masterVolume"></span></label>
+    <input id="masterVolume" data-setting="masterVolume" type="range" min="0" max="1" step="0.05">
+    <label class="check"><input id="musicOff" data-setting="musicOff" type="checkbox"> All music off (soundtrack, radio and phone)</label>
+    <label class="check"><input id="musicWhenHidden" data-setting="musicWhenHidden" type="checkbox"> Keep music playing in another tab or window</label>
+    <h3>Engine</h3>
     <label for="engineSound">Engine sound</label>
     <select id="engineSound" data-setting="engineSound"><option value="recorded">Recorded engine</option><option value="synth">Classic synth</option></select>
     <label for="audioPreset">Sound mix</label>
     <select id="audioPreset" data-setting="audioPreset"><option value="quiet">Quiet</option><option value="balanced">Balanced</option><option value="sport">Sport</option></select>
-    <label for="masterVolume">Master volume <span data-value="masterVolume"></span></label>
-    <input id="masterVolume" data-setting="masterVolume" type="range" min="0" max="1" step="0.05">
     <label for="engineVolume">Engine volume <span data-value="engineVolume"></span></label>
     <input id="engineVolume" data-setting="engineVolume" type="range" min="0" max="1" step="0.05">
     <label for="enginePitch">Engine pitch <span data-value="enginePitch"></span></label>
     <input id="enginePitch" data-setting="enginePitch" type="range" min="0.5" max="1.5" step="0.05">
-    <label for="radioVolume">Radio volume <span data-value="radioVolume"></span></label>
-    <input id="radioVolume" data-setting="radioVolume" type="range" min="0" max="1" step="0.05">
+    <h3>Music and radio</h3>
     <label for="musicVolume">Music volume <span data-value="musicVolume"></span></label>
     <input id="musicVolume" data-setting="musicVolume" type="range" min="0" max="1" step="0.05">
-    <label class="check"><input id="musicOff" data-setting="musicOff" type="checkbox"> All music off (soundtrack, radio and phone)</label>
-    <label class="check"><input id="musicWhenHidden" data-setting="musicWhenHidden" type="checkbox"> Keep music playing in another tab or window</label>
+    <label for="radioVolume">Radio volume <span data-value="radioVolume"></span></label>
+    <input id="radioVolume" data-setting="radioVolume" type="range" min="0" max="1" step="0.05">
     <label for="musicTest">Test a mood</label>
     <select id="musicTest"></select>
     <p class="small" id="musicNow"></p>
+    <h3>Around you</h3>
     <label for="roadVolume">Road noise <span data-value="roadVolume"></span></label>
     <input id="roadVolume" data-setting="roadVolume" type="range" min="0" max="1" step="0.05">
     <label for="windVolume">Wind noise <span data-value="windVolume"></span></label>
@@ -217,7 +229,7 @@
     <input id="signalVolume" data-setting="signalVolume" type="range" min="0" max="1" step="0.05">
   </section>
   <section data-tab="graphics">
-    <h3>Graphics</h3>
+    <h3>Map</h3>
     <label for="mapQuality">Map quality</label>
     <select id="mapQuality" data-setting="mapQuality"><option value="PERFORMANCE">Smoother</option><option value="FIDELITY">More detail</option></select>
     <label for="mapMemory">Map memory limit <span data-value="mapMemory"></span></label>
@@ -225,17 +237,9 @@
     <label for="mapScale">Map sharpness <span data-value="mapScale"></span></label>
     <input id="mapScale" data-setting="mapScale" type="range" min="0.5" max="1" step="0.05">
     <label class="check"><input id="mapLabels" data-setting="mapLabels" type="checkbox"> Road and place names on the map</label>
-    <label for="mapLook">Look</label>
+    <h3>Look</h3>
+    <label for="mapLook">Colour</label>
     <select id="mapLook" data-setting="mapLook"><option value="today">Today</option><option value="abandoned">Abandoned (trial)</option></select>
-  </section>
-  <section data-tab="car">
-    <h3>Driving</h3>
-    <label class="check"><input id="roadFollow" data-setting="roadFollow" type="checkbox"> Follow the road when not steering</label>
-    <button class="link" id="newTrip" type="button" data-hotkey="t">Reset <u>t</u>rip stats</button>
-  </section>
-  <section data-tab="foot">
-    <h3>Buildings</h3>
-    <button class="link" id="forgetBuildings" type="button" data-hotkey="f"><u>F</u>orget building interiors</button>
   </section>
   <section data-tab="diagnostics">
     <h3>Performance</h3>
@@ -243,26 +247,30 @@
     <h3>Calls this page</h3>
     <div id="apiSummary"></div>
     <div id="apiDetail"></div>
-    <h3>For the developer</h3>
-    <label for="carEvery">Parked cars every <span data-value="carEvery"></span></label>
-    <input id="carEvery" data-setting="carEvery" type="range" min="100" max="2000" step="50">
-    <label for="deerEvery">Deer every <span data-value="deerEvery"></span></label>
-    <input id="deerEvery" data-setting="deerEvery" type="range" min="200" max="4000" step="100">
     <button class="link" id="sendLog" type="button" data-hotkey="l" title="Sends the performance log to the server for review, including where the car has been">Send <u>l</u>og</button>
-    <button class="link" id="settingsCopy" type="button" data-hotkey="y">Cop<u>y</u> settings (to make them the new-player defaults)</button>
-    <div id="testViews" hidden>
-      <h3>Test view</h3>
-      <p>Weather and ruin looks, for review in this browser only. A shared world never shows them.</p>
-      <div data-views></div>
-    </div>
   </section>
   <section data-tab="testing">
-    <h3>Testing</h3>
+    <h3>Tools</h3>
     <p class="small">Each opens a window that stays open while you play.</p>
     <button class="link" id="testSpawn" type="button" data-hotkey="s"><u>S</u>pawn things and cars</button>
     <button class="link" id="testConfig" type="button" data-hotkey="g">Change confi<u>g</u> values for this world</button>
     <button class="link" id="testPlayers" type="button" data-hotkey="p"><u>P</u>layers and lives</button>
     <button class="link" id="testScene" type="button" data-hotkey="n">Set up a sce<u>n</u>e: needs, time, car, teleport</button>
+    <div id="testViews" hidden>
+      <h3>Weather</h3>
+      <p>Off until you pick one. Rain, snow and a ruined look, in this browser only. A shared world never shows them.</p>
+      <div data-views></div>
+    </div>
+    <h3>Spacing</h3>
+    <label for="carEvery">Parked cars every <span data-value="carEvery"></span></label>
+    <input id="carEvery" data-setting="carEvery" type="range" min="100" max="2000" step="50">
+    <label for="deerEvery">Deer every <span data-value="deerEvery"></span></label>
+    <input id="deerEvery" data-setting="deerEvery" type="range" min="200" max="4000" step="100">
+    <label for="chickenEvery">Chickens every <span data-value="chickenEvery"></span></label>
+    <input id="chickenEvery" data-setting="chickenEvery" type="range" min="200" max="4000" step="100">
+    <label for="rabbitEvery">Rabbits every <span data-value="rabbitEvery"></span></label>
+    <input id="rabbitEvery" data-setting="rabbitEvery" type="range" min="200" max="4000" step="100">
+    <button class="link" id="settingsCopy" type="button" data-hotkey="y">Cop<u>y</u> settings (to make them the new-player defaults)</button>
   </section>
   <button class="link" id="settingsReset" type="button" data-hotkey="a">Reset <u>a</u>ll to defaults</button>
   <button class="primary wide" id="settingsDone" type="button">Done <span class="keyHint">(Esc)</span></button>

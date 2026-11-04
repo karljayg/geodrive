@@ -11,7 +11,7 @@ import { distance, easeAngle, leadDistance, move } from './camera.js';
 import { FLAG_ONEWAY, RoadNet } from './road.js';
 import { Path, brakeFor, pursuitYaw, rerouteWait } from './route.js';
 import { CAR_PROFILES, hornFor, profileFor } from './cars.js';
-import { engineFadeAt } from './engineMix.js';
+import { engineFadeAt, nearestFade } from './engineMix.js';
 import { BODY_SHAPES, buildCarGlb, buildPersonGlb, carPicture } from './carModel.js';
 import { cookMeat, stackInto } from './deer.js';
 import { DeerView } from './deerView.js';
@@ -185,8 +185,8 @@ function saveStart(value) {
   }
 }
 
-// Settings can speed someone up on their own, but not past the others in a shared world.
-const playerWalk = () => (world.rules.people ? DEFAULTS.walkSpeed : settings.walkSpeed), playerRun = () => (world.rules.people ? DEFAULTS.runSpeed : settings.runSpeed);
+// The On foot sliders. A shared world used to ignore them; the person walked at the default either way.
+const playerWalk = () => Number(settings.walkSpeed) || DEFAULTS.walkSpeed, playerRun = () => Number(settings.runSpeed) || DEFAULTS.runSpeed;
 
 function input() {
   const left = keys.has('a') || keys.has('arrowleft'), right = keys.has('d') || keys.has('arrowright');
@@ -762,7 +762,7 @@ function frame(t) {
   last = t;
   if (foot) runFoot(t, dt);
   peopleView?.update(foot ? foot.where() : pos, performance.now());
-  if (!debug.hold && !dialogOpen && !paused) deerView?.tick(foot ? foot.where() : pos, dt, t);
+  if (!debug.hold && !dialogOpen && !paused) tickAnimals(foot ? foot.where() : pos, dt, t);
   if (map && !foot && !debug.hold && !dialogOpen && !paused) {
     const driveBegan = performance.now();
     if (el('hornButton').disabled !== !!riding) el('hornButton').disabled = !!riding;
@@ -805,7 +805,7 @@ function frame(t) {
     if (t - tilesCheckedAt > 1000) {
       tilesCheckedAt = t;
       tiles.ensure(pos.lat, pos.lng, car.heading, car.speed);
-      deerView?.plantFrom(tiles.waysOf, deerPlant());
+      placeDeer();
       world.cars?.plantFrom(tiles.parkingOf, carPlant());
       refreshTown();
       advanceRouteLine();
@@ -824,6 +824,7 @@ function frame(t) {
     const profile = profileFor(carType());
     if (!previewing()) engine.update({ rpm: gearbox.rpm, load: 0, speedMph: 0, car: profile, running: false });
   }
+  hearAnimals();
   testView.tick(dt);
   perfLog.frame(t, performance.now() - began);
   if (perfLog.due(t)) sampleLog(t);
@@ -939,7 +940,7 @@ function runFoot(t, dt) {
     tilesCheckedAt = t;
     const at = foot.where();
     tiles.ensure(at.lat, at.lng, 0, 0); // for the nav screen
-    deerView?.plantFrom(tiles.waysOf, deerPlant());
+    placeDeer();
     world.cars?.plantFrom(tiles.parkingOf, carPlant());
   }
   const dashBegan = performance.now();
@@ -1177,8 +1178,8 @@ async function startWalking(leftCar = null) {
     await makePeople();
     (await pocketReady()).close();
     foot = new Foot({ onGetIn: () => (world.rules.ownCar ? stopFoot() : getInWorldCar(foot.carHere()?.record)), onOpenBag: () => { if (!pocket.bagOpen) pocket.toggleBag(); }, drops, onDropsChanged: () => { dropsSyncedAt = -Infinity; }, onSound: sfx, onUsed: (effect, count) => { vitals.apply(effect, count); }, hasKey: () => pocket.data.bagHas(BUILDING_KEY), hasHammer: () => pocket.data.bagHas(GAME.hammer.item), onSay: (text) => notice(text, 3000), onLocked: showLocked, onLoadCar: loadCar, onFound: (name) => pocket.collect(name), onSlept: sleepUntilMorning, roughChoices, canvas: el('foot'), origin: { lat: pos.lat, lng: pos.lng }, heading: car.heading, cars: footCars(), buildings, look, others: world.rules.people ? () => world.people.solidNow(performance.now()) : null, carsDriven: world.rules.people ? (at) => carsDrivenNear(at, performance.now()) : null, roomPeople: world.rules.people ? (building, floor) => world.peopleOnFloor(building, floor, performance.now()) : null, tiles, view: { tilt: CAMERAS[0].tilt, range: CAMERAS[0].range * FOOT_RANGE_SHARE, fov: FOV_Y, below: CAR_BELOW_CENTRE } });
-    foot.meatHere = () => (deerView?.nearBodies(foot.where(), GAME.drops.reach) ?? []).map((body) => ({ label: 'Take the meat?', run: () => { collectMeat(body, false); return ''; } }));
-    foot.canCook = () => pocket.data.bagHas(GAME.deer.raw);
+    foot.meatHere = () => animalBodies(foot.where(), GAME.drops.reach).map((body) => ({ label: 'Take the meat?', run: () => { collectMeat(body, false); return ''; } }));
+    foot.canCook = () => [GAME.deer, GAME.chicken, GAME.rabbit].some((kind) => pocket.data.bagHas(kind.raw));
     foot.cookRaw = () => cookFromBag();
     showPerson(personSize);
   } catch (err) {
@@ -1352,31 +1353,33 @@ function fillUp(place) {
 }
 
 function meatChoices() {
-  const bodies = deerView?.nearBodies(pos, GAME.deer.meatReach) ?? [];
+  const bodies = animalBodies(pos, GAME.deer.meatReach);
   return bodies.slice(0, 1).map((body) => ({ label: 'Load the meat into the car?', run: () => { collectMeat(body, true); return ''; } }));
 }
 
 async function collectMeat(body, toCar) {
   const data = (await pocketReady()).data;
   const list = toCar ? data.state.car : data.state.bag;
-  const item = { id: GAME.deer.raw, name: GAME.deer.raw };
+  const name = body.raw || GAME.deer.raw;
+  const item = { id: name, name };
   if (!stackInto(list, item, body.meat ?? GAME.deer.meat, toCar ? CAR_SLOTS : BAG_SLOTS)) return notice(toCar ? 'No room in the car.' : say('bagFull'), 2500);
   data.save();
   if (toCar) carStorageChanged();
-  deerView?.removeBody(body.id);
+  dropAnimal(body.id);
   sfx('pickup');
   if (pocket.bagOpen) pocket.renderBag();
-  notice(`${GAME.deer.raw}, ${body.meat ?? GAME.deer.meat} pieces.`, 2500);
+  notice(`${name}, ${body.meat ?? GAME.deer.meat} pieces.`, 2500);
 }
 
 function cookFromBag() {
   const bag = pocket?.data.state.bag;
-  if (!bag?.some((item) => item.id === GAME.deer.raw && item.count > 0)) return 'Nothing to cook.';
+  const kinds = [GAME.deer, GAME.chicken, GAME.rabbit];
+  if (!kinds.some((kind) => bag?.some((item) => item.id === kind.raw && item.count > 0))) return 'Nothing to cook.';
   if (!cookMeat(bag, BAG_SLOTS)) return say('bagFull');
   pocket.data.save();
   sfx('ack');
   if (pocket.bagOpen) pocket.renderBag();
-  return 'You cook a piece of the deer.';
+  return 'You cook a piece of meat.';
 }
 
 let carFAsking = false;
@@ -2101,21 +2104,52 @@ function glbUrl(glb) {
   return `data:model/gltf-binary;base64,${btoa(text)}`;
 }
 
-// Deer along the loaded roads, half as often as parked cars by default. Spacing is Settings. Not saved or shared.
-let deerView = null;
+// Deer, chickens and rabbits along the loaded roads. Spacing is Settings. Not saved or shared.
+const ANIMAL_KEYS = ['deer', 'chicken', 'rabbit'];
+let animals = [];
+let animalTurn = 0;
 const carPlant = () => ({ ...GAME.worldCars, every: settings.carEvery });
-const deerPlant = () => ({ ...GAME.deer, every: settings.deerEvery });
+const animalPlant = (key) => ({ ...GAME[key], every: settings[`${key}Every`] });
 function placeDeer() {
   if (!map || !maps3d?.Model3DElement) return;
-  deerView ||= new DeerView({ maps3d, map });
-  deerView.plantFrom(tiles.waysOf, deerPlant());
+  if (!animals.length) animals = ANIMAL_KEYS.map((key) => new DeerView({ maps3d, map, store: `geodrive_${key}_dead_v1`, key }));
+  for (const view of animals) view.plantFrom(tiles.waysOf, animalPlant(view.key));
+}
+function tickAnimals(at, dt, t) {
+  if (!animals.length) return;
+  animals.forEach((view, i) => view.tick(at, dt, t, i === animalTurn));
+  animalTurn = (animalTurn + 1) % animals.length;
+}
+function animalHits() { return animals.flatMap((view) => view.hitList()); }
+function animalBodies(at, within) { return animals.flatMap((view) => view.nearBodies(at, within)); }
+function killAnimal(id) {
+  for (const view of animals) {
+    const body = view.kill(id);
+    if (body) return body;
+  }
+  return null;
+}
+function dropAnimal(id) { for (const view of animals) view.removeBody(id); }
+// Chickens and rabbits, louder the closer you are, on the same falloff as an engine heard from outside the car.
+function hearAnimals() {
+  const here = foot ? foot.where() : pos;
+  const quiet = debug.hold || dialogOpen || paused || foot?.walker.inside;
+  const heard = (key) => {
+    if (quiet) return 0;
+    const view = animals.find((one) => one.key === key);
+    if (!view) return 0;
+    const distances = [];
+    for (const animal of view.shown.values()) distances.push(metresApart(here, view.where(animal.deer)));
+    return nearestFade(distances);
+  };
+  engine.animals({ chicken: heard('chicken'), rabbit: heard('rabbit') });
 }
 function replantFrequency() {
   if (world.cars) {
     world.cars.replant(tiles.parkingOf, carPlant());
     peopleView?.carsChanged();
   }
-  deerView?.replant(tiles.waysOf, deerPlant());
+  for (const view of animals) view.replant(tiles.waysOf, animalPlant(view.key));
 }
 
 // The model is rebuilt only when the type or colour changes, and a colour drag settles before it swaps.
@@ -2363,6 +2397,8 @@ const settingText = {
   enginePitch: (v) => `${Math.round(v * 100)}%`,
   carEvery: (v) => `${v} m along a road`,
   deerEvery: (v) => `${v} m along a road`,
+  chickenEvery: (v) => `${v} m along a road`,
+  rabbitEvery: (v) => `${v} m along a road`,
 };
 const percent = (v) => `${Math.round(v * 100)}%`;
 
@@ -2398,7 +2434,7 @@ for (const control of document.querySelectorAll('[data-setting]')) {
     showSettings();
     saveSettings();
     previewEngine();
-    if (name === 'carEvery' || name === 'deerEvery') replantFrequency();
+    if (name === 'carEvery' || name === 'deerEvery' || name === 'chickenEvery' || name === 'rabbitEvery') replantFrequency();
   });
 }
 
@@ -2976,7 +3012,7 @@ function nearBridgeNow() {
 }
 function obstacles(now) {
   const list = world.rules.people ? world.cars.around(pos, 40, 12).filter((known) => known.id !== myCar?.id).map((known) => ({ id: known.id, kind: 'parked', lat: known.lat, lng: known.lng, heading: known.heading, speed: 0, record: known, ...carShape(known.type) })) : [];
-  if (!world.rules.people) return onBridge ? list : list.concat(deerView?.hitList() ?? []);
+  if (!world.rules.people) return onBridge ? list : list.concat(animalHits());
   for (const member of world.people.othersOnline) {
     const there = world.people.nowAt(member.id, now);
     if (!there || there.flags & FLAGS.indoors) continue;
@@ -2989,7 +3025,7 @@ function obstacles(now) {
     list.push({ id: member.id, member: member.id, kind: 'car', lat: there.lat, lng: there.lng, heading: there.heading, speed: there.speed, onBridge: !!(there.flags & FLAGS.bridge), ...carShape(driven?.type) });
   }
   const level = nearBridgeNow() ? sameLevel(list, onBridge) : list;
-  if (!onBridge) level.push(...(deerView?.hitList() ?? []));
+  if (!onBridge) level.push(...animalHits());
   return level;
 }
 
@@ -3037,8 +3073,9 @@ let ownCondition = 100;
 function deerStruck(other, closing) {
   const mph = closing * MPS_TO_MPH;
   if (mph < GAME.crash.injuredFromMph) return;
-  if (!deerView?.kill(other.id)) return;
-  notice('The deer is down.', 3000);
+  const body = killAnimal(other.id);
+  if (!body) return;
+  notice(body.down || 'It is down.', 3000);
   if (world.rules.people && myCar) {
     world.link.send({ t: 'crash', kind: 'deer', other: other.id, closing, lat: pos.lat, lng: pos.lng });
     return;
@@ -3258,7 +3295,7 @@ async function startPeople() {
   };
   setInterval(() => {
     world.cars.plantFrom(tiles.parkingOf, carPlant());
-    deerView?.plantFrom(tiles.waysOf, deerPlant());
+    placeDeer();
     if (foot) foot.setCars(worldCarsNear(pos));
     syncCarStorage();
     syncSeats();
@@ -3367,7 +3404,7 @@ async function boot() {
     if (!driveTipSeen() && world.rules.ownCar) notice(say('driveTip'), 9000);
     window.__geodrive = Object.assign(debug, {
       foot: () => foot, settings, gearbox, saveTrip, engine, radio, map, model, ground: () => ground, match: () => match, onBridge: () => onBridge, placeCar, pressSignal,
-      vitals, GAME, world, trip: () => trip, paused: () => paused, deer: () => deerView, nav: () => ({ fsd, destination, route, routeIndex, signal, lane, laneNow }),
+      vitals, GAME, world, trip: () => trip, paused: () => paused, deer: () => animals, nav: () => ({ fsd, destination, route, routeIndex, signal, lane, laneNow }),
       crowdTest: async (options) => (await import('./crowdTest.js')).runCrowdTest({ maps3d, map, at: foot ? foot.where() : pos, glbUrl, log: perfLog, ...options }),
     });
     if (world.rules.people && world.cars.mine()) takeSeat(world.cars.mine()); // they refreshed in a car

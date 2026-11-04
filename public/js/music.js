@@ -35,14 +35,15 @@ export function topScene(names, config) {
 
 // What should sound now. radio is 'playing', 'starting' (on, and has a moment to get going) or 'off'.
 // Returns the mood (or KEEP, or null for silence), and whether the radio gives way. test is the Settings menu's choice, which is always heard.
-export function chooseMusic({ hour, scenes = [], radio = 'off', test = null, blocked = false }, config) {
+export function chooseMusic({ scenes = [], radio = 'off', test = null, blocked = false }, config) {
   if (blocked) return { mood: null, holdRadio: true };
   if (test) return { mood: playable(test, config), holdRadio: true };
   const scene = topScene(scenes, config);
   if (scene && config.moods[scene].overridesRadio) return { mood: playable(scene, config), holdRadio: true };
   if (radio === 'playing') return { mood: null, holdRadio: false };
   if (radio === 'starting') return { mood: KEEP, holdRadio: false };
-  return { mood: playable(scene || clockMood(hour, config), config), holdRadio: false };
+  // No scene: walk the playlist. The clock no longer holds one mood for hours. A dark room is a scene, so it still cuts in.
+  return { mood: playable(scene || 'along', config), holdRadio: false };
 }
 
 // The next step, given what's playing. current: { mood, left (seconds of song left, Infinity if not known yet) } or null. Returns:

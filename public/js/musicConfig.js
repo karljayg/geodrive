@@ -28,6 +28,8 @@ export const MUSIC = {
       { file: '4b-nighttime-after-dark.mp3', volume: 0.93 },
     ] },
     lateNight: { label: 'Late night', fade: 4, volume: 1, songs: FOREBODING_SONGS }, // uneasy, but not a scene, so the radio still wins
+    // What plays while nothing else is happening: those moods' songs, in turn, then from the top. The clock moods stay for Test a mood.
+    along: { label: 'Along the way', fade: 4, volume: 1, songs: [] },
 
     // Scenes: the game asks for these with soundtrack.scene(name), and they override the radio.
     foreboding: { label: 'Foreboding', fade: 4, volume: 1, overridesRadio: true, priority: 10, songs: FOREBODING_SONGS },
@@ -61,3 +63,8 @@ export const MUSIC = {
   radioGrace: 10, // seconds the radio has to start or recover before the soundtrack fills the silence
   songTail: 1.5, // seconds before a song's end to finish a crossfade, as most end in about that much silence
 };
+
+// The playlist while nothing else is happening. A mood with no songs of its own is skipped. Dusk is one, until it has a track.
+for (const name of ['day', 'afternoon', 'night', 'lateNight']) {
+  if (MUSIC.moods[name].songs.length) MUSIC.moods.along.songs.push(...MUSIC.moods[name].songs);
+}

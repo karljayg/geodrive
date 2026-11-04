@@ -77,7 +77,7 @@ test('the car meets a deer standing in front of it', () => {
 });
 
 test('one deer is 20 pieces of raw meat, and a stove, range or microwave cooks one', () => {
-  for (const item of ['stove', 'proStove', 'microwave']) assert.equal(cookOffer(item, true), 'Cook the raw deer meat?');
+  for (const item of ['stove', 'proStove', 'microwave']) assert.equal(cookOffer(item, true), 'Cook the raw meat?');
   assert.equal(cookOffer('fridge', true), null);
   assert.equal(cookOffer('stove', false), null);
   const bag = [];
@@ -101,6 +101,29 @@ test('one deer is 20 pieces of raw meat, and a stove, range or microwave cooks o
   const after = vitals.stats.hunger;
   vitals.consume(GAME.deer.cooked);
   assert.ok(vitals.stats.hunger > after);
+});
+
+test('a chicken or rabbit is 2 pieces, flees at three quarters of a deer, and cooks the same way', () => {
+  assert.ok(Math.abs(GAME.chicken.fleeSpeed - GAME.deer.fleeSpeed * 0.75) < 0.001);
+  assert.ok(Math.abs(GAME.rabbit.fleeSpeed - GAME.deer.fleeSpeed * 0.75) < 0.001);
+  assert.equal(GAME.chicken.meat, 2);
+  assert.equal(GAME.rabbit.meat, 2);
+  const chickens = plantDeer([road()], GAME.chicken);
+  const rabbits = plantDeer([road()], GAME.rabbit);
+  assert.ok(chickens.length >= 15 && chickens.length <= 35, chickens.length);
+  assert.ok(rabbits.length >= 15 && rabbits.length <= 35, rabbits.length);
+  assert.ok(chickens.every((one) => one.id.startsWith('c_') && !one.stag));
+  assert.ok(rabbits.every((one) => one.id.startsWith('r_')));
+  assert.notDeepEqual(chickens.map((one) => [one.lat, one.lng]), rabbits.map((one) => [one.lat, one.lng]));
+  const bird = newDeer(chickens[0]);
+  stepDeer(bird, { x: 0, y: 1 }, 0.05, 1000, GAME.chicken);
+  assert.equal(bird.gait, 'walk');
+  assert.equal(bird.speed, GAME.chicken.fleeSpeed);
+  const bag = [{ id: GAME.chicken.raw, name: GAME.chicken.raw, count: 2 }];
+  assert.equal(cookMeat(bag, BAG_SLOTS), GAME.chicken.cooked);
+  assert.equal(bag.find((i) => i.id === GAME.chicken.raw).count, 1);
+  const rabbitBag = [{ id: GAME.rabbit.raw, name: GAME.rabbit.raw, count: 2 }];
+  assert.equal(cookMeat(rabbitBag, BAG_SLOTS), GAME.rabbit.cooked);
 });
 
 test('a moving deer steps through its clip', () => {

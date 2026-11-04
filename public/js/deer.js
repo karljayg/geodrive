@@ -32,8 +32,10 @@ function roll(deer) {
 // Spots along these road ways, half as dense as cars when every is twice theirs. Same for everyone from the place.
 export function plantDeer(ways, config = GAME.deer) {
   const deer = new Map();
-  for (const spot of spotsAlongRoads(ways, { every: config.every, offset: config.verge }, 'deer')) {
-    const id = `d_${Math.round(spot.lat / ID_GRID)}_${Math.round(spot.lng / ID_GRID)}`;
+  const seed = config.seed || 'deer';
+  const prefix = config.idPrefix || 'd';
+  for (const spot of spotsAlongRoads(ways, { every: config.every, offset: config.verge }, seed)) {
+    const id = `${prefix}_${Math.round(spot.lat / ID_GRID)}_${Math.round(spot.lng / ID_GRID)}`;
     if (deer.has(id)) continue;
     const rollOne = rolls(id);
     deer.set(id, { id, lat: spot.lat, lng: spot.lng, heading: spot.heading, stag: rollOne() < config.stagChance });
@@ -100,7 +102,8 @@ export function stepDeer(deer, player, dt, now, cfg = GAME.deer) {
   }
   if (deer.goalX == null && now < deer.alarmUntil && player) bolt(deer, player, cfg);
   if (deer.goalX == null && now >= deer.alarmUntil) deer.speed = 0;
-  deer.gait = deer.speed < cfg.idleBelow ? 'idle' : deer.speed < cfg.runAbove ? 'walk' : 'gallop';
+  const gallop = cfg.frames.gallop > 0 && deer.speed >= cfg.runAbove;
+  deer.gait = deer.speed < cfg.idleBelow ? 'idle' : gallop ? 'gallop' : 'walk';
   const pace = deer.gait === 'idle' ? 1 : Math.max(0.5, Math.min(deer.gait === 'gallop' ? 2.2 : 3, deer.speed / (deer.gait === 'walk' ? cfg.walkPace : cfg.runPace)));
   const dur = cfg.clips[deer.gait];
   deer.phase = (deer.phase + dt * pace) % dur;
@@ -110,7 +113,7 @@ export function stepDeer(deer, player, dt, now, cfg = GAME.deer) {
 // What can cook a piece. A house stove is the oven. proStove is a kitchen range. A microwave does one piece too.
 export const COOKERS = ['stove', 'proStove', 'microwave'];
 
-export const cookOffer = (item, hasRaw) => (COOKERS.includes(item) && hasRaw ? 'Cook the raw deer meat?' : null);
+export const cookOffer = (item, hasRaw) => (COOKERS.includes(item) && hasRaw ? 'Cook the raw meat?' : null);
 
 // Adds a stack, or more onto the one already there. False if a new kind won't fit.
 export function stackInto(list, item, count, slots) {
@@ -131,15 +134,17 @@ export function takeOne(list, id) {
   return true;
 }
 
-// One raw piece becomes one cooked piece. Null if there is no raw meat, or the cooked piece won't fit.
-export function cookMeat(list, slots, cfg = GAME.deer) {
-  if (!list.some((i) => i.id === cfg.raw && i.count > 0)) return null;
-  takeOne(list, cfg.raw);
-  if (!stackInto(list, { id: cfg.cooked, name: cfg.cooked }, 1, slots)) {
-    stackInto(list, { id: cfg.raw, name: cfg.raw }, 1, slots + 1);
+// One raw piece becomes one cooked piece. With no kind, the first raw meat in the bag. Null if none, or the cooked piece won't fit.
+export function cookMeat(list, slots, cfg) {
+  const kinds = cfg ? [cfg] : [GAME.deer, GAME.chicken, GAME.rabbit];
+  const one = kinds.find((kind) => list.some((i) => i.id === kind.raw && i.count > 0));
+  if (!one) return null;
+  takeOne(list, one.raw);
+  if (!stackInto(list, { id: one.cooked, name: one.cooked }, 1, slots)) {
+    stackInto(list, { id: one.raw, name: one.raw }, 1, slots + 1);
     return null;
   }
-  return cfg.cooked;
+  return one.cooked;
 }
 
 export function frameOf(deer, cfg = GAME.deer) {

@@ -108,6 +108,10 @@ export const GAME = {
     Burger: { hunger: 40, thirst: -4, bowels: -9, say: 'You eat the burger. It\'s cold, and still great.', kind: 'food' },
     'Raw deer meat': { hunger: 14, health: -8, thirst: -4, bowels: -8, say: 'You eat it raw. It sits badly.', kind: 'food' },
     'Cooked deer meat': { hunger: 42, bowels: -6, say: 'You eat the cooked deer.', kind: 'food' },
+    'Raw chicken': { hunger: 12, health: -6, thirst: -3, bowels: -5, say: 'You eat it raw. It sits badly.', kind: 'food' },
+    'Cooked chicken': { hunger: 32, bowels: -4, say: 'You eat the cooked chicken.', kind: 'food' },
+    'Raw rabbit': { hunger: 10, health: -6, thirst: -3, bowels: -5, say: 'You eat it raw. It sits badly.', kind: 'food' },
+    'Cooked rabbit': { hunger: 30, bowels: -4, say: 'You eat the cooked rabbit.', kind: 'food' },
     'Half a burger': { hunger: 20, bowels: -5, say: 'You finish someone\'s burger. Nobody needs to know.', kind: 'food' },
     Fries: { hunger: 18, thirst: -7, bowels: -4, say: 'You eat the fries.', kind: 'food' },
     'Chicken wrap': { hunger: 35, bowels: -7, say: 'You eat the wrap.', kind: 'food' },
@@ -204,6 +208,7 @@ till: ['Cash', 'Bundle of cash'], produceStand: ['Apple', 'Banana', 'Orange', 'G
   // Clips are the Quaternius lengths, in seconds. Nothing is saved or shared.
   deer: {
     every: 600, verge: 14, shownWithin: 300, mostShown: 4, stagChance: 0.4,
+    idPrefix: 'd', seed: 'deer', dir: 'deer', model: 'deer', stagModel: 'stag', down: 'The deer is down.',
     hitRadius: 0.7, meat: 20, meatReach: 4, // pieces off one deer; metres from the car that F can load them
     raw: 'Raw deer meat', cooked: 'Cooked deer meat',
     vision: 7.1, hearing: 4.7, wanderSpeed: 0.78, fleeSpeed: 9.75, wanderRadius: 2.8,
@@ -211,5 +216,28 @@ till: ['Cash', 'Bundle of cash'], produceStand: ['Apple', 'Banana', 'Orange', 'G
     idleBelow: 0.2, runAbove: 2.5, walkPace: 1, runPace: 4.5,
     clips: { idle: 3.333, walk: 1.167, gallop: 0.533 },
     frames: { idle: 4, walk: 6, gallop: 4 },
+  },
+  // Same planting and the same run-over as deer. No gallop clip, so a flee plays the walk faster. Flee is 75% of the deer's 9.75.
+  chicken: {
+    every: 1200, verge: 9, shownWithin: 300, mostShown: 3, stagChance: 0,
+    idPrefix: 'c', seed: 'chicken', dir: 'chicken', model: 'chicken', down: 'The chicken is down.',
+    hitRadius: 0.35, meat: 2, meatReach: 4,
+    raw: 'Raw chicken', cooked: 'Cooked chicken',
+    vision: 5, hearing: 3.3, wanderSpeed: 0.7, fleeSpeed: 7.3125, wanderRadius: 2.2,
+    alarmMs: 4000, fearEveryMs: 250, boltStep: 3, wanderWaitMs: 4000,
+    idleBelow: 0.2, runAbove: 99, walkPace: 0.8, runPace: 1,
+    clips: { idle: 2, walk: 0.417, gallop: 0.417 },
+    frames: { idle: 4, walk: 4, gallop: 0 },
+  },
+  rabbit: {
+    every: 1200, verge: 12, shownWithin: 300, mostShown: 3, stagChance: 0,
+    idPrefix: 'r', seed: 'rabbit', dir: 'rabbit', model: 'rabbit', down: 'The rabbit is down.',
+    hitRadius: 0.35, meat: 2, meatReach: 4,
+    raw: 'Raw rabbit', cooked: 'Cooked rabbit',
+    vision: 4.5, hearing: 2.9, wanderSpeed: 0.55, fleeSpeed: 7.3125, wanderRadius: 2,
+    alarmMs: 4000, fearEveryMs: 250, boltStep: 3, wanderWaitMs: 4000,
+    idleBelow: 0.2, runAbove: 99, walkPace: 1, runPace: 1,
+    clips: { idle: 2.375, walk: 1, gallop: 1 },
+    frames: { idle: 4, walk: 4, gallop: 0 },
   },
 };

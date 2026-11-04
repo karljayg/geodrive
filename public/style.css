@@ -150,7 +150,8 @@ kbd { display: inline-flex; min-width: 24px; justify-content: center; border: 1p
 #settings section[hidden] { display: none; }
 /* Done stays on screen however long a tab is. */
 #settingsDone { position: sticky; bottom: -18px; box-shadow: 0 -8px 12px #162333; }
-#settings h3 { margin: 0 0 8px; font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: #9baebb; }
+#settings h3 { margin: 16px 0 8px; font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: #9baebb; }
+#settings section > h3:first-child { margin-top: 0; }
 #settings section { margin-bottom: 16px; }
 #settings label { display: flex; justify-content: space-between; font-size: 14px; }
 #settings label span { color: #9baebb; font-variant-numeric: tabular-nums; }

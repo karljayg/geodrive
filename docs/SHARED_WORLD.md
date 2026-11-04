@@ -95,7 +95,7 @@ Roads, terrain and place data come from the same free tiles. Outlets, tap result
 
 ### Settings that change meaning
 - `settings.hour`: read in 20 lines of `main.js` and written in 4. It becomes the world's clock, and stays a setting only in the sandbox. Settings' time slider and `T` go in a shared world.
-- `walkSpeed`, `runSpeed`: ignored, using `gameConfig.js`, so nobody simply outruns everyone from Settings.
+- `walkSpeed`, `runSpeed`: the On foot sliders move this person, and that speed is what others are told. A shared world used to ignore them.
 - `carProfile`, `carColor`, `carScale`: the car is the world's now, so these do nothing. Sounds follow the car's type.
 - Forget building interiors: sandbox only.
 

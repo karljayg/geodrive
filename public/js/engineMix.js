@@ -63,3 +63,13 @@ export function engineFadeAt(metres) {
   const t = Math.max(0, Math.min(1, (metres - ENGINE_NEAR) / (ENGINE_GONE - ENGINE_NEAR)));
   return (1 - t) ** 2;
 }
+
+// The nearest of these distances, heard the same way as that engine: full close by, nothing once it has fallen away.
+export function nearestFade(distances) {
+  let best = 0;
+  for (const metres of distances) {
+    const level = engineFadeAt(metres);
+    if (level > best) best = level;
+  }
+  return best;
+}

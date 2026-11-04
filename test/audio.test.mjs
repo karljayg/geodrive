@@ -1,4 +1,4 @@
-import { ENGINE_GONE, ENGINE_NEAR, engineFadeAt } from '../public/js/engineMix.js';
+import { ENGINE_GONE, ENGINE_NEAR, engineFadeAt, nearestFade } from '../public/js/engineMix.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -145,4 +145,12 @@ test('the engine fades with distance from the car, to nothing', () => {
   assert.ok(engineFadeAt(10) > engineFadeAt(20) && engineFadeAt(20) > 0);
   assert.equal(engineFadeAt(ENGINE_GONE), 0);
   assert.equal(engineFadeAt(500), 0);
+});
+
+test('the nearest chicken or rabbit is what you hear, on that same fade', () => {
+  assert.equal(nearestFade([]), 0);
+  assert.equal(nearestFade([0, 80]), 1);
+  assert.equal(nearestFade([ENGINE_GONE, 200]), 0);
+  assert.ok(nearestFade([20]) === engineFadeAt(20));
+  assert.ok(nearestFade([30, 8]) === engineFadeAt(8));
 });
