@@ -34,6 +34,8 @@ const ICONS = {
   'Candy bar': rect(3, 11, 26, 10, '#6b3a22', 1) + rect(9, 10, 14, 12, '#d6332e') + rect(11, 14, 10, 4, '#fff'),
   'Dog biscuit': path('M9 12a4 4 0 1 0-4 4 4 4 0 1 0 4 4h14a4 4 0 1 0 4-4 4 4 0 1 0-4-4z', '#c99a5b'),
   Burger: path('M5 13c0-6 5-8 11-8s11 2 11 8z', '#d9a04e') + rect(4, 14, 24, 3, '#7fb24a', 1) + rect(5, 17, 22, 4, '#6b3a22', 1) + path('M5 21h22c0 4-3 6-6 6H11c-3 0-6-2-6-6z', '#d9a04e') + circle(12, 9, 0.8, '#f4e3b8') + circle(19, 8, 0.8, '#f4e3b8'),
+  'Raw deer meat': path('M5 18c1-8 8-12 13-8 6 4 9 2 9 8 0 7-5 10-11 10C8 28 4 24 5 18z', '#c44a48') + path('M11 16c4 2 8 1 11-2', '#f2c9c4'),
+  'Cooked deer meat': path('M6 17c0-7 7-11 12-7 5 4 8 2 8 7 0 7-4 11-10 11S6 24 6 17z', '#7a3e22') + line('M11 14c3 2 7 2 10-1', '#c9844a', 1.4) + circle(18, 18, 1.2, '#3a2416'),
   'Half a burger': path('M16 5c-6 0-11 2-11 8h11z', '#d9a04e') + rect(4, 14, 12, 3, '#7fb24a') + rect(5, 17, 11, 4, '#6b3a22') + path('M5 21h11v6h-5c-3 0-6-2-6-6z', '#d9a04e'),
   Fries: path('M9 14h14l-2 15H11z', '#d6332e') + rect(10, 5, 2.5, 11, '#f2cf3f') + rect(13.500, 3, 2.5, 13, '#f2cf3f') + rect(17, 4, 2.5, 12, '#f2cf3f') + rect(20, 7, 2, 9, '#f2cf3f'),
   'Chicken wrap': path('M8 8l16 3-4 18H9z', '#e8d3a2') + path('M8 8l16 3-2 7-14-3z', '#7fb24a') + line('M9 14l13 3', '#d9a04e', 1.5),

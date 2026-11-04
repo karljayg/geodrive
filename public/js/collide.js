@@ -57,7 +57,9 @@ export function firstHit(me, moved, obstacles) {
   for (let i = 1; i <= steps; i++) { // from the start of the frame's movement to its end, so nothing can be jumped over
     const back = moved * (1 - i / steps), body = { x: -fx * back, y: -fy * back, heading: me.heading, halfWidth: me.halfWidth, halfLength: me.halfLength };
     for (const { other, at } of relevant) {
-      const touching = other.kind === 'person' ? carTouchesPerson(body, at, other.radius) : carsTouch(body, { ...at, heading: other.heading, halfWidth: other.halfWidth, halfLength: other.halfLength });
+      const touching = other.kind === 'person' || other.kind === 'deer'
+        ? carTouchesPerson(body, at, other.radius)
+        : carsTouch(body, { ...at, heading: other.heading, halfWidth: other.halfWidth, halfLength: other.halfLength });
       if (!touching) continue;
       const closing = closingSpeed(me, other, { x: at.x - body.x, y: at.y - body.y });
       if (closing <= 0) continue; // already touching and moving apart

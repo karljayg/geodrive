@@ -18,7 +18,7 @@ body.onFoot { --dash: 0px; }
 body.onFoot #dash { display: none; }
 #hud { z-index: 2; pointer-events: none; }
 /* Evening and headlights: a tint over the map with the beams cut out of it. */
-#night, #beam, #tails { position: absolute; left: 0; top: 0; width: 100%; height: calc(100% - var(--dash)); pointer-events: none; display: none; }
+#night, #beam, #tails, #viewFx { position: absolute; left: 0; top: 0; width: 100%; height: calc(100% - var(--dash)); pointer-events: none; display: none; }
 #night { mix-blend-mode: multiply; z-index: 1; }
 #beam { mix-blend-mode: screen; z-index: 1; }
 #tails { display: block; z-index: 1; }
@@ -32,6 +32,17 @@ body.onFoot #dash { display: none; }
     #d8d2bc; }
 body.abandoned #grime { display: block; }
 body.abandoned #map, body.abandoned #foot { filter: saturate(0.4) sepia(0.35) hue-rotate(15deg) contrast(1.08) brightness(0.9); }
+#viewFx { z-index: 1; }
+#testViews p { margin: 0 0 8px; color: #9baebb; font-size: 12px; line-height: 1.4; }
+#testViews [data-views] { display: flex; flex-wrap: wrap; gap: 4px; }
+#testViews button { font: inherit; font-size: 12px; color: #c8d6e0; padding: 4px 9px; background: #ffffff14; border: 0; border-radius: 7px; cursor: pointer; }
+#testViews button:hover { background: #ffffff26; color: #fff; }
+#testViews button[aria-pressed="true"] { color: #0a1720; background: #5cd6b0; font-weight: 650; }
+body.tv-rain #map { filter: saturate(0.68) brightness(0.9) contrast(1.06); }
+body.tv-snow #map { filter: saturate(0.42) brightness(1.12) contrast(1.04); }
+body.tv-apocalypse #map { filter: sepia(0.5) saturate(0.5) contrast(1.16) brightness(0.8); }
+body.tv-vines #map { filter: saturate(1.3) sepia(0.2) hue-rotate(16deg) brightness(0.92); }
+body.tv-cracks #map { filter: saturate(0.76) contrast(1.14) brightness(0.94); }
 
 .pill, .panel { background: #101923dd; border: 1px solid #ffffff26; box-shadow: 0 8px 30px #0004; backdrop-filter: blur(18px); border-radius: 14px; }
 header { position: absolute; top: 8px; left: 8px; display: flex; align-items: center; gap: 2px; max-width: calc(100% - 16px); padding: 3px 6px; border-radius: 9px; background: #0d1621e6; pointer-events: auto; }

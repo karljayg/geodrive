@@ -350,8 +350,8 @@ export class Room {
 
   // A game says it crashed. A wrong death can't be undone, so its word isn't enough: both reported paths have to back it up, or it's only a stop. One crash once, though both games report it.
   crash(client, { kind, other, closing, lat, lng, planted }) {
-    if (!['car', 'parked', 'person', 'building'].includes(kind) || !Number.isFinite(closing) || closing < 0 || closing > 1000 || !Number.isFinite(lat) || !Number.isFinite(lng)) return { why: 'bad' };
-    const config = this.game.crash, now = this.now(), fixed = kind === 'parked' || kind === 'building', target = fixed ? null : this.clients.get(other);
+    if (!['car', 'parked', 'person', 'building', 'deer'].includes(kind) || !Number.isFinite(closing) || closing < 0 || closing > 1000 || !Number.isFinite(lat) || !Number.isFinite(lng)) return { why: 'bad' };
+    const config = this.game.crash, now = this.now(), fixed = kind === 'parked' || kind === 'building' || kind === 'deer', target = fixed ? null : this.clients.get(other);
     if (!fixed && !target) return { outcome: 'stop' };
     const pairKey = fixed ? `${client.id}|${other}` : [client.id, other].sort().join('|');
     if (now - (this.crashes.get(pairKey) ?? -Infinity) < config.sameCrashSeconds * 1000) return { outcome: 'same' };
@@ -372,7 +372,7 @@ export class Room {
     if (!outcome.wreck.length && kind !== 'person') {
       const amount = carDamageAt(outcome.mph, this.game);
       this.damageCar(client.car, amount);
-      if (kind !== 'building') this.damageCar(kind === 'parked' ? other : target?.car, amount, planted);
+      if (kind !== 'building' && kind !== 'deer') this.damageCar(kind === 'parked' ? other : target?.car, amount, planted);
     }
     const lost = kind === 'person' ? healthLossHit(outcome.mph, this.game) : healthLossInCar(outcome.mph, this.game);
     for (const person of hurt) person.send({ t: 'injured', how, lost });

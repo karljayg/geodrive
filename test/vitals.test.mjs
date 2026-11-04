@@ -146,7 +146,8 @@ test('eating and drinking do what the config says, and other things are not food
 
 test('everything edible that can be found is listed, and every consumable can be found somewhere', () => {
   const findable = new Set([...Object.values(GAME.finds).flat(), ...Object.values(GAME.machines).flatMap((m) => m.give)]);
-  for (const name of Object.keys(GAME.consumables)) assert.ok(findable.has(name), name);
+  const fromDeer = new Set([GAME.deer.raw, GAME.deer.cooked]);
+  for (const name of Object.keys(GAME.consumables)) if (!fromDeer.has(name)) assert.ok(findable.has(name), name);
   for (const food of ['Milk', 'Leftover pizza', 'Sandwich', 'Apple', 'Candy bar', 'Bottle of water']) assert.ok(GAME.consumables[food], food);
 });
 

@@ -13,6 +13,7 @@ import { parseFurniture } from './furniture.js';
 import { buildingWithin, byOutsideWall, carWalls, climbOver, distanceToCar, enterBuilding, GET_IN_REACH, leaveBuilding, newWalker, frameOf, placeCamera, spawnSpot, stepClearOfThings, stepWalker, wayToCar } from './footWalker.js';
 import { parcelParts, thingParts } from './drops.js';
 import { GAME } from './gameConfig.js';
+import { cookOffer } from './deer.js';
 import { FLAGS } from './protocol.js';
 import { say } from './sayings.js';
 import { SAYINGS } from './sayingsConfig.js';
@@ -418,6 +419,7 @@ export class Foot {
         { label: 'Open the car\'s storage?', run: () => { this.onOpenBag?.(); return ''; } });
     }
     if (!building) {
+      list.push(...(this.meatHere?.() ?? []));
       const near = buildingWithin(this.walker, this.world);
       if (near) list.push({ label: near.building.plan && !isLocked(near.building.plan) ? 'Go inside?' : 'Try the door?', run: () => this.goInside() });
       return uniqueChoices(list);
@@ -428,7 +430,11 @@ export class Foot {
     if (this.switchHere()) list.push({ label: this.roomLightsOn() ? 'Turn off the lights?' : 'Turn on the lights?', run: () => this.useLightSwitch() });
     if (this.outletHere()) list.push({ label: this.charging ? 'Unplug?' : 'Plug in here?', run: () => this.useOutlet() });
     const near = thingsNear(record, buildingFrame(building.pieces, record.axis), furniture.models, this.walker.x, this.walker.y, this.walker.facing);
-    for (const entry of near) for (const { label, second } of questionsFor(entry)) list.push({ label, run: () => this.useEntry(entry, second) });
+    for (const entry of near) {
+      const cook = cookOffer(entry[0], this.canCook?.());
+      if (cook) list.push({ label: cook, run: () => this.cookRaw?.() ?? '' });
+      for (const { label, second } of questionsFor(entry)) list.push({ label, run: () => this.useEntry(entry, second) });
+    }
     const climb = this.climbHere();
     if (climb) list.push({ label: climbQuestion(climb.box.entry[0]), run: () => this.startClimb(climb) });
     if (this.hasHammer?.()) {
