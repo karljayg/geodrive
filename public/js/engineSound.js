@@ -9,7 +9,7 @@ const ATTACK = 0.03, RELEASE = 0.08, RATE_GLIDE = 0.05, BLEND_GLIDE = 0.08;
 // Pixabay Content License. Chicken: Alex_Jauk, "Chicken Noise". Rabbit: u_3yocsblk00, "Rat Squeaking" (used for the rabbit).
 const ANIMAL_FILES = { chicken: 'audio/animals/chicken.mp3', rabbit: 'audio/animals/rabbit.mp3' };
 const ANIMAL_TRIM = 2; // the files peak near 0.4, so a close one sits with the other effects
-const ANIMAL_GAP = [0.6, 1.8]; // s of quiet after a call, so a two-second clip doesn't stitch into a loop
+const ANIMAL_QUIET = 3; // silent stretches after each call, so a 2 s clip plays once and is quiet for 6 s
 const ENGINE_TRIM = 4;     // loops are normalised quiet, this brings them up to the mix
 const KEEP_AWAKE = 0.0004; // about -68 dB of high hiss, which nobody hears: headphones, speakers and displays can doze in true silence and take a second or two to wake
 
@@ -219,7 +219,7 @@ export class EngineAudio {
       voice.playing = true;
       source.onended = () => {
         voice.playing = false;
-        voice.nextAt = this.ctx.currentTime + ANIMAL_GAP[0] + Math.random() * (ANIMAL_GAP[1] - ANIMAL_GAP[0]);
+        voice.nextAt = this.ctx.currentTime + voice.buffer.duration * ANIMAL_QUIET;
         source.disconnect();
       };
       source.start();
