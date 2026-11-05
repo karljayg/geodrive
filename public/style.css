@@ -18,6 +18,9 @@ body.onFoot { --dash: 0px; }
 body.onFoot #dash { display: none; }
 #hud { z-index: 2; pointer-events: none; }
 #scope { position: absolute; inset: 0; z-index: 3; pointer-events: none; }
+body.shotNear::after, body.shotHit::after { content: ''; position: fixed; inset: 0; z-index: 8; pointer-events: none; }
+body.shotNear::after { background: #ffffff24; }
+body.shotHit::after { background: #c4282838; }
 #scopeMark {
   position: absolute; left: 50%; top: 50%; width: 28px; height: 28px; --mark: #ff3b30;
   transform: translate(calc(-50% + var(--aim-x, 0px)), calc(-50% + var(--aim-y, 0px)));

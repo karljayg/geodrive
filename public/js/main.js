@@ -915,7 +915,7 @@ function syncScope() {
   }
   const firing = performance.now() < shotUntil;
   mark.classList.toggle('fired', firing);
-  mark.classList.toggle('onTarget', aimedCreature()?.chance === 1);
+  mark.classList.toggle('onTarget', shotTarget()?.chance === 1);
   const svg = el('scopeShot');
   if (firing && lastShot) {
     const view = aimView(), from = screenOfGround(0, 0, view);
@@ -941,33 +941,93 @@ function tryFire() {
   nextShotAt = cooldownUntil(now, held.spec);
   sfx(held.spec.sound || 'gunshot');
   shotUntil = now + 220;
-  const aimed = aimedCreature();
-  if (aimed && shotLands(aimed.chance)) {
-    const body = killAnimal(aimed.animal.id);
+  const aimed = shotTarget();
+  const person = aimed?.hit.kind === 'person' ? aimed.hit.id : null;
+  shareShot(held.spec, person && shotLands(aimed.chance) ? person : null);
+  if (aimed && aimed.hit.kind !== 'person' && shotLands(aimed.chance)) {
+    const body = killAnimal(aimed.hit.id);
     if (body) notice(body.down || 'It is down.', 3000);
   }
   syncScope();
 }
 
-// The creature the mark is on: the shot from the camera through the mark, the same circles a car can hit.
-function creatureUnderShot() {
-  if (!lastShot?.point || !foot || foot.walker.inside) return null;
+// Where the mark meets the ground, as a place on the map, so the server can check a hit.
+function aimPlace() {
+  const at = foot.where(), point = lastShot?.point;
+  if (!point) return at;
+  const east = move(at.lat, at.lng, 90, point.x);
+  return move(east.lat, east.lng, 0, point.y);
+}
+
+// Tell the world about a shot. to is someone the mark is on; a miss is still heard nearby.
+function shareShot(spec, to) {
+  if (!world.rules.people || !world.link || !foot) return;
+  const at = foot.where(), aim = aimPlace();
+  world.link.send({ t: 'shot', weapon: spec.item, lat: at.lat, lng: at.lng, aimLat: aim.lat, aimLng: aim.lng, ...(to ? { to } : {}) });
+}
+
+let shotFlash = 0;
+function flashScreen(kind) {
+  const body = document.body;
+  body.classList.remove('shotNear', 'shotHit');
+  body.classList.add(kind);
+  const token = ++shotFlash;
+  setTimeout(() => { if (token === shotFlash) body.classList.remove('shotNear', 'shotHit'); }, 160);
+}
+
+// A round that landed on this person. At no health left, the server is asked to end this life.
+function shotHitMe(lost, by) {
+  const name = world.nameOf(by) || 'Someone';
+  const left = vitals.stats.health - lost;
+  flashScreen('shotHit');
+  if (left <= 0) {
+    vitals.stats.health = 1;
+    vitals.save();
+    notice(say('shotDown', { name }), 3000);
+    world.link.ask({ t: 'down' });
+    return;
+  }
+  vitals.stats.health = left;
+  vitals.save();
+  notice(say('shotYou', { name, left: Math.round(left) }), 2500);
+  perfLog.event('vital', { injured: 'shot', lost });
+}
+
+// Whoever the mark is on: an animal outdoors, or another person. The chance is this gun's, from where you stand.
+function shotTarget() {
+  if (!lastShot?.point || !foot) return null;
   const view = aimView();
   const cam = placeCamera(foot.walker, { tilt: view.tilt, range: view.range, fov: view.fovY, below: view.below });
   const end = { x: foot.walker.x + lastShot.point.x, y: foot.walker.y + lastShot.point.y, z: foot.walker.z };
-  const animals = animalHits().map((animal) => {
-    const at = foot.localOf(animal.lat, animal.lng);
-    return { ...animal, x: at.x, y: at.y, radius: animal.shotRadius || animal.radius, body: animal.shotBody || animal.body || 1 };
-  });
-  return firstInShot(cam.eye, end, animals);
-}
-
-// The creature under the mark, and this gun's chance of hitting it from where you stand. Green only when that chance is certain.
-function aimedCreature() {
-  const animal = creatureUnderShot(), spec = heldNow()?.spec;
-  if (!animal || !spec || !foot) return null;
-  const metres = Math.hypot(animal.x - foot.walker.x, animal.y - foot.walker.y);
-  return { animal, metres, chance: hitChance(metres, spec) };
+  const bodies = [];
+  if (!foot.walker.inside) {
+    for (const animal of animalHits()) {
+      const at = foot.localOf(animal.lat, animal.lng);
+      bodies.push({ ...animal, x: at.x, y: at.y, radius: animal.shotRadius || animal.radius, body: animal.shotBody || animal.body || 1 });
+    }
+  }
+  if (world.rules.people) {
+    const { bodyRadius, bodyHeight } = GAME.shots;
+    if (foot.walker.inside) {
+      for (const { member, place, at } of foot.othersInRoom()) {
+        if (place.flags & FLAGS.away) continue;
+        bodies.push({ id: member.id, name: member.name, kind: 'person', x: at.x, y: at.y, radius: bodyRadius, body: bodyHeight });
+      }
+    } else {
+      const now = performance.now();
+      for (const member of world.people.othersOnline) {
+        const there = world.people.nowAt(member.id, now);
+        if (!there || !(there.flags & FLAGS.onFoot) || (there.flags & (FLAGS.away | FLAGS.indoors))) continue;
+        const at = foot.localOf(there.lat, there.lng);
+        bodies.push({ id: member.id, name: member.name, kind: 'person', x: at.x, y: at.y, radius: bodyRadius, body: bodyHeight });
+      }
+    }
+  }
+  const hit = firstInShot(cam.eye, end, bodies);
+  const spec = heldNow()?.spec;
+  if (!hit || !spec) return null;
+  const metres = Math.hypot(hit.x - foot.walker.x, hit.y - foot.walker.y);
+  return { hit, metres, chance: hitChance(metres, spec) };
 }
 
 // Selecting a casing, or R with a gun in hand. One casing fills the magazine.
@@ -3404,7 +3464,8 @@ async function iDied({ lives, how, by, at }) {
   fsd = false;
   car.speed = 0;
   if (lives > 0) {
-    notice(`${how === 'injuries' ? 'You died of your injuries' : 'You died'}. ${lives} ${lives === 1 ? 'life' : 'lives'} left.`, GAME.crash.respawnSeconds * 1000);
+    const why = how === 'injuries' ? 'You died of your injuries' : how === 'shot' ? `${world.nameOf(by) || 'Someone'} shot you` : 'You died';
+    notice(`${why}. ${lives} ${lives === 1 ? 'life' : 'lives'} left.`, GAME.crash.respawnSeconds * 1000);
     setTimeout(async () => {
       const others = world.people.othersOnline.map((member) => world.people.lastKnown(member.id)).filter(Boolean);
       await beginAfterDeath(others[0] ?? place);
@@ -3450,7 +3511,7 @@ async function leaveBelongings(place) {
 function showFinalDeath({ how, by, days, walked }) {
   world.link.close();
   world.forgetHere(browserStorage());
-  const cause = how === 'hit' ? `You were hit by ${world.nameOf(by) ?? 'a car'}.` : how === 'injuries' ? 'You died of your injuries.' : how === 'removed' ? 'Your lives were set to none.' : 'You died in a crash.';
+  const cause = how === 'hit' ? `You were hit by ${world.nameOf(by) ?? 'a car'}.` : how === 'shot' ? `${world.nameOf(by) ?? 'Someone'} shot you.` : how === 'injuries' ? 'You died of your injuries.' : how === 'removed' ? 'Your lives were set to none.' : 'You died in a crash.';
   const managers = world.managerNames.filter((name) => name !== world.you.name).join(' or ');
   const box = el('worldEntry');
   box.innerHTML = '<div class="startBox"><h1>You\'re dead</h1><p data-cause></p><dl id="tripStats"><div><dt>Days lived</dt><dd data-days></dd></div><div><dt>Walked</dt><dd data-walked></dd></div></dl><p data-ask></p><div class="row"><button class="primary" type="button" data-sandbox>Play in my sandbox</button></div></div>';
@@ -3566,12 +3627,23 @@ async function startPeople() {
   world.on.died = ({ member, lives, how, by, at }) => {
     if (world.you.id !== member) {
       if (at && how === 'crash') { sfxNear(at); peopleView.explode(at); }
-      notice(`${world.nameOf(member)} ${how === 'hit' ? 'was hit by a car' : how === 'injuries' ? 'died of their injuries' : how === 'removed' ? 'was given no lives' : 'died in a crash'}${lives > 0 ? '.' : ', for good.'}`, 5000);
+      const shotBy = how === 'shot' ? `was shot by ${world.nameOf(by) || 'someone'}` : null;
+      notice(`${world.nameOf(member)} ${shotBy || (how === 'hit' ? 'was hit by a car' : how === 'injuries' ? 'died of their injuries' : how === 'removed' ? 'was given no lives' : 'died in a crash')}${lives > 0 ? '.' : ', for good.'}`, 5000);
       return;
     }
     iDied({ lives, how, by, at });
   };
-  world.on.injured = ({ how, lost }) => {
+  world.on.impact = ({ sound }) => sfx(sound);
+  world.on.gunshot = ({ lat, lng, sound }) => {
+    engine.preloadClip(sound);
+    sfx(sound);
+    peopleView?.flashShot({ lat, lng });
+    const here = foot ? foot.where() : pos;
+    if (metresApart(here, { lat, lng }) < 40) flashScreen('shotNear');
+  };
+  world.on.shotLanded = ({ to }) => notice(say('shotThem', { name: world.nameOf(to) || 'them' }), 2000);
+  world.on.injured = ({ how, lost, by }) => {
+    if (how === 'shot') return shotHitMe(lost, by);
     vitals.stats.health = Math.max(1, vitals.stats.health - lost);
     vitals.save();
     if (how === 'strike' && lost < 1) return;

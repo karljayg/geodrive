@@ -105,6 +105,13 @@ export class PeopleView {
     return this.carSources.get(key);
   }
 
+  // A brief flash at a gun, so someone else firing is visible.
+  flashShot(at) {
+    this.shotSource ||= this.glbUrl(buildPersonGlb([ballPart('#ffe9a0')]));
+    const ball = this.model({ lat: at.lat, lng: at.lng, altitude: 1.5 }, this.shotSource, 0.45);
+    setTimeout(() => ball.remove(), 140);
+  }
+
   // A fireball where something blew up, then the low-poly fire on that spot until it goes out.
   // The flames are Jakob Hippe's Fire, CC-BY (https://poly.pizza/m/1QpMTUO7P-G), baked to still frames because the map's model doesn't play a clip.
   explode(at) {

@@ -200,8 +200,11 @@ till: ['Cash', 'Bundle of cash'], produceStand: ['Apple', 'Banana', 'Orange', 'G
   // indoorRange: of the outdoor camera distance inside, as furniture is small from there.
   // Past effectiveRangeFeet, a lined-up shot's chance halves for each further complete rangeStepFeet. feetPerMetre turns the world's metres into that.
   aim: { backPace: 0.5, indoorRange: 0.45, rangeStepFeet: 50, feetPerMetre: 3.28084 },
+  // A shot at another person. hearMetres: who hears it, outdoors. The body is the cylinder a shot can meet.
+  // aimSlack: how far they can stand from where it was aimed, for lag. rangeSlack: extra metres on the gun's range, for the same reason.
+  shots: { hearMetres: 100, bodyRadius: 0.9, bodyHeight: 1.9, aimSlack: 4, rangeSlack: 8 },
   // magazine: rounds it holds. spare: boxes of its caliber given with the starter gun, in the car. A box fills whichever gun of that caliber you load, and only when it is empty.
-  // Shells and precision rounds are one each. fireMode auto repeats while the button is held. damage is kept for later; a hit downs an animal in one shot.
+  // Shells and precision rounds are one each. fireMode auto repeats while the button is held. damage is how hard one round hits a person: 1 takes four shots, 2 takes three, 3 takes two, and 4 or more takes one. An animal still goes down in one.
   weapons: {
     handgun: { item: 'Handgun', kind: 'gun', category: 'handgun', caliber: '9mm', magazine: 8, effectiveRangeFeet: 50, damage: 1, fireMode: 'single', fireIntervalMs: 280, spare: 3, sound: 'shot9mm' },
     handgun45: { item: '.45 Handgun', kind: 'gun', category: 'handgun', caliber: '.45', magazine: 8, effectiveRangeFeet: 50, damage: 2, fireMode: 'single', fireIntervalMs: 320, spare: 0, sound: 'shot45' },

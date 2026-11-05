@@ -1,4 +1,5 @@
 // What can happen to a floor of a shared building, the same on the server, which decides, and in the browser, which shows it at once. Pure, tested in node.
+import { GAME } from './gameConfig.js';
 // State is what footActions.js keeps in plan.state[floor]: { taken, opened, moved, holes, lights }.
 const KEY_MOST = 80;      // characters in the name of a thing
 const THINGS_MOST = 5000; // on one floor
@@ -134,4 +135,23 @@ export function crashHoldsUp({ mine, theirs, at, closing, withinMetres }, metres
   if (!mine.length || !near(mine)) return false;
   if (theirs && (!theirs.length || !near(theirs))) return false;
   return closing <= (fastest(mine) + (theirs ? fastest(theirs) : 0)) * 1.25 + 3; // m/s
+}
+
+// The gun with this item name, or null. The server uses this rather than whatever damage a game claims.
+export function gunByItem(item) {
+  return Object.values(GAME.weapons).find((weapon) => weapon.item === item) || null;
+}
+
+// How many shots of this damage finish someone from full health, and the health one of them takes.
+// 1 takes four, 2 takes three, 3 takes two, and 4 or more takes one.
+export function shotWound(damage) {
+  const shots = Math.max(1, Math.min(4, 5 - Math.round(Number(damage) || 1)));
+  return { shots, lost: Math.ceil(100 / shots) };
+}
+
+// Whether a claimed hit is close enough to count. shooter, target and aim are { lat, lng }. rangeMetres is the gun's.
+export function shotHoldsUp({ shooter, target, aim, rangeMetres, aimSlack, rangeSlack }, apart) {
+  if (!shooter || !target || !aim || !(rangeMetres > 0)) return false;
+  const reach = rangeMetres + rangeSlack;
+  return apart(shooter, aim) <= reach && apart(shooter, target) <= reach && apart(target, aim) <= aimSlack;
 }
