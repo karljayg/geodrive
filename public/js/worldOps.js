@@ -113,14 +113,15 @@ export function nextManagers({ owner, backup }, members) {
 
 const MPH = 2.23694;
 
-// What a crash does to whom, from its kind and closing speed in m/s: { kill: [...], hurt: [...], wreck: [...] } of 'me', 'other'. Between cars and a parked one, both go; a person hit
-// is all that's hurt, and the driver carries on. config: GAME.crash.
+// What a crash does to whom, from its kind and closing speed in m/s: { kill: [...], hurt: [...], wreck: [...] } of 'me', 'other'. Between cars and a parked one, both go.
+// A chicken or a rabbit hurts nobody. A deer or a person hurts the driver a bit and doesn't wreck the car; a person hit hard enough also dies. config: GAME.crash.
 export function crashOutcome(kind, closing, config) {
   const mph = closing * MPH;
   if (mph < config.injuredFromMph) return { kill: [], hurt: [], wreck: [], mph };
+  if (kind === 'chicken' || kind === 'rabbit') return { kill: [], hurt: [], wreck: [], mph };
   // A deer dies either way. The driver is hurt and the car is damaged, and neither is wrecked: a deer is not a car.
   if (kind === 'deer') return { kill: [], hurt: ['me'], wreck: [], mph };
-  if (kind === 'person') return mph >= config.personDeadlyMph ? { kill: ['other'], hurt: [], wreck: [], mph } : { kill: [], hurt: ['other'], wreck: [], mph };
+  if (kind === 'person') return mph >= config.personDeadlyMph ? { kill: ['other'], hurt: ['me'], wreck: [], mph } : { kill: [], hurt: ['me', 'other'], wreck: [], mph };
   const people = kind === 'car' ? ['me', 'other'] : ['me'];
   return mph >= config.carDeadlyMph ? { kill: people, hurt: [], wreck: kind === 'building' ? ['me'] : ['me', 'other'], mph } : { kill: [], hurt: people, wreck: [], mph };
 }

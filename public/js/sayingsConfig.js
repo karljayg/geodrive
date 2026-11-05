@@ -13,6 +13,8 @@ export const SAYINGS = {
   useFromBed: ['{found}', '{found}'],
   injuredCrash: ['That hurt. You\'re badly hurt.', 'Everything hurts. You\'re in a bad way.'],
   injuredHit: ['A car hit you. You\'re badly hurt.', 'You\'ve been hit. You can barely stand.'],
+  ranOver: ['You ran over something.', 'Something small went under the wheels.', 'A bump. You ran over something.'],
+  struck: ['You feel that. You\'re a bit hurt.', 'That hit the car, and you, a bit.'],
   // A car that won't go, in a shared world
   carNoKey: ['No key. Whoever left this took it with them.', 'It needs a key, and there isn\'t one.'],
   carFlatBattery: ['Click. Click. Flat battery.', 'The dash doesn\'t even light up. Dead battery.'],

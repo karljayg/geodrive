@@ -362,8 +362,10 @@ test('what a crash does goes by what hit what, and how fast', () => {
   assert.deepEqual(plain('car', 101), { kill: ['me', 'other'], hurt: [], wreck: ['me', 'other'] }, 'two at 50 mph head on is 100: both gone');
   assert.deepEqual(plain('parked', 99), { kill: [], hurt: ['me'], wreck: [] });
   assert.deepEqual(plain('parked', 100), { kill: ['me'], hurt: [], wreck: ['me', 'other'] });
-  assert.deepEqual(plain('person', 49), { kill: [], hurt: ['other'], wreck: [] }, 'the driver isn\'t hurt');
-  assert.deepEqual(plain('person', 50), { kill: ['other'], hurt: [], wreck: [] }, 'and carries on');
+  assert.deepEqual(plain('chicken', 40), { kill: [], hurt: [], wreck: [] }, 'a chicken hurts nobody');
+  assert.deepEqual(plain('rabbit', 40), { kill: [], hurt: [], wreck: [] });
+  assert.deepEqual(plain('person', 49), { kill: [], hurt: ['me', 'other'], wreck: [] }, 'the driver is hurt a bit, and isn\'t killed');
+  assert.deepEqual(plain('person', 50), { kill: ['other'], hurt: ['me'], wreck: [] }, 'they die, and the driver carries on, hurt a bit');
 });
 
 test('a claimed crash has to be backed up by where each said they were', () => {

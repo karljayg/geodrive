@@ -130,7 +130,7 @@ export class DeerView {
     return [...this.live.values()].map((deer) => {
       const at = this.where(deer);
       return {
-        id: deer.id, kind: 'deer', lat: at.lat, lng: at.lng, heading: deer.heading, speed: deer.speed, radius, body: this.config.body || 1,
+        id: deer.id, kind: this.key, lat: at.lat, lng: at.lng, heading: deer.heading, speed: deer.speed, radius, body: this.config.body || 1,
         shotRadius: this.config.shotRadius || radius, shotBody: this.config.shotBody || this.config.body || 1,
       };
     });

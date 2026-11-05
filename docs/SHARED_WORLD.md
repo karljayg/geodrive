@@ -244,7 +244,7 @@ The owner has ruled that nothing passes through anything. Here's how, without ph
 
 **What death does (`GAME.crash`, in `gameConfig.js`, tunable):**
 - `carDeadlyMph: 100`. A car hitting a moving car, parked car or wreck explodes at that speed or more. Between two moving cars the speed is how fast they were coming together, so two at 50 mph head-on is 100, and both explode. Below it the car stops and everyone in it is injured.
-- `personDeadlyMph: 50`. A person hit at that speed or more dies, and the car and driver carry on. Below it the car stops and the person is injured, and the driver isn't. Friends can run each other over, which trust accepts.
+- `personDeadlyMph: 50`. A person hit at that speed or more dies. Either way the car slows by half, takes damage, and the driver is hurt a bit, and the car is not wrecked. Below 5 mph nothing happens. Friends can run each other over, which trust accepts.
 - **Injured means health goes to its lowest, `injuredHealth: 1`,** not dead. What it leads to is still to be decided (the owner: "might... soon"). It's 1 rather than 0 because 0 health makes someone collapse today, and they wake at 25 (`GAME.collapse`), so a crash would end up healing them. For now they recover as they do from anything: slowly when their needs are met, faster asleep.
 - `injuredFromMph: 5`. Slower contact does nothing, so a touch while parking or two things easing apart can't cripple anyone. It uses the same speed as above and the same check by the server. A person walking into a person never hurts.
 - `lives: 3`. The server counts them, read from the same config. A new invite after dying for good starts with the full number, and a rejoin invite keeps what's left.

@@ -7,7 +7,7 @@ import { SAYINGS } from '../public/js/sayingsConfig.js';
 import { SharedCars } from '../public/js/sharedWorld.js';
 import { seatsPicture, seatsShown } from '../public/js/carSeats.js';
 import { stationFor, stationWorks } from '../public/js/stations.js';
-import { carDamageAt, coastDistance, coastPlace, cutsOut, drivable, healthLossHit, healthLossInCar, offRoadSlowing, offRoadWear, powerOf, reliabilityText } from '../public/js/carDamage.js';
+import { carDamageAt, coastDistance, coastPlace, conditionLeft, cutsOut, drivable, healthLossHit, healthLossInCar, healthLossStrike, offRoadSlowing, offRoadWear, powerOf, reliabilityText } from '../public/js/carDamage.js';
 import { BumpLimit, FootprintIndex, buildingHit, carTouchesPerson, carsTouch, closingSpeed, firstHit } from '../public/js/collide.js';
 import { metresApart } from '../public/js/protocol.js';
 
@@ -234,6 +234,13 @@ test('damage rises with speed: a little when small, a whole car at the deadly sp
   assert.equal(carDamageAt(300), 100);
   assert.ok(healthLossInCar(30) < 10 && healthLossInCar(90) > 70 && healthLossInCar(100) < 100, 'people come off a little better than cars');
   assert.ok(healthLossHit(25) > 20 && healthLossHit(49) > 80, 'and worse when hit on foot');
+  assert.equal(conditionLeft(100, carDamageAt(30)), 91);
+  assert.equal(conditionLeft(100, 9.6), 90, 'the bar is a whole percent');
+  let left = conditionLeft(conditionLeft(100, carDamageAt(70)), carDamageAt(70));
+  assert.equal(left, 2);
+  assert.equal(drivable(left), false, 'two fast deer hits leave a car that will not run');
+  assert.equal(healthLossStrike(100), 25);
+  assert.ok(healthLossStrike(70) < 13 && healthLossStrike(70) < healthLossInCar(70), 'a deer hurts a bit, not like a car crash');
 });
 
 test('a car gets less reliable as it wears, and stops running at the end', () => {

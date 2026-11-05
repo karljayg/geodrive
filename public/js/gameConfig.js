@@ -3,7 +3,8 @@
 // What the game says is in sayingsConfig.js; a say here is a key there, or plain text.
 export const GAME = {
   // What a crash does in a shared world: closing speeds in mph. Below injuredFromMph, nothing. Lives are in world. What an injury leads to is still to be decided.
-  crash: { carDeadlyMph: 100, personDeadlyMph: 50, injuredFromMph: 5, carHealthLoss: 95, personHealthLoss: 90, respawnSeconds: 3, withinMetres: 20, sameCrashSeconds: 3 },
+  // strikeHealthLoss is the most a deer, or the driver who hit a person, takes, at carDeadlyMph, scaled by the square of the speed.
+  crash: { carDeadlyMph: 100, personDeadlyMph: 50, injuredFromMph: 5, carHealthLoss: 95, personHealthLoss: 90, strikeHealthLoss: 25, respawnSeconds: 3, withinMetres: 20, sameCrashSeconds: 3, runOverKeep: 0.7, strikeKeep: 0.5 },
   // A car's condition, 100 to 0. carDamage.js has the formula. offRoadPerKm: condition lost per km off road. offRoadDrag: speed lost per second there, as a share.
   // Where things on the ground don't stop a car: within bridgeClear of a bridge or tunnel, or highwayClear of a motorway or trunk road (buildings and water only). Metres from the mapped line.
   // tilesKept: how many tiles' worth are held at once, as a long drive would otherwise keep them all. lookAhead: metres ahead a tile is fetched before the car reaches it.

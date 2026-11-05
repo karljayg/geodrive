@@ -171,6 +171,7 @@ test('a crash plays the car-explosion recording, loud, and the wreck fire is on 
   assert.ok(CLIPS.explosion.gain >= 2);
   assert.equal(CLIPS.explosion.file, 'audio/sfx/car-explosion.mp3');
   assert.ok(existsSync(new URL(`../public/${CLIPS.explosion.file}`, import.meta.url)));
+  for (const name of ['thump', 'carHit']) assert.ok(existsSync(new URL(`../public/${CLIPS[name].file}`, import.meta.url)), name);
   for (let i = 0; i < 5; i++) assert.ok(existsSync(new URL(`../public/models/fire/fire-${i}.glb`, import.meta.url)), `fire-${i}`);
 });
 

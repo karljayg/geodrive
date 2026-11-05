@@ -13,6 +13,8 @@ export const SOUNDS = {
   // Used for anything without a sound of its own: two short, quiet, rising notes.
   ack: [tone(660, 660, 0, 0.06, 0.16), tone(880, 880, 0.06, 0.09, 0.16)],
   explosion: [noise(900, 60, 0, 1.3, 0.8), tone(90, 30, 0, 1.1, 0.7), noise(5000, 800, 0, 0.25, 0.4)], // only if the recording in CLIPS never arrives
+  thump: [tone(90, 48, 0, 0.12, 0.45), noise(420, 140, 0, 0.08, 0.28)],
+  carHit: [tone(85, 40, 0, 0.22, 0.6), noise(700, 180, 0, 0.16, 0.35)],
   roughGround: [noise(220, 110, 0, 0.5, 0.2), noise(70, 50, 0.05, 0.4, 0.22)],
   fillUp: [noise(1500, 1400, 0, 0.7, 0.1), tone(660, 880, 0.65, 0.12, 0.16)],
   message: [tone(1046, 1046, 0, 0.09, 0.14), tone(1397, 1397, 0.09, 0.16, 0.14)],
@@ -101,6 +103,8 @@ export const SOUNDS = {
 // One-shot recordings on the effects bus. gain is before that bus, which is already the sound-effects volume, so the explosion is set high to be the loud one.
 export const CLIPS = {
   explosion: { file: 'audio/sfx/car-explosion.mp3', gain: 3 },
+  thump: { file: 'audio/sfx/thump.mp3', gain: 1.5 }, // a chicken or a rabbit under the wheels
+  carHit: { file: 'audio/sfx/car-hit.mp3', gain: 2.2 }, // a deer or a person. Still under the explosion.
 };
 
 // Recordings in public/audio/guns, Pixabay Content License. gain is before the effects bus. Loud on purpose; the explosion in CLIPS is louder still.

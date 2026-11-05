@@ -4,7 +4,7 @@ import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { GAME } from '../public/js/gameConfig.js';
 import { FLAGS, GROUP_THREAD, cleanLook, clockHour, dmThread, metresApart, nameKey, nameProblem, stampPresence, unpackPresence } from '../public/js/protocol.js';
 import { cleanCar, cleanStorage } from '../public/js/worldCars.js';
-import { carDamageAt, coastDistance, coastPlace, drivable, healthLossHit, healthLossInCar } from '../public/js/carDamage.js';
+import { carDamageAt, coastDistance, coastPlace, conditionLeft, drivable, healthLossHit, healthLossInCar, healthLossStrike } from '../public/js/carDamage.js';
 import { LIVES_MOST, isTunable, okValue, testToolsAllowed, tunedCopy } from '../public/js/testTools.js';
 import { applyFloorOp, cleanDrop, crashHoldsUp, crashOutcome, emptyFloorState, mergePlan, nextManagers, tileOfBuilding } from '../public/js/worldOps.js';
 
@@ -368,14 +368,18 @@ export class Room {
     const hurt = outcome.hurt.flatMap(whose), killed = outcome.kill.flatMap(whose);
     for (const who of outcome.wreck) this.wreck(who === 'me' ? client.car : kind === 'parked' ? other : target?.car, planted, at);
     const how = kind === 'person' ? 'hit' : 'crash';
-    // What's left of the cars, if they survive it.
-    if (!outcome.wreck.length && kind !== 'person') {
+    // What's left of the cars, if they survive it. A person damages the driver's car and leaves the one they hit alone.
+    if (!outcome.wreck.length) {
       const amount = carDamageAt(outcome.mph, this.game);
       this.damageCar(client.car, amount);
-      if (kind !== 'building' && kind !== 'deer') this.damageCar(kind === 'parked' ? other : target?.car, amount, planted);
+      if (kind !== 'building' && kind !== 'deer' && kind !== 'person') this.damageCar(kind === 'parked' ? other : target?.car, amount, planted);
     }
-    const lost = kind === 'person' ? healthLossHit(outcome.mph, this.game) : healthLossInCar(outcome.mph, this.game);
-    for (const person of hurt) person.send({ t: 'injured', how, lost });
+    const inCar = healthLossInCar(outcome.mph, this.game), struck = healthLossHit(outcome.mph, this.game), nicked = healthLossStrike(outcome.mph, this.game);
+    for (const person of hurt) {
+      const victim = kind === 'person' && person.id === target?.id;
+      const glancing = kind === 'deer' || (kind === 'person' && !victim);
+      person.send({ t: 'injured', how: victim ? 'hit' : (glancing ? 'strike' : 'crash'), lost: victim ? struck : (glancing ? nicked : inCar) });
+    }
     for (const person of killed) this.killMember(person, { how, by: kind === 'person' ? client.id : null, at });
     return { outcome: outcome.kill.length ? 'dead' : 'hurt' };
   }
@@ -392,7 +396,7 @@ export class Room {
   damageCar(id, amount, planted) {
     const car = this.known(id, planted);
     if (!car || car.wrecked) return;
-    car.condition = Math.max(0, (car.condition ?? 100) - amount);
+    car.condition = conditionLeft(car.condition, amount);
     this.store.saveCar(car);
     this.tellAll({ t: 'car', car });
   }

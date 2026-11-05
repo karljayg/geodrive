@@ -7,9 +7,12 @@ const METRES_PER_DEGREE = 111320;
 
 // Damage to a car from a crash at this closing speed in mph: 0 to 100.
 export const carDamageAt = (mph, { crash } = GAME) => Math.min(100, (mph / crash.carDeadlyMph) ** 2 * 100);
-// Health lost by those in it. A person hit stands much less.
+// What's left, as a whole percent. The bar and the point where a car won't run both read this.
+export const conditionLeft = (condition, amount) => Math.max(0, Math.round((condition ?? 100) - amount));
+// Health lost by those in it. A person hit stands much less. A deer, or the driver who hit someone, only a bit.
 export const healthLossInCar = (mph, { crash } = GAME) => Math.min(100, (mph / crash.carDeadlyMph) ** 2 * crash.carHealthLoss);
 export const healthLossHit = (mph, { crash } = GAME) => Math.min(100, (mph / crash.personDeadlyMph) ** 2 * crash.personHealthLoss);
+export const healthLossStrike = (mph, { crash } = GAME) => Math.min(crash.strikeHealthLoss, (mph / crash.carDeadlyMph) ** 2 * crash.strikeHealthLoss);
 
 export const drivable = (condition, { damage } = GAME) => (condition ?? 100) > damage.notDrivableAt;
 

@@ -39,7 +39,7 @@ import { seatsPicture, seatsShown } from './carSeats.js';
 import { footprintsFromTile, stationFor, stationsFromTile, waterFromTile } from './stations.js';
 import { levelsFromTile, tilesAhead } from './levels.js';
 import { vectorTileAt } from './vector.js';
-import { carDamageAt, coastPlace, cutsOut, drivable, healthLossInCar, offRoadSlowing, offRoadWear, powerOf, reliabilityText } from './carDamage.js';
+import { carDamageAt, coastPlace, conditionLeft, cutsOut, drivable, healthLossStrike, offRoadSlowing, offRoadWear, powerOf, reliabilityText } from './carDamage.js';
 import { DEFAULTS, saveSettings, settings } from './settings.js';
 import { RoadTiles } from './tiles.js';
 import { Terrain } from './terrain.js';
@@ -113,6 +113,8 @@ let paused = false, trip = newTrip();
 const engine = new EngineAudio();
 engine.onState = (state) => perfLog.event('audio', { state });
 engine.preloadClip('explosion');
+engine.preloadClip('thump');
+engine.preloadClip('carHit');
 
 // A sound, and now and then how late the audio is on this machine, for the log: what the output says it's behind by, and how far the audio clock got in 200 ms, which is short if it stalled.
 const SOUND_TIMED_EVERY = 30000, SOUND_CLOCK_MS = 200;
@@ -787,7 +789,7 @@ function frame(t) {
     // Pull up at the destination, unless the driver has already taken over.
     if (arriving && (controls.throttle || controls.reverse || controls.steer || car.speed <= 0)) arriving = false;
     if (arriving) controls.brake = PLAN_DECEL;
-    if (!riding && world.rules.people && myCar) limitByCondition(controls, t);
+    if (!riding && (myCar || !world.rules.people)) limitByCondition(controls, t);
     const meters = riding ? followDriver() : stepCar(car, controls, dt);
     if (!riding) {
       if (world.rules.people) wearCar(controls, t);
@@ -1214,12 +1216,13 @@ function showOwnCar() {
 
 // A damaged car has less power and cuts out, and at the end won't run at all. It just coasts.
 function conditionNow() {
-  return myCar ? world.cars.get(myCar.id)?.condition ?? myCar.condition ?? 100 : 100;
+  if (!world.rules.people) return ownCondition;
+  return Math.round(myCar ? world.cars.get(myCar.id)?.condition ?? myCar.condition ?? 100 : 100);
 }
 
 let toldDead = false, toldEmpty = false;
 function limitByCondition(controls, t) {
-  if (trip.fuel <= 0) {
+  if (world.rules.people && trip.fuel <= 0) {
     controls.throttle = 0;
     if (!toldEmpty) {
       toldEmpty = true;
@@ -3312,38 +3315,57 @@ function hitAnything(meters) {
     }
     return;
   }
-  Object.assign(pos, move(pos.lat, pos.lng, car.heading, -hit.back));
+  // A chicken, a rabbit or a deer is run over. A person, a car or a building stops the car where it touches.
+  if (hit.other.kind !== 'chicken' && hit.other.kind !== 'rabbit' && hit.other.kind !== 'deer') Object.assign(pos, move(pos.lat, pos.lng, car.heading, -hit.back));
   stoppedByHit(hit.other, hit.closing);
 }
 
+const SMALL_ANIMAL = new Set(['chicken', 'rabbit']);
+
 function stoppedByHit(other, closing) {
+  const mph = closing * MPS_TO_MPH;
+  const small = SMALL_ANIMAL.has(other.kind);
+  const strike = small || other.kind === 'deer' || (other.kind === 'person' && mph >= GAME.crash.injuredFromMph);
+  if (strike) {
+    if (!bumps.allows(other.id, performance.now()) || mph < GAME.crash.injuredFromMph) return;
+    car.speed *= small ? GAME.crash.runOverKeep : GAME.crash.strikeKeep;
+    if (!small) setFsd(false);
+    sfx(small ? 'thump' : 'carHit');
+    perfLog.event('bump', { kind: other.kind, mph: Math.round(mph) });
+    if (small || other.kind === 'deer') return animalStruck(other, closing, small);
+    if (other.member) world.link.send({ t: 'bump', to: other.member, closing });
+    world.link.send({ t: 'crash', kind: other.kind, other: other.member ?? other.id, closing, lat: pos.lat, lng: pos.lng, planted: other.record });
+    return;
+  }
   car.speed = -Math.sign(car.speed || 1) * Math.min(BOUNCE, Math.abs(car.speed));
   setFsd(false);
   if (!bumps.allows(other.id, performance.now())) return;
   if (closing > 2) sfx('thud');
-  perfLog.event('bump', { kind: other.kind, mph: Math.round(closing * MPS_TO_MPH) });
-  if (other.kind === 'deer') return deerStruck(other, closing);
+  perfLog.event('bump', { kind: other.kind, mph: Math.round(mph) });
   if (other.member) world.link.send({ t: 'bump', to: other.member, closing });
   world.link.send({ t: 'crash', kind: other.kind, other: other.member ?? other.id, closing, lat: pos.lat, lng: pos.lng, planted: other.record });
 }
 
 // The sandbox keeps its own condition. A world asks the server, which uses the same curve.
 let ownCondition = 100;
-function deerStruck(other, closing) {
+function animalStruck(other, closing, small) {
   const mph = closing * MPS_TO_MPH;
-  if (mph < GAME.crash.injuredFromMph) return;
   const body = killAnimal(other.id);
   if (!body) return;
-  notice(body.down || 'It is down.', 3000);
-  if (world.rules.people && myCar) {
-    world.link.send({ t: 'crash', kind: 'deer', other: other.id, closing, lat: pos.lat, lng: pos.lng });
+  if (small) {
+    notice(say('ranOver'), 3000);
     return;
   }
-  ownCondition = Math.max(0, ownCondition - carDamageAt(mph));
+  if (world.rules.people && myCar) {
+    world.link.send({ t: 'crash', kind: 'deer', other: other.id, closing, lat: pos.lat, lng: pos.lng });
+    notice(body.down || 'It is down.', 3000);
+    return;
+  }
+  ownCondition = conditionLeft(ownCondition, carDamageAt(mph));
   conditionShown = '';
-  const lost = healthLossInCar(mph);
+  const lost = healthLossStrike(mph);
   vitals?.apply({ health: -lost });
-  if (lost >= 1) notice(say('injuredCrash'), 5000);
+  notice(lost >= 1 ? say('struck') : (body.down || 'It is down.'), 4000);
 }
 
 // An explosion is heard only by those near it.
@@ -3435,9 +3457,9 @@ function showFinalDeath({ how, by, days, walked }) {
 let conditionShown = '';
 function showCondition() {
   const here = riding ?? myCar;
-  const condition = world.rules.people
-    ? Math.round(here ? (world.cars.get(here.id)?.condition ?? here.condition ?? 100) : 100)
-    : ownCondition;
+  const condition = Math.round(world.rules.people
+    ? (here ? (world.cars.get(here.id)?.condition ?? here.condition ?? 100) : 100)
+    : ownCondition);
   if (!world.rules.people && condition >= 100) return;
   const words = reliabilityText(condition), key = `${condition}|${words}`;
   if (key === conditionShown) return;
@@ -3543,7 +3565,8 @@ async function startPeople() {
   world.on.injured = ({ how, lost }) => {
     vitals.stats.health = Math.max(1, vitals.stats.health - lost);
     vitals.save();
-    notice(say(how === 'hit' ? 'injuredHit' : 'injuredCrash'), 5000);
+    if (how === 'strike' && lost < 1) return;
+    notice(say(how === 'hit' ? 'injuredHit' : how === 'strike' ? 'struck' : 'injuredCrash'), 5000);
     perfLog.event('vital', { injured: how });
   };
   world.on.bumped = ({ by, closing }) => {
