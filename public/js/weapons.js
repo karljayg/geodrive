@@ -8,6 +8,23 @@ export const AIM_KINDS = new Set(['gun', 'bow', 'spear']);
 let gunSerial = 1;
 export const weaponUid = () => `g${(gunSerial++).toString(36)}`;
 
+// A reload starts the count at 1 again. Move it past uids already saved, or the next gun takes the handgun's.
+export function noteWeaponUids(lists) {
+  for (const list of lists) {
+    for (const item of list || []) {
+      const match = /^g([0-9a-z]+)$/.exec(item?.uid || '');
+      if (!match) continue;
+      const n = parseInt(match[1], 36);
+      if (n >= gunSerial) gunSerial = n + 1;
+    }
+  }
+}
+
+// Tests use this to act like a fresh page load.
+export function resetWeaponSerial() {
+  gunSerial = 1;
+}
+
 export function weaponSpec(id) {
   return Object.values(GAME.weapons).find((weapon) => weapon.item === id) || null;
 }

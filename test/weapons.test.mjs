@@ -4,7 +4,7 @@ import { GAME } from '../public/js/gameConfig.js';
 import { PocketData } from '../public/js/pocketData.js';
 import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { AIM_KINDS, caliberOf, cooldownUntil, feedOf, gunToLoad, gunsFor, heldWeapon, hitChance, isAimWeapon, reload, shoot, shotLands, shotReady, weaponSpec } from '../public/js/weapons.js';
+import { AIM_KINDS, caliberOf, carried, cooldownUntil, feedOf, gunToLoad, gunsFor, heldWeapon, hitChance, isAimWeapon, reload, resetWeaponSerial, shoot, shotLands, shotReady, weaponSpec } from '../public/js/weapons.js';
 import { GUN_CLIPS } from '../public/js/sounds.js';
 
 const memory = () => { const items = new Map(); return { getItem: (k) => items.get(k) ?? null, setItem: (k, v) => items.set(k, v) }; };
@@ -103,6 +103,53 @@ test('a saved stack of the same gun splits, and a box count is left as boxes', (
   assert.equal(data.bag.find((item) => item.id === '9mm bullets').count, 15);
   data.save();
   assert.equal(new PocketData(storage).bag.filter((item) => item.id === 'Handgun').length, 2);
+});
+
+test('a gun picked up after a reload does not take the handgun uid, so the hotbar can hold it', () => {
+  resetWeaponSerial();
+  const storage = memory();
+  const first = new PocketData(storage);
+  const hand = first.car.find((item) => item.id === 'Handgun');
+  assert.equal(hand.uid, 'g1');
+  first.save();
+  resetWeaponSerial();
+  const again = new PocketData(storage);
+  assert.equal(again.move('Handgun', false, hand.uid), true);
+  assert.equal(again.addToBag({ id: 'AR-15', name: 'AR-15', loaded: 30 }), true);
+  const rifle = again.bag.find((item) => item.id === 'AR-15');
+  assert.notEqual(rifle.uid, hand.uid);
+  for (const index of [0, 1, 2]) {
+    again.setHotbar(index, rifle.uid);
+    const held = carried(again.bag, again.state.hotbar[index]);
+    assert.equal(held.id, 'AR-15');
+    assert.equal(held.name, 'AR-15');
+  }
+});
+
+test('two guns saved under one uid are split, and the hand that had it keeps the first', () => {
+  resetWeaponSerial();
+  const storage = memory();
+  storage.setItem('geodrive_pocket_v1', JSON.stringify({
+    gunGiven: true, hammerGiven: true, notes: [], messages: {},
+    hotbar: ['g1', null, null, null, null, null, null, null, null, null],
+    bag: [
+      { id: 'Handgun', name: 'Handgun', count: 1, loaded: 8, uid: 'g1' },
+      { id: 'AR-15', name: 'AR-15', count: 1, loaded: 30, uid: 'g1' },
+    ],
+    car: [],
+  }));
+  const data = new PocketData(storage);
+  const pistol = data.bag.find((item) => item.id === 'Handgun');
+  const rifle = data.bag.find((item) => item.id === 'AR-15');
+  assert.equal(pistol.uid, 'g1');
+  assert.notEqual(rifle.uid, pistol.uid);
+  assert.equal(carried(data.bag, data.state.hotbar[0]).id, 'Handgun');
+  data.setHotbar(0, rifle.uid);
+  data.setHotbar(2, rifle.uid);
+  assert.equal(carried(data.bag, data.state.hotbar[0]).name, 'AR-15');
+  assert.equal(carried(data.bag, data.state.hotbar[2]).name, 'AR-15');
+  const saved = JSON.parse(storage.getItem('geodrive_pocket_v1'));
+  assert.equal(saved.bag.find((item) => item.id === 'AR-15').uid, rifle.uid);
 });
 
 test('range stays certain until a full extra 50 ft, then halves, and one roll decides the shot', () => {

@@ -2,7 +2,7 @@
 // with a limiter. Browsers only allow audio after a click or key press, so start() is called from those.
 import { AUDIO_PRESETS, engineCutoff, engineIntensity, layerMix, roadLevel, windLevel } from './engineMix.js';
 import { SynthEngine } from './synthEngine.js';
-import { bakeOrder, GUN_CLIPS, lengthOf, play, SOUNDS, takesOf } from './sounds.js';
+import { bakeOrder, CLIPS, GUN_CLIPS, lengthOf, play, SOUNDS, takesOf } from './sounds.js';
 
 const UPDATE_EVERY = 0.03; // s; the audio engine smooths in between, so this needn't match the frame rate
 const ATTACK = 0.03, RELEASE = 0.08, RATE_GLIDE = 0.05, BLEND_GLIDE = 0.08;
@@ -77,6 +77,8 @@ export class EngineAudio {
     hiss('highpass', 9000, 0.5, this.master).gain.value = KEEP_AWAKE;
     this.bakeSounds();
     if (this.settings) this.applySettings(this.settings);
+    for (const name of this.gunWanted || []) this.ensureClip(name);
+    this.gunWanted = null;
   }
 
   applySettings(s) {
@@ -239,17 +241,54 @@ export class EngineAudio {
     }
   }
 
-  // A gun's own recording. An automatic one keeps the burst that is already playing. Before the file arrives, the plain gunshot stands in.
-  playClip(name) {
-    const spec = GUN_CLIPS[name];
-    if (!spec || !this.ctx) return false;
+  recorded(name) {
+    return GUN_CLIPS[name] || CLIPS[name];
+  }
+
+  // Start fetching a recording. Names asked for before audio exists wait until start().
+  preloadClip(name) {
+    if (!this.recorded(name)) return;
+    if (!this.ctx) {
+      (this.gunWanted ||= new Set()).add(name);
+      return;
+    }
+    this.ensureClip(name);
+  }
+
+  ensureClip(name) {
+    const spec = this.recorded(name);
+    if (!spec || !this.ctx) return null;
     this.gunVoices ||= {};
     let voice = this.gunVoices[name];
-    if (!voice) {
-      voice = this.gunVoices[name] = { buffer: null, playing: false };
-      this.fetchBuffer(spec.file).then((buffer) => { voice.buffer = buffer; });
+    if (voice) return voice;
+    voice = this.gunVoices[name] = { buffer: null, playing: false, pending: 0, failed: false };
+    this.fetchBuffer(spec.file).then((buffer) => {
+      voice.buffer = buffer;
+      if (!buffer) voice.failed = true;
+      const waiting = voice.pending;
+      voice.pending = 0;
+      if (!waiting) return;
+      if (voice.failed) {
+        this.effect(GUN_CLIPS[name] ? 'gunshot' : name);
+        return;
+      }
+      const times = spec.hold ? 1 : waiting;
+      for (let i = 0; i < times; i++) this.playClip(name);
+    });
+    return voice;
+  }
+
+  // A recording of its own. An automatic gun keeps the burst that is already playing.
+  // One asked for before the file has decoded waits for it, rather than playing the stand-in first.
+  playClip(name) {
+    const spec = this.recorded(name);
+    if (!spec || !this.ctx) return false;
+    const voice = this.ensureClip(name);
+    if (voice?.failed) return false;
+    if (!voice?.buffer) {
+      if (voice) voice.pending++;
+      return !!voice;
     }
-    if (!voice.buffer) return false;
     if (spec.hold && voice.playing) return true;
     const source = this.ctx.createBufferSource(), gain = this.ctx.createGain();
     source.buffer = voice.buffer;
@@ -265,7 +304,8 @@ export class EngineAudio {
   effect(name) {
     this.start();
     if (!this.ctx) return;
-    if (GUN_CLIPS[name]) { if (this.playClip(name)) return; name = 'gunshot'; }
+    if (this.recorded(name) && this.playClip(name)) return;
+    if (GUN_CLIPS[name]) name = 'gunshot';
     const takes = this.baked.get(SOUNDS[name] ? name : 'ack');
     if (!takes) return play(this.ctx, this.fxBus, name);
     const source = this.ctx.createBufferSource();

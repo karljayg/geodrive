@@ -11,6 +11,8 @@ const NEXT_PERSON_AFTER = 6000;                 // ms after one person's models 
 const TAG_HEIGHT = 2.2, TAG_FONT = 15;          // m, px
 const HIDDEN = 0.001, SHOWN = 1.1;              // the same size as this player's own person, whom the camera has to find
 const WRECK_COLOUR = '#17120f', FIRE_ORANGE = [1, 0.42, 0.05], FIRE_YELLOW = [1, 0.85, 0.25], FIRE_TIME = 1100; // ms
+const FIRE_HOLD = 4500, FIRE_FRAMES = 5, FIRE_FRAME_MS = 110, FIRE_HEIGHT = 4.6; // the baked flame is 1 m tall; it stays a few seconds
+const HIDDEN_FIRE = 0.001;
 const PARKED_LOOK_EVERY = 1000;                 // ms
 const CAR_SIZE = 0.9;
 const TAG_MOVES = 1e-6;                         // degrees, about 10 cm
@@ -103,7 +105,8 @@ export class PeopleView {
     return this.carSources.get(key);
   }
 
-  // A fireball where something blew up: two balls that swell and go, so it needs nothing but the map.
+  // A fireball where something blew up, then the low-poly fire on that spot until it goes out.
+  // The flames are Jakob Hippe's Fire, CC-BY (https://poly.pizza/m/1QpMTUO7P-G), baked to still frames because the map's model doesn't play a clip.
   explode(at) {
     this.fireSources ||= [FIRE_ORANGE, FIRE_YELLOW].map((colour) => this.glbUrl(buildPersonGlb([ballPart(colour)])));
     const balls = this.fireSources.map((source) => this.model({ lat: at.lat, lng: at.lng, altitude: 1 }, source, 0.1));
@@ -112,6 +115,7 @@ export class PeopleView {
       const t = (performance.now() - began) / FIRE_TIME;
       if (t >= 1) {
         for (const ball of balls) ball.remove();
+        this.burn(at);
         return;
       }
       balls[0].scale = 1 + t * 9;
@@ -119,6 +123,36 @@ export class PeopleView {
       requestAnimationFrame(grow);
     };
     grow();
+  }
+
+  fireUrl(frame) {
+    this.fireUrls ||= Array.from({ length: FIRE_FRAMES }, (_, i) => new URL(`models/fire/fire-${i}.glb`, document.baseURI).href);
+    return this.fireUrls[frame];
+  }
+
+  // Right after the blast: the fire plays in place, then disappears.
+  burn(at) {
+    const position = { lat: at.lat, lng: at.lng, altitude: 0 };
+    const frames = Array.from({ length: FIRE_FRAMES }, (_, i) => this.model(position, this.fireUrl(i), i ? HIDDEN_FIRE : FIRE_HEIGHT));
+    const began = performance.now();
+    let shown = 0;
+    const tick = () => {
+      const elapsed = performance.now() - began;
+      if (elapsed >= FIRE_HOLD) {
+        for (const frame of frames) frame.remove();
+        return;
+      }
+      const next = Math.floor(elapsed / FIRE_FRAME_MS) % FIRE_FRAMES;
+      if (next !== shown) {
+        frames[shown].scale = HIDDEN_FIRE;
+        shown = next;
+      }
+      const fade = elapsed > FIRE_HOLD * 0.85 ? (FIRE_HOLD - elapsed) / (FIRE_HOLD * 0.15) : 1;
+      const scale = Math.max(HIDDEN_FIRE, FIRE_HEIGHT * fade);
+      if (frames[shown].scale !== scale) frames[shown].scale = scale;
+      requestAnimationFrame(tick);
+    };
+    tick();
   }
 
   // Parked cars near this person, and those others are driving, at their drivers. One new parked car a frame, as with people.

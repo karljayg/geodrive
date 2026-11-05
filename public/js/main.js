@@ -10,7 +10,7 @@ import { newCar, stepCar } from './physics.js';
 import { distance, easeAngle, leadDistance, move } from './camera.js';
 import { aimOf, firstInShot, screenOfGround, stepAim } from './aim.js';
 import { placeCamera } from './footWalker.js';
-import { caliberOf, cooldownUntil, gunToLoad, heldWeapon, hitChance, reload as reloadGun, shoot, shotLands, shotReady } from './weapons.js';
+import { caliberOf, carried, cooldownUntil, gunToLoad, heldWeapon, hitChance, reload as reloadGun, shoot, shotLands, shotReady, weaponSpec } from './weapons.js';
 import { FLAG_ONEWAY, RoadNet } from './road.js';
 import { Path, brakeFor, pursuitYaw, rerouteWait } from './route.js';
 import { CAR_PROFILES, hornFor, profileFor } from './cars.js';
@@ -112,6 +112,7 @@ let destination = null, route = null, routeIndex = null, routeLine = null, routi
 let paused = false, trip = newTrip();
 const engine = new EngineAudio();
 engine.onState = (state) => perfLog.event('audio', { state });
+engine.preloadClip('explosion');
 
 // A sound, and now and then how late the audio is on this machine, for the log: what the output says it's behind by, and how far the audio clock got in 200 ms, which is short if it stalled.
 const SOUND_TIMED_EVERY = 30000, SOUND_CLOCK_MS = 200;
@@ -1058,7 +1059,24 @@ function tipAboutPushing(fromX, fromY, dt) {
   notice(say(tip), 5000);
 }
 
+// Fetch the recording for each gun in a hand, so the first shot is that file and not the stand-in.
+let gunsReady = '';
+function preloadGuns() {
+  if (!pocket) return;
+  const names = [];
+  for (const index of [0, 1]) {
+    const item = carried(pocket.data.bag, pocket.data.state.hotbar[index]);
+    const spec = item && weaponSpec(item.id);
+    if (spec?.sound) names.push(spec.sound);
+  }
+  const key = names.join();
+  if (key === gunsReady) return;
+  gunsReady = key;
+  for (const name of new Set(names)) engine.preloadClip(name);
+}
+
 function runFoot(t, dt) {
+  preloadGuns();
   const began = performance.now(), live = !debug.hold && !dialogOpen && !paused;
   const fromX = foot.walker.x, fromY = foot.walker.y;
   foot.update(live ? dt : 0, live ? footInput(dt) : {}, world.clock.hour);
@@ -1771,7 +1789,7 @@ async function pocketReady() {
     phoneLight: () => carryLight('phone'),
     stowed: () => { if (foot?.light === 'flash') carryLight('flash'); }, // it can't stay on in the car
     flashlightOn: () => foot?.light === 'flash',
-    aimHand: (index) => { aimHand = index; },
+    aimHand: (index) => { aimHand = index; preloadGuns(); },
     loadAmmo,
     recentSaid: () => recentSaid,
     addHour,
@@ -1995,6 +2013,9 @@ el('foot').addEventListener('pointerdown', (e) => {
         aiming = true;
         holdOff = true; // holding through the first click only brings the mark up
         aim.x = aim.y = 0;
+        engine.start();
+        gunsReady = '';
+        preloadGuns();
         syncScope();
         return;
       }

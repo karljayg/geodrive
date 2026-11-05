@@ -1,6 +1,6 @@
 // What a person carries, kept in this browser: notes, text messages and the bag. Pure, tested in node.
 import { GAME } from './gameConfig.js';
-import { weaponSpec, weaponUid } from './weapons.js';
+import { noteWeaponUids, weaponSpec, weaponUid } from './weapons.js';
 
 const STORE = 'geodrive_pocket_v1';
 export const BAG_SLOTS = 12;
@@ -75,6 +75,7 @@ export class PocketData {
       const saved = JSON.parse(this.storage.getItem(STORE));
       this.state = { ...blank(), ...saved };
       for (const list of [this.state.bag, this.state.car]) renameOld(list);
+      noteWeaponUids([this.state.bag, this.state.car]);
       this.state.bag = splitWeapons(this.state.bag);
       this.state.car = splitWeapons(this.state.car);
       if (!this.state.hammerGiven) { // once, to new players and those from before there was one
@@ -88,7 +89,9 @@ export class PocketData {
         this.state.car.push({ id: ammo.item, name: ammo.item, count: gun.spare });
       }
       if (saved?.bag && !saved.car) this.state.bag.length < BAG_SLOTS ? this.state.bag.push(blank().bag[0]) : this.state.car.push(blank().bag[0]); // saved before there was a flashlight
+      const split = uniqueWeaponUids([this.state.bag, this.state.car]);
       this.state.hotbar = normalHotbar(saved?.hotbar, this.state.bag);
+      if (split) this.save();
     } catch (err) {
       console.warn('saved pocket:', err);
     }
@@ -338,6 +341,25 @@ function splitWeapons(list) {
     }
   }
   return out;
+}
+
+// A saved gun keeps its uid. A second one that was given the same uid, after a reload, gets a new one.
+// The first keeps it, so a hand already pointing at that uid still holds that gun.
+function uniqueWeaponUids(lists) {
+  const seen = new Set();
+  let changed = false;
+  for (const list of lists) {
+    for (const item of list || []) {
+      if (!item?.uid || !weaponSpec(item.id)) continue;
+      if (!seen.has(item.uid)) { seen.add(item.uid); continue; }
+      let uid = weaponUid();
+      while (seen.has(uid)) uid = weaponUid();
+      item.uid = uid;
+      seen.add(uid);
+      changed = true;
+    }
+  }
+  return changed;
 }
 
 function findCarried(list, id, uid) {

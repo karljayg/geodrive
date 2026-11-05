@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { actionsOf, armoryIn, claimOpened, coreQuestions, houseGunIn, pushFits, pushTarget, pushThing, inertNear, lookLine, questionsFor, releaseOpened, thingsNear, uniqueChoices, usableNear, useThing, withoutTaken, switchNeedsKey, switchSpots, useSwitch } from '../public/js/footActions.js';
 import { SAYINGS } from '../public/js/sayingsConfig.js';
-import { SOUNDS, bagSound, bakeOrder, footfall, lengthOf, play, stepSound, takesOf, useSound } from '../public/js/sounds.js';
+import { CLIPS, SOUNDS, bagSound, bakeOrder, footfall, lengthOf, play, stepSound, takesOf, useSound } from '../public/js/sounds.js';
 import { GAME } from '../public/js/gameConfig.js';
 import { ITEMS, parseFurniture } from '../public/js/furniture.js';
 import { frameOf } from '../public/js/furnish.js';
@@ -165,6 +165,13 @@ test('a used thing sounds different when it had nothing to give', () => {
 test('all food, drink and medicine has a sound of its own', () => {
   for (const [name, { kind }] of Object.entries(GAME.consumables)) assert.notEqual(bagSound(name, kind), 'ack', name);
   assert.equal(bagSound('Old jacket'), 'ack');
+});
+
+test('a crash plays the car-explosion recording, loud, and the wreck fire is on disk', () => {
+  assert.ok(CLIPS.explosion.gain >= 2);
+  assert.equal(CLIPS.explosion.file, 'audio/sfx/car-explosion.mp3');
+  assert.ok(existsSync(new URL(`../public/${CLIPS.explosion.file}`, import.meta.url)));
+  for (let i = 0; i < 5; i++) assert.ok(existsSync(new URL(`../public/models/fire/fire-${i}.glb`, import.meta.url)), `fire-${i}`);
 });
 
 test('sounds are short enough to act on, and their layers are ones play can make', () => {

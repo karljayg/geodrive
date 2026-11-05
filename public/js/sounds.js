@@ -12,7 +12,7 @@ const CLICK = [noise(3500, 3000, 0, 0.012, 0.5, 2), tone(1800, 1500, 0, 0.012, 0
 export const SOUNDS = {
   // Used for anything without a sound of its own: two short, quiet, rising notes.
   ack: [tone(660, 660, 0, 0.06, 0.16), tone(880, 880, 0.06, 0.09, 0.16)],
-  explosion: [noise(900, 60, 0, 1.3, 0.8), tone(90, 30, 0, 1.1, 0.7), noise(5000, 800, 0, 0.25, 0.4)],
+  explosion: [noise(900, 60, 0, 1.3, 0.8), tone(90, 30, 0, 1.1, 0.7), noise(5000, 800, 0, 0.25, 0.4)], // only if the recording in CLIPS never arrives
   roughGround: [noise(220, 110, 0, 0.5, 0.2), noise(70, 50, 0.05, 0.4, 0.22)],
   fillUp: [noise(1500, 1400, 0, 0.7, 0.1), tone(660, 880, 0.65, 0.12, 0.16)],
   message: [tone(1046, 1046, 0, 0.09, 0.14), tone(1397, 1397, 0.09, 0.16, 0.14)],
@@ -54,7 +54,7 @@ export const SOUNDS = {
   wallBreak: [tone(70, 36, 0, 0.3, 0.5), noise(1200, 260, 0, 0.45, 0.32), noise(2400, 700, 0.18, 0.2, 0.14), noise(1800, 500, 0.36, 0.22, 0.1)],
   clank: [tone(1250, 1190, 0, 0.26, 0.09, 'triangle'), tone(2830, 2780, 0, 0.16, 0.05, 'triangle'), noise(800, 500, 0, 0.05, 0.3)],
   clack: [tone(2600, 2300, 0, 0.022, 0.32, 'triangle'), noise(3000, 2400, 0, 0.018, 0.25)],
-  gunshot: [noise(3800, 700, 0, 0.06, 0.5, 1.2), tone(160, 50, 0, 0.09, 0.42), noise(900, 180, 0.02, 0.14, 0.22)], // until a gun's own recording has loaded
+  gunshot: [noise(3800, 700, 0, 0.06, 1, 1.2), tone(160, 50, 0, 0.09, 0.85), noise(900, 180, 0.02, 0.14, 0.45)], // only if a gun's recording never arrives
   dryFire: [tone(1700, 1200, 0, 0.02, 0.18, 'square'), noise(2800, 1800, 0, 0.015, 0.16)],
   reload: [noise(2200, 900, 0, 0.04, 0.28), tone(420, 260, 0.08, 0.07, 0.22), noise(1400, 700, 0.16, 0.05, 0.24)],
   paper: each([0, 0.07, 0.15, 0.22], (at, i) => [noise(4600 - i * 300, 3400, at, 0.06, 0.32, 1)]),
@@ -98,17 +98,22 @@ export const SOUNDS = {
   collapse: [tone(110, 40, 0, 0.3, 0.55), noise(500, 120, 0, 0.16, 0.3)],
 };
 
-// Recordings in public/audio/guns, Pixabay Content License. gain sits them with the other effects, which are much quieter than a full-scale file.
+// One-shot recordings on the effects bus. gain is before that bus, which is already the sound-effects volume, so the explosion is set high to be the loud one.
+export const CLIPS = {
+  explosion: { file: 'audio/sfx/car-explosion.mp3', gain: 3 },
+};
+
+// Recordings in public/audio/guns, Pixabay Content License. gain is before the effects bus. Loud on purpose; the explosion in CLIPS is louder still.
 // hold: an automatic burst, played once and left running while the trigger stays down, rather than restarted on every round.
 export const GUN_CLIPS = {
-  shot9mm: { file: 'audio/guns/9mm.mp3', gain: 0.4 },
-  shot45: { file: 'audio/guns/45.mp3', gain: 0.28 },
-  shotRevolver: { file: 'audio/guns/gun-shot.mp3', gain: 0.5 },
-  shotRifle: { file: 'audio/guns/gun-shot.mp3', gain: 0.5 },
-  shotSniper: { file: 'audio/guns/sniper.mp3', gain: 0.4 },
-  shotShotgun: { file: 'audio/guns/shotgun.mp3', gain: 0.4 },
-  shotAr: { file: 'audio/guns/ar15.mp3', gain: 0.45, hold: true },
-  shotSmg: { file: 'audio/guns/smg.mp3', gain: 0.35, hold: true },
+  shot9mm: { file: 'audio/guns/9mm.mp3', gain: 1 },
+  shot45: { file: 'audio/guns/45.mp3', gain: 0.7 },
+  shotRevolver: { file: 'audio/guns/gun-shot.mp3', gain: 1.25 },
+  shotRifle: { file: 'audio/guns/gun-shot.mp3', gain: 1.25 },
+  shotSniper: { file: 'audio/guns/sniper.mp3', gain: 1 },
+  shotShotgun: { file: 'audio/guns/shotgun.mp3', gain: 1 },
+  shotAr: { file: 'audio/guns/ar15.mp3', gain: 1.15, hold: true },
+  shotSmg: { file: 'audio/guns/smg.mp3', gain: 0.9, hold: true },
 };
 
 // Worth several takes, as they repeat and any one of them heard over and over sounds like a machine. Baked first, as they're the ones used all the time.
