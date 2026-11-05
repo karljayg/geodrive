@@ -16,6 +16,8 @@ export const CAR = {
   reverseAccel: 5,       // m/s²
   maxReverse: 12,        // m/s (27 mph)
   rolling: 0.25,         // m/s² when coasting
+  lowCoast: 2.5,         // m/s² when coasting below ~5 mph, so the last crawl doesn't linger
+  lowCoastBelow: 2.24,   // m/s (5 mph)
   aero: 0.00012,         // per metre: drag off the throttle grows with speed²
   handbrake: 11,         // m/s²
 };
@@ -36,7 +38,8 @@ export function stepCar(car, input, dt, spec = CAR) {
     if (forward) v = towardZero(v, (spec.brake + spec.brakeFade * Math.abs(v)) * dt);
     else v = Math.max(-spec.maxReverse, v - spec.reverseAccel * dt);
   } else {
-    v = towardZero(v, spec.rolling * dt);
+    const coast = Math.abs(v) <= spec.lowCoastBelow ? spec.lowCoast : spec.rolling;
+    v = towardZero(v, coast * dt);
   }
   if (!input.throttle) v = towardZero(v, spec.aero * v * v * dt); // the engine always wins, all the way to top speed
   if (input.handbrake) v = towardZero(v, spec.handbrake * dt);

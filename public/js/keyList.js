@@ -53,19 +53,32 @@ export const KEY_LIST = {
         [['Space'], 'Jump'],
         [['Q', 'E'], 'Turn the view (or click, then use the mouse)'],
       ] },
+      { name: 'Weapon in hand', keys: [
+        [['Mouse'], 'Click once to bring the mark up. Then it follows the mouse, and the next click shoots. Green means the shot will hit'],
+        [['Right click'], 'Use the right hand. A gun there shoots, and the mark stays'],
+        [['Esc'], 'Put the mark away'],
+        [['S'], 'Step back at half speed, still facing the mark'],
+        [['Shift', 'S'], 'Run back at half speed'],
+        [['9mm'], 'Select the bullets in the bag, or the slot they\'re on. One casing is 8 rounds'],
+        [['R'], 'Load one casing into the gun in your hand'],
+      ] },
       { name: 'Doing things', keys: [
         [['L'], 'Car, doors, stairs and lifts'],
         [['Shift', 'L'], 'Downstairs, between floors'],
-        [['F'], 'Use what\'s near. It asks: F or a number says yes, walking away or Esc says no. At the car, it offers to load it'],
+        [['F'], 'Use what\'s near. It asks: F or a number says yes, walking away or Esc says no. That number is used before your hands. At the car, it offers to load it'],
+        [['0–9'], 'In a lift: the floor, while its panel is open'],
         [['G'], 'Flashlight'],
       ] },
       { name: 'What you carry', keys: [
-        [['H'], 'Phone'],
+        [['1'], 'Left hand'],
+        [['2'], 'Right hand'],
+        [['3–9', '0'], 'Quick slots, set from the bag'],
+        [['H'], 'Phone. Then 1–9 opens an app, and 0 is home'],
         [['C'], 'Compass'],
         [['U'], 'Notepad'],
         [['B'], 'Bag, and the car\'s storage beside the car'],
       ] },
-      { name: 'Phone', keys: [
+      { name: 'Phone, once open', keys: [
         [['1–9'], 'Open an app'],
         [['0'], 'Home screen, or back a step'],
         [['1–9'], 'In Phone: dial. In Notes and Messages: pick from the list'],
@@ -77,8 +90,8 @@ export const KEY_LIST = {
         [['X'], 'In Health: start over'],
       ] },
       { name: 'Bag open', keys: [
-        [['1–0'], 'Use or move that slot'],
-        [['Shift', '1–0'], 'Drop that slot'],
+        [['1–0'], 'Use what\'s on that hand or slot'],
+        [['Shift', '1–0'], 'Drop what\'s on that hand or slot'],
         [['Z'], 'Undo a drop'],
       ] },
       { name: 'Music', keys: [

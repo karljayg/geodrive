@@ -30,7 +30,6 @@ const LOOK_EVERY = 1000;     // ms between checking which tiles are wanted
 const RETRY_AFTER = 15000;   // ms before a tile that failed is tried again
 const ROOM_SKY = [0.42, 0.58, 0.76];
 const NEAR = 2, FAR = 400;   // m from the camera
-const INDOOR_RANGE = 0.45;   // of the camera's distance outdoors, as furniture is small from there
 export const PERSON_SIZE = 1.1; // times real size, which is hard to follow from the driving camera
 
 const NAME_ABOVE = 2.15;     // m above the floor that a name goes indoors
@@ -482,19 +481,19 @@ export class Foot {
 
   // Does what was confirmed. Returns what to say.
   useEntry(entry, second) {
-    const building = this.walker.inside, { plan } = building, result = useThing(entry, plan, this.level, building.buildingId, second);
+    const building = this.walker.inside, { plan } = building, result = useThing(entry, plan, this.level, building.buildingId, second, this.room?.furnishing?.record.items);
     if (result.pose) {
       this.onSound?.(result.sound);
       return this.takePose(entry, result);
     }
     if (result.push) return this.pushEntry(entry, result);
     if (result.effect) this.onUsed?.(result.effect, result.count);
-    if (result.give && this.onFound && !this.onFound(result.give)) {
+    if (result.give && this.onFound && !this.onFound(result.found || result.give)) {
       if (result.taken) plan.state[this.level].taken.pop();
       this.onSound?.('ack');
       return say('bagFull');
     }
-    if (result.give) this.gave.set(thingKey(entry), result.give);
+    if (result.give) this.gave.set(thingKey(entry), result.found || result.give);
     this.onSound?.(result.sound);
     if (result.taken) {
       const { furnishing } = this.room, gone = entry;
@@ -689,7 +688,7 @@ export class Foot {
   }
 
   renderRoom(hour) {
-    const view = { ...this.view, range: this.view.range * INDOOR_RANGE };
+    const view = { ...this.view, range: this.view.range * GAME.aim.indoorRange };
     const aspect = gl.fit(), { eye, target } = placeCamera(this.walker, view);
     const daylight = tintAt(hour).map((v) => v / 255), tint = [1, 1, 1], sky = ROOM_SKY.map((v, i) => v * daylight[i]);
     const viewProj = multiply(perspective(this.view.fov, aspect, NEAR, FAR), lookAt(eye, target));

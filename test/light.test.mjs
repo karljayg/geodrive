@@ -69,7 +69,7 @@ test('everyone starts with a flashlight in the bag, and things move one at a tim
   assert.equal(data.car[0].count, 1);
   assert.equal(data.move(FLASHLIGHT, true), true);
   assert.equal(new PocketData(storage).bagHas(FLASHLIGHT), false, 'and it stays in the car after a reload');
-  assert.equal(new PocketData(storage).car.length, 3, 'with the sledgehammer');
+  assert.equal(new PocketData(storage).car.length, 5, 'with the sledgehammer, handgun and 9mm');
   assert.equal(data.move(FLASHLIGHT, false), true);
   assert.equal(data.bagHas(FLASHLIGHT), true);
   assert.equal(data.move('nothing', true), false);

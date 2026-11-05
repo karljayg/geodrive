@@ -82,6 +82,8 @@ const ICONS = {
   'Pack of batteries': rect(4, 5, 24, 23, '#d6332e', 2) + rect(7, 12, 5, 13, '#2f3a44') + rect(13.500, 12, 5, 13, '#2f3a44') + rect(20, 12, 5, 13, '#2f3a44') + rect(7, 8, 18, 2, '#fff'),
   'Holiday lights': line('M3 8c8 8 18 8 26 0', '#2f6b3a') + circle(8, 15, 3, '#d6332e') + circle(14, 19, 3, '#f2cf3f') + circle(20, 19, 3, '#3f8fd8') + circle(26, 14, 3, '#5fa53f'),
   Sledgehammer: path('M21 10l3 3L9 29l-3-3z', '#a9794a') + path('M17 4l8-1 5 6-1 6-5 1-8-7z', '#5d6770') + path('M17 4l8-1-1 3-5 3z', '#8a97a3'),
+  Handgun: path('M6 13h12l1 3h5v5h-4l-1 6h-3l1-6H9l-1 3H5z', '#3a424a') + path('M6 13h12l1 2H8z', '#6a737c') + rect(20, 8, 3, 5, '#2a2f35') + rect(5, 18, 4, 3, '#8a6a3a'),
+  '9mm bullets': rect(6, 9, 5, 15, '#c9a24a', 1) + rect(6, 6, 5, 4, '#c5ced4', 1) + rect(13.5, 9, 5, 15, '#c9a24a', 1) + rect(13.5, 6, 5, 4, '#c5ced4', 1) + rect(21, 9, 5, 15, '#c9a24a', 1) + rect(21, 6, 5, 4, '#c5ced4', 1),
   Wrench: path('M22 3a7 7 0 0 0-6 10L4 25a3 3 0 0 0 4 4l12-12a7 7 0 0 0 9-9l-5 4-4-1-1-4z', '#9aa3aa'),
   Screwdriver: rect(13, 3, 6, 12, '#d6332e', 2) + rect(15, 15, 2, 10, '#c9d1d6') + path('M14.500 25h3l-1 4h-1z', '#9aa3aa'),
   'Tape measure': rect(4, 8, 19, 19, '#f2cf3f', 3) + circle(13, 17, 5, '#39424c') + rect(23, 22, 7, 3, '#f4f1e6') + rect(25, 22, 1, 2, '#39424c') + rect(28, 22, 1, 2, '#39424c'),

@@ -5,7 +5,7 @@ import { hasItemIcon, itemIcon } from '../public/js/itemArt.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { ART } from '../public/js/pocketArt.js';
-import { BAG_SLOTS, CONTACTS, PocketData, addRecent, bearingToCar, compassName, distanceText, noteTitle, songParts, turnToCar } from '../public/js/pocketData.js';
+import { BAG_SLOTS, CONTACTS, HOTBAR_SIZE, PocketData, addRecent, bearingToCar, blankHotbar, compassName, distanceText, hotbarIndex, hotbarKeys, normalHotbar, noteTitle, songParts, turnToCar } from '../public/js/pocketData.js';
 
 const memory = () => {
   const items = new Map();
@@ -76,6 +76,8 @@ test('the bag holds a limited number of things, counts repeats and gives them ba
   assert.equal(data.takeFromBag('t0'), true);
   assert.equal(data.takeFromBag('t0'), false);
   assert.equal(data.bag.length, BAG_SLOTS - 1, 'one gone');
+  assert.equal(data.addToBag({ id: '9mm bullets', name: '9mm bullets', count: 10 }), true);
+  assert.equal(data.bag.find((i) => i.id === '9mm bullets').count, 10);
 });
 
 test('storage that fails or holds rubbish loses only the saving', () => {
@@ -110,7 +112,7 @@ test('what played earlier: newest first, no repeat of the current one, and a lim
 });
 
 test('everything that can reach the bag has its own picture, and anything new still gets one', () => {
-  const names = new Set([...Object.values(GAME.finds).flat(), ...Object.values(GAME.machines).flatMap((m) => m.give), ...Object.keys(GAME.consumables), 'Flashlight', 'Cash', 'Ticket']);
+  const names = new Set([...Object.values(GAME.finds).flat(), ...Object.values(GAME.machines).flatMap((m) => m.give), ...Object.keys(GAME.consumables), 'Flashlight', 'Cash', 'Ticket', GAME.weapons.handgun.item, GAME.calibers['9mm'].item]);
   for (const item of Object.keys(ITEMS)) {
     const actions = actionsOf(item);
     if (actions.includes('pick up')) names.add(useThing([item, ITEMS[item].models[0], 0, 0, 0, 0, 0, 1], {}, 1, 'x', actions[1] === 'pick up').give);
@@ -128,6 +130,42 @@ test('things saved under an old name take the new one, and join any already ther
   const memory = new Map([['geodrive_pocket_v1', JSON.stringify({ notes: [], messages: {}, bag: [{ id: 'Plasters', name: 'Plasters', count: 2 }, { id: 'Band-Aids', name: 'Band-Aids', count: 1 }], car: [{ id: 'Trainers', name: 'Trainers', count: 1 }] })]]);
   const data = new PocketData({ getItem: (k) => memory.get(k) ?? null, setItem: (k, v) => memory.set(k, v) });
   assert.deepEqual(data.bag.map((i) => [i.id, i.count]), [['Band-Aids', 3]]);
-  assert.deepEqual(data.car.filter((i) => i.id !== GAME.hammer.item).map((i) => [i.id, i.name]), [['Sneakers', 'Sneakers']]);
+  const given = new Set([GAME.hammer.item, GAME.weapons.handgun.item, GAME.calibers['9mm'].item]);
+  assert.deepEqual(data.car.filter((i) => !given.has(i.id)).map((i) => [i.id, i.name]), [['Sneakers', 'Sneakers']]);
   assert.ok(GAME.consumables['Band-Aids'] && hasItemIcon('Sneakers') && hasItemIcon('Can of beans') && hasItemIcon('Silverware'));
+});
+
+test('the left hand starts on the flashlight, and a saved bar is kept, including cleared', () => {
+  const storage = memory();
+  const data = new PocketData(storage);
+  assert.equal(data.state.hotbar[0], 'Flashlight');
+  assert.equal(data.state.hotbar.length, HOTBAR_SIZE);
+  assert.equal(data.setHotbar(1, 'Can of beans'), true);
+  assert.equal(data.setHotbar(9, 'Flashlight'), true);
+  assert.equal(data.setHotbar(10, 'x'), false);
+  const again = new PocketData(storage);
+  assert.equal(again.state.hotbar[1], 'Can of beans');
+  assert.equal(again.state.hotbar[9], 'Flashlight');
+  assert.deepEqual(hotbarKeys(again.state.hotbar, 'Flashlight'), ['1', '0']);
+  assert.equal(hotbarIndex('1'), 0);
+  assert.equal(hotbarIndex('0'), 9);
+  again.setHotbar(0, null);
+  assert.equal(new PocketData(storage).state.hotbar[0], null);
+  again.startAgain();
+  assert.deepEqual(again.state.hotbar, blankHotbar());
+  assert.equal(again.bag[0].id, 'Flashlight');
+});
+
+test('no saved bar leaves the left hand empty when the flashlight is not in the bag, and old names follow', () => {
+  const storage = memory();
+  storage.setItem('geodrive_pocket_v1', JSON.stringify({ bag: [{ id: 'Apple', name: 'Apple', count: 1 }], car: [] }));
+  assert.equal(new PocketData(storage).state.hotbar[0], null);
+  storage.setItem('geodrive_pocket_v1', JSON.stringify({ hotbar: ['Trainers', 4, '', null], bag: [], car: [] }));
+  const renamed = new PocketData(storage);
+  assert.equal(renamed.state.hotbar[0], 'Sneakers');
+  assert.equal(renamed.state.hotbar[1], null);
+  assert.equal(renamed.state.hotbar[2], null);
+  assert.equal(renamed.state.hotbar.length, HOTBAR_SIZE);
+  assert.deepEqual(normalHotbar('nope').slice(0, 1), ['Flashlight']);
+  assert.deepEqual(normalHotbar([null, null, null, null, null, null, null, null, null, null], [{ id: 'Flashlight' }])[0], null);
 });

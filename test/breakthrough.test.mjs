@@ -100,13 +100,13 @@ test('a hole keeps clear of a switch, and a short wall full of them refuses', ()
 
 test('the car gets one sledgehammer, once, and old saves get it too', () => {
   const storage = memory(), data = new PocketData(storage);
-  assert.deepEqual(data.car, [{ id: GAME.hammer.item, name: GAME.hammer.item, count: 1 }]);
-  data.drop(GAME.hammer.item, true);
+  assert.deepEqual(data.car.filter((item) => item.id === GAME.hammer.item), [{ id: GAME.hammer.item, name: GAME.hammer.item, count: 1 }]);
+  while (data.car.length) data.drop(data.car[0].id, true);
   data.save();
   assert.equal(new PocketData(storage).car.length, 0, 'not given again');
   const old = memory();
   old.setItem('geodrive_pocket_v1', JSON.stringify({ notes: [], messages: {}, bag: [], car: [{ id: 'Milk', name: 'Milk', count: 1 }] }));
-  assert.equal(new PocketData(old).car.length, 2);
+  assert.equal(new PocketData(old).car.length, 4);
 });
 
 test('what the game hands the walking code is all kept, as a name left out is silently dropped', async () => {

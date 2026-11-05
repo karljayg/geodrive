@@ -1,9 +1,11 @@
 // What a person carries, kept in this browser: notes, text messages and the bag. Pure, tested in node.
 import { GAME } from './gameConfig.js';
+import { weaponSpec } from './weapons.js';
 
 const STORE = 'geodrive_pocket_v1';
 export const BAG_SLOTS = 12;
 export const CAR_SLOTS = 60;
+export const HOTBAR_SIZE = 10; // 1 left hand, 2 right hand, then 3–9 and 0
 export const FLASHLIGHT = 'Flashlight'; // everyone starts with one
 const MOST_NOTES = 200, MOST_TEXT = 4000, MOST_MESSAGES = 100; // per thread
 
@@ -16,7 +18,35 @@ export const CONTACTS = [
 ];
 
 const HAMMER = GAME.hammer.item;
-const blank = () => ({ notes: [], messages: {}, bag: [{ id: FLASHLIGHT, name: FLASHLIGHT, count: 1 }], car: [] });
+// The left hand starts on the flashlight. A saved bar is kept as it was, including all empty.
+export const blankHotbar = () => [FLASHLIGHT, ...Array(HOTBAR_SIZE - 1).fill(null)];
+export const hotbarIndex = (key) => (key === '0' ? HOTBAR_SIZE - 1 : Number(key) - 1);
+export const hotbarKey = (index) => String((index + 1) % 10);
+export const hotbarPlace = (index) => (index === 0 ? 'left hand' : index === 1 ? 'right hand' : hotbarKey(index));
+
+export function hotbarKeys(hotbar, id) {
+  const keys = [];
+  for (let i = 0; i < hotbar.length; i++) if (hotbar[i] === id) keys.push(hotbarKey(i));
+  return keys;
+}
+
+// A missing bar is the default: flashlight in the left hand when it's in the bag. A saved one is ten ids, with old item names brought forward.
+export function normalHotbar(saved, bag) {
+  if (!Array.isArray(saved)) {
+    const bar = Array(HOTBAR_SIZE).fill(null);
+    if (!bag || bag.some((item) => item.id === FLASHLIGHT)) bar[0] = FLASHLIGHT;
+    return bar;
+  }
+  const list = [];
+  for (let i = 0; i < HOTBAR_SIZE; i++) {
+    const id = saved[i];
+    const name = typeof id === 'string' ? (RENAMED[id] || id) : '';
+    list.push(name || null);
+  }
+  return list;
+}
+
+const blank = () => ({ notes: [], messages: {}, bag: [{ id: FLASHLIGHT, name: FLASHLIGHT, count: 1 }], car: [], hotbar: blankHotbar() });
 
 // Things saved under a name since changed, joined with any of the new name.
 const RENAMED = { Trainers: 'Sneakers', Plasters: 'Band-Aids', 'Tin of beans': 'Can of beans', Cutlery: 'Silverware' };
@@ -44,7 +74,14 @@ export class PocketData {
         this.state.hammerGiven = true;
         this.state.car.push({ id: HAMMER, name: HAMMER, count: 1 });
       }
+      if (!this.state.gunGiven) { // once, the same way, so a handgun is there to aim with
+        this.state.gunGiven = true;
+        const gun = GAME.weapons.handgun, ammo = GAME.calibers[gun.caliber];
+        this.state.car.push({ id: gun.item, name: gun.item, count: 1, loaded: gun.magazine });
+        this.state.car.push({ id: ammo.item, name: ammo.item, count: gun.spare });
+      }
       if (saved?.bag && !saved.car) this.state.bag.length < BAG_SLOTS ? this.state.bag.push(blank().bag[0]) : this.state.car.push(blank().bag[0]); // saved before there was a flashlight
+      this.state.hotbar = normalHotbar(saved?.hotbar, this.state.bag);
     } catch (err) {
       console.warn('saved pocket:', err);
     }
@@ -118,12 +155,13 @@ export class PocketData {
     return this.state.bag;
   }
 
-  // item: { id, name }. False if the bag is full; the same thing again adds to its count.
+  // item: { id, name, count, loaded }. False if the bag is full; the same thing again adds to its count. A weapon remembers the rounds in it.
   addToBag(item) {
     const known = this.state.bag.find((i) => i.id === item.id);
-    if (known) known.count++;
+    const n = item.count || 1;
+    if (known) known.count += n;
     else if (this.state.bag.length >= BAG_SLOTS) return false;
-    else this.state.bag.push({ ...item, count: 1 });
+    else this.state.bag.push(bagEntry(item));
     this.save();
     return true;
   }
@@ -136,6 +174,14 @@ export class PocketData {
     return this.state.bag.some((item) => item.id === id);
   }
 
+  // Points a hand or quick slot at something in the bag. The thing stays in the bag; the slot only remembers its id.
+  setHotbar(index, id) {
+    if (index < 0 || index >= HOTBAR_SIZE) return false;
+    this.state.hotbar[index] = id || null;
+    this.save();
+    return true;
+  }
+
   // One of a thing from the bag to the car, or back. False if there's no room where it's going.
   move(id, toCar) {
     const [from, to, room] = toCar ? [this.state.bag, this.state.car, CAR_SLOTS] : [this.state.car, this.state.bag, BAG_SLOTS];
@@ -144,7 +190,7 @@ export class PocketData {
     const there = to.find((i) => i.id === id);
     if (!there && to.length >= room) return false;
     if (there) there.count++;
-    else to.push({ id: item.id, name: item.name, count: 1 });
+    else to.push(movedOne(item));
     if (--item.count <= 0) from.splice(from.indexOf(item), 1);
     this.save();
     return true;
@@ -163,23 +209,48 @@ export class PocketData {
   putBack(item, toCar = false) {
     const list = toCar ? this.state.car : this.state.bag, there = list.find((i) => i.id === item.id);
     if (there) there.count++;
-    else list.push({ id: item.id, name: item.name, count: 1 });
+    else list.push(bagEntry(item));
     this.save();
   }
 
   // A new life: only what everyone starts with, in a shared world.
   startAgain() {
-    this.state.bag = blank().bag;
+    const fresh = blank();
+    this.state.bag = fresh.bag;
+    this.state.hotbar = fresh.hotbar;
     this.save();
   }
 
   takeFromBag(id) {
-    const known = this.state.bag.find((i) => i.id === id);
-    if (!known) return false;
-    if (--known.count <= 0) this.state.bag = this.state.bag.filter((i) => i !== known);
-    this.save();
-    return true;
+    return this.takeCount(id, 1) > 0;
   }
+
+  // Several of one thing, for loading a gun. How many actually went.
+  takeCount(id, n) {
+    const known = this.state.bag.find((i) => i.id === id);
+    if (!known || n <= 0) return 0;
+    const taken = Math.min(known.count, n);
+    known.count -= taken;
+    if (known.count <= 0) this.state.bag = this.state.bag.filter((i) => i !== known);
+    this.save();
+    return taken;
+  }
+}
+
+// A new bag or car entry. A weapon starts full unless it already says how many rounds it has.
+function bagEntry(item) {
+  const made = { id: item.id, name: item.name, count: item.count || 1 };
+  const spec = weaponSpec(item.id);
+  if (spec) made.loaded = Number.isFinite(item.loaded) ? item.loaded : spec.magazine;
+  return made;
+}
+
+// One moved between the bag and the car. The last of a stack keeps its rounds; a split one is full.
+function movedOne(item) {
+  const spec = weaponSpec(item.id);
+  const made = { id: item.id, name: item.name, count: 1 };
+  if (spec) made.loaded = item.count <= 1 && Number.isFinite(item.loaded) ? item.loaded : spec.magazine;
+  return made;
 }
 
 // --- The way to the car ---------------------------------------------------------------------------------------

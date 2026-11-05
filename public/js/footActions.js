@@ -295,14 +295,35 @@ export function uniqueChoices(choices) {
   return choices.filter((choice) => !seen.has(choice.label) && seen.add(choice.label)).slice(0, MOST_CHOICES);
 }
 
-// Does it, and says which sound goes with it. second: Shift was held.
-export function useThing(entry, plan, floor, buildingId, second = false) {
-  const actions = actionsOf(entry[0]), action = actions[second && actions[1] ? 1 : 0], result = doThing(entry, action, plan, floor, buildingId);
+// About one home in four. The same drawer, desk or cabinet every time, upstairs when the house has one.
+export function houseGunIn(plan, buildingId, floor, items, entry, config = GAME.houseGun) {
+  if (!config || plan?.type !== 'home' || !items?.length || !entry) return null;
+  const roll = dice(hashText(`${buildingId}:housegun`));
+  if (roll() >= config.chance) return null;
+  const floors = plan.floors || 1;
+  const where = floors < 2 ? 1 : 2 + Math.floor(dice(hashText(`${buildingId}:housegun:floor`))() * (floors - 1));
+  if (floor !== where) return null;
+  const kind = config.hideIn.find((name) => items.some((item) => item[0] === name));
+  if (!kind) return null;
+  const spots = items.filter((item) => item[0] === kind);
+  const chosen = spots[Math.floor(dice(hashText(`${buildingId}:housegun:spot`))() * spots.length)];
+  if (thingKey(chosen) !== thingKey(entry)) return null;
+  const weapon = GAME.weapons.handgun, ammo = GAME.calibers[weapon.caliber].item;
+  const found = [
+    { id: weapon.item, name: weapon.item, count: 1, loaded: weapon.magazine },
+    { id: ammo, name: ammo, count: config.casings },
+  ];
+  return { give: weapon.item, found, say: line('foundGun', { name: nameOf(entry[0]), casings: config.casings }) };
+}
+
+// Does it, and says which sound goes with it. second: Shift was held. items: the floor's furniture, so a house gun can pick one of them.
+export function useThing(entry, plan, floor, buildingId, second = false, items = null) {
+  const actions = actionsOf(entry[0]), action = actions[second && actions[1] ? 1 : 0], result = doThing(entry, action, plan, floor, buildingId, items);
   return { ...result, sound: useSound(entry[0], action, result) };
 }
 
 // Returns what happened: { say } always, with { give: name of a thing for the bag }, { taken: true } if the thing has gone from the room, { pose: 'sit' | 'sleep' }, or { empty } or { dry } if it had nothing to give.
-function doThing(entry, action, plan, floor, buildingId) {
+function doThing(entry, action, plan, floor, buildingId, items) {
   const item = entry[0], name = nameOf(item), state = stateOf(plan, floor), id = key(entry);
   if (action === 'sit' || action === 'sleep') return { pose: action, say: action === 'sleep' ? 'You lie down.' : '' };
   if (action === 'pick up') {
@@ -310,9 +331,11 @@ function doThing(entry, action, plan, floor, buildingId) {
     return { give: name[0].toUpperCase() + name.slice(1), taken: true, say: line('pickUp', { name }) };
   }
   if (action === 'open' || action === 'search') {
-    const finds = GAME.finds[item], chance = GAME.findChance[item] ?? GAME.findChance.default;
     if (state.opened.includes(id)) return { say: line('nothingElse', { name }) };
     state.opened.push(id);
+    const stashed = houseGunIn(plan, buildingId, floor, items, entry);
+    if (stashed) return stashed;
+    const finds = GAME.finds[item], chance = GAME.findChance[item] ?? GAME.findChance.default;
     const roll = dice(hashText(`${buildingId}:${floor}:${id}`));
     if (!finds || roll() >= chance) return { say: line('emptyThing', { name }) };
     const found = finds[Math.floor(roll() * finds.length)];

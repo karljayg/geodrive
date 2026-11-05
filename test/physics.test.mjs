@@ -67,6 +67,17 @@ test('coasting and the handbrake bring the car to rest', () => {
   assert.equal(car.speed, 0);
 });
 
+test('coasting from 5 mph stops in about a second, not a long crawl', () => {
+  const car = newCar();
+  car.speed = CAR.lowCoastBelow;
+  run(car, {}, 1.2);
+  assert.equal(car.speed, 0);
+  const crawl = newCar();
+  crawl.speed = CAR.lowCoastBelow + 1;
+  run(crawl, {}, 1.2);
+  assert.ok(crawl.speed > CAR.lowCoastBelow * 0.5, 'above 5 mph still uses ordinary rolling');
+});
+
 test('FSD pedals: part throttle is gentler, and its brake stops without reversing', () => {
   const full = newCar(), part = newCar();
   run(full, { throttle: 1 }, 2);

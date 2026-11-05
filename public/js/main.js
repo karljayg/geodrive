@@ -8,6 +8,9 @@ import { keyListHtml } from './keyList.js';
 import { say } from './sayings.js';
 import { newCar, stepCar } from './physics.js';
 import { distance, easeAngle, leadDistance, move } from './camera.js';
+import { aimOf, firstInShot, screenOfGround, stepAim } from './aim.js';
+import { placeCamera } from './footWalker.js';
+import { caliberOf, gunToLoad, heldWeapon, reload as reloadGun, shoot } from './weapons.js';
 import { FLAG_ONEWAY, RoadNet } from './road.js';
 import { Path, brakeFor, pursuitYaw, rerouteWait } from './route.js';
 import { CAR_PROFILES, hornFor, profileFor } from './cars.js';
@@ -155,6 +158,8 @@ const LOCKED_TIME = 2800; // ms
 let carRadio = null; // what the car's radio was doing when they got out
 let pocket = null; // the phone, compass, notepad and bag, made the first time someone gets out
 let people = null, foot = null, footLoading = false, lookX = 0, lookY = 0, touchLook = null; // the walk in progress, while out of the car
+const aim = { x: 0, y: 0 }; // scope mark, pixels from the middle of the view
+let aiming = false, aimGone = 0, aimHand = 1, lastShot = null, shotUntil = 0;
 const scenes = new Scenes(MUSIC);
 let soundtrack = null, darkSince = null, musicTest = null; // musicTest: the mood picked in Settings, heard over everything
 const debug = { hold: false, car, pos, keys, roads, tiles, perfLog }; // window.__geodrive, for checks from the console
@@ -832,15 +837,147 @@ function frame(t) {
 
 // --- On foot --------------------------------------------------------------------------------------------------
 
+function aimView() {
+  mapBox ||= { width: el('map').clientWidth, height: el('map').clientHeight };
+  const indoors = !!foot?.walker.inside;
+  return {
+    width: mapBox.width, height: mapBox.height, fovY: FOV_Y, below: CAR_BELOW_CENTRE,
+    range: indoors ? foot.view.range * GAME.aim.indoorRange : range,
+    tilt: indoors ? foot.view.tilt : tilt,
+  };
+}
+
+// A weapon in hand 1 or 2, and the bag still has it. Panels that have taken the mouse leave the mark where it is.
+function heldNow() {
+  if (!foot || !pocket) return null;
+  return heldWeapon(pocket.data.state.hotbar, pocket.data.bag, aimHand);
+}
+
+function aimBlocked() {
+  if (!foot || paused || dialogOpen) return true;
+  if (pocket?.bagOpen || pocket?.app) return true;
+  return el('settings').classList.contains('open') || el('help').classList.contains('open');
+}
+
+function dropAim() {
+  aiming = false;
+  aim.x = aim.y = 0;
+  lastShot = null;
+  const mark = el('scope');
+  mark.hidden = true;
+  mark.classList.remove('fired');
+}
+
 function footInput(dt) {
+  const held = heldNow();
+  if (aiming && (!held || aimBlocked())) dropAim();
+  const qe = ((keys.has('e') ? 1 : 0) - (keys.has('q') ? 1 : 0)) * FOOT_TURN * dt;
+  let look = lookX * LOOK_SENSITIVITY + qe, aimYaw = null;
+  if (aiming && held) {
+    const view = aimView();
+    look = stepAim(aim, lookX, lookY, view.width, view.height, LOOK_SENSITIVITY).lookX + qe;
+    lastShot = aimOf(view.width / 2 + aim.x, view.height / 2 + aim.y, foot.walker.yaw + look, view);
+    aimYaw = lastShot.yaw;
+  } else {
+    aim.x = aim.y = 0;
+    lastShot = null;
+  }
   const input = {
     forward: (keys.has('w') || keys.has('arrowup') ? 1 : 0) - (keys.has('s') || keys.has('arrowdown') ? 1 : 0),
     strafe: (keys.has('d') || keys.has('arrowright') ? 1 : 0) - (keys.has('a') || keys.has('arrowleft') ? 1 : 0),
-    jump: keys.has(' ') || jumpPressed, run: keys.has('shift') && vitals.canRun(), walkSpeed: playerWalk(), runSpeed: vitals.runSpeed(playerWalk(), playerRun()), lookX: lookX * LOOK_SENSITIVITY + ((keys.has('e') ? 1 : 0) - (keys.has('q') ? 1 : 0)) * FOOT_TURN * dt,
+    jump: keys.has(' ') || jumpPressed, run: keys.has('shift') && vitals.canRun(), walkSpeed: playerWalk(), runSpeed: vitals.runSpeed(playerWalk(), playerRun()), lookX: look,
+    aiming: aiming && !!held, aimYaw, backPace: GAME.aim.backPace,
   };
   lookX = lookY = 0;
   jumpPressed = false;
   return input;
+}
+
+function syncScope() {
+  const mark = el('scope'), held = heldNow(), show = aiming && held && !aimBlocked();
+  mark.hidden = !show;
+  if (!show) {
+    if (mark.classList.contains('fired') && performance.now() > shotUntil) mark.classList.remove('fired');
+    mark.classList.remove('onTarget');
+    return;
+  }
+  mark.style.setProperty('--aim-x', `${aim.x}px`);
+  mark.style.setProperty('--aim-y', `${aim.y}px`);
+  const rounds = String(held.item.loaded ?? 0);
+  if (el('scopeRounds').textContent !== rounds) el('scopeRounds').textContent = rounds;
+  if (lastShot) {
+    mark.dataset.ahead = lastShot.ahead.toFixed(2);
+    mark.dataset.side = lastShot.side.toFixed(2);
+    mark.dataset.bearing = ((lastShot.yaw * 180) / Math.PI).toFixed(1);
+  }
+  const firing = performance.now() < shotUntil;
+  mark.classList.toggle('fired', firing);
+  mark.classList.toggle('onTarget', !!creatureUnderShot());
+  const svg = el('scopeShot');
+  if (firing && lastShot) {
+    const view = aimView(), from = screenOfGround(0, 0, view);
+    const x2 = view.width / 2 + aim.x, y2 = view.height / 2 + aim.y;
+    svg.innerHTML = from ? `<line x1="${from.x.toFixed(1)}" y1="${from.y.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}"/>` : '';
+  } else if (svg.innerHTML) svg.innerHTML = '';
+}
+
+function fireHeld() {
+  const held = heldNow();
+  if (!held || !aiming || aimBlocked()) return;
+  const result = shoot(held.item);
+  pocket.data.save();
+  pocket.renderHotbar();
+  if (!result.ok) {
+    sfx('dryFire');
+    notice(say('gunEmpty'), 1600);
+    return;
+  }
+  sfx('gunshot');
+  shotUntil = performance.now() + 220;
+  const animal = creatureUnderShot();
+  if (animal) {
+    const body = killAnimal(animal.id);
+    if (body) notice(body.down || 'It is down.', 3000);
+  }
+  syncScope();
+}
+
+// The creature the mark is on: the shot from the camera through the mark, the same circles a car can hit.
+function creatureUnderShot() {
+  if (!lastShot?.point || !foot || foot.walker.inside) return null;
+  const view = aimView();
+  const cam = placeCamera(foot.walker, { tilt: view.tilt, range: view.range, fov: view.fovY, below: view.below });
+  const end = { x: foot.walker.x + lastShot.point.x, y: foot.walker.y + lastShot.point.y, z: foot.walker.z };
+  const animals = animalHits().map((animal) => {
+    const at = foot.localOf(animal.lat, animal.lng);
+    return { ...animal, x: at.x, y: at.y, radius: animal.shotRadius || animal.radius, body: animal.shotBody || animal.body || 1 };
+  });
+  return firstInShot(cam.eye, end, animals);
+}
+
+// Selecting a casing, or R with a gun in hand. One casing fills the magazine.
+function loadAmmo(id) {
+  const caliber = caliberOf(id);
+  const ammo = pocket?.data.bag.find((item) => item.id === id);
+  const gun = caliber && gunToLoad(caliber, pocket.data.state.hotbar, pocket.data.bag, aimHand);
+  if (!gun) {
+    sfx('ack');
+    notice(say('noGun'), 2000);
+    return;
+  }
+  const result = reloadGun(gun, ammo?.count || 0);
+  if (result.taken) pocket.data.takeCount(id, result.taken);
+  else pocket.data.save();
+  pocket.renderHotbar();
+  if (pocket.bagOpen) pocket.renderBag();
+  sfx(result.taken ? 'reload' : 'ack');
+  const key = result.taken ? 'reloaded' : result.reason === 'full' ? 'gunFull' : 'noRounds';
+  notice(say(key, { loaded: result.loaded, casing: result.casing }), 2000);
+}
+
+function reloadHeld() {
+  const held = heldNow();
+  if (held) loadAmmo(held.ammo);
 }
 
 // The person on the map, one model per frame of the walk and run, as a model can't move its own parts.
@@ -914,6 +1051,7 @@ function runFoot(t, dt) {
   const fromX = foot.walker.x, fromY = foot.walker.y;
   foot.update(live ? dt : 0, live ? footInput(dt) : {}, world.clock.hour);
   if (live) tipAboutPushing(fromX, fromY, dt);
+  syncScope();
   syncFootScene(dt);
   // The radio, road and wind stay in the car, though the phone can play music. The car just got out of idles on, fading with distance from it.
   // Only that one: measuring to the nearest parked car made every locked car sound as if it were running.
@@ -1223,6 +1361,7 @@ function stopFoot() {
   pocket?.close();
   stopAsking();
   lightKey = '';
+  dropAim();
   if (carRadio) radio.putBack(carRadio);
   carRadio = null;
   for (const p of people || []) { p.scale = HIDDEN_PERSON; p.remove(); }
@@ -1564,7 +1703,7 @@ async function pocketReady() {
     dropped: leaveDrop,
     undropped: (id) => { if (foot) foot.removeDrop(id); else drops.remove(id); dropsSyncedAt = -Infinity; },
     phoneDead: () => vitals.stats.phone <= 0,
-    say: (text) => notice(say(text), 2500),
+    say: (text, blanks) => notice(say(text, blanks), 2500),
     useItem: (name) => {
       const said = vitals.consume(name);
       if (said) {
@@ -1588,6 +1727,8 @@ async function pocketReady() {
     phoneLight: () => carryLight('phone'),
     stowed: () => { if (foot?.light === 'flash') carryLight('flash'); }, // it can't stay on in the car
     flashlightOn: () => foot?.light === 'flash',
+    aimHand: (index) => { aimHand = index; },
+    loadAmmo,
     recentSaid: () => recentSaid,
     addHour,
     confirm: askFirst,
@@ -1778,10 +1919,34 @@ function pressL() {
   notice(say('walkUpFirst'), 2500);
 }
 
+let handUse = 0;
+
+// Right click uses the right hand, and stays in aim. A gun in that hand shoots; anything else is used as its key would.
+function useSecondHand() {
+  if (!foot || !pocket || aimBlocked()) return;
+  if (performance.now() - handUse < 400) return;
+  handUse = performance.now();
+  const held = heldNow();
+  if (aiming && held?.index === 1) fireHeld();
+  else pocket.useHotbar(1);
+  if (aiming && document.pointerLockElement !== el('foot')) Promise.resolve(el('foot').requestPointerLock()).catch(() => {});
+}
+
 el('foot').addEventListener('pointerdown', (e) => {
   if (!foot) return;
   if (e.pointerType === 'mouse') {
-    Promise.resolve(el('foot').requestPointerLock()).catch(() => {}); // refused just after Esc; the next click works
+    if (e.button === 2) { e.preventDefault(); useSecondHand(); return; }
+    if (e.button === 0 && heldNow() && !aimBlocked()) {
+      if (document.pointerLockElement !== el('foot')) Promise.resolve(el('foot').requestPointerLock()).catch(() => {});
+      if (!aiming) {
+        aiming = true;
+        aim.x = aim.y = 0;
+        syncScope();
+        return; // the first click only brings the mark up
+      }
+      return fireHeld();
+    }
+    if (e.button === 0) Promise.resolve(el('foot').requestPointerLock()).catch(() => {}); // refused just after Esc; the next click works
   } else {
     el('foot').setPointerCapture(e.pointerId);
     touchLook = { x: e.clientX, y: e.clientY };
@@ -1799,6 +1964,20 @@ el('foot').addEventListener('pointermove', (e) => {
   }
 });
 for (const kind of ['pointerup', 'pointercancel']) el('foot').addEventListener(kind, () => { touchLook = null; });
+el('foot').addEventListener('contextmenu', (e) => { if (foot) { e.preventDefault(); useSecondHand(); } });
+document.addEventListener('pointerlockchange', () => {
+  if (document.pointerLockElement || !aiming) return;
+  // A right click can free the mouse before the click arrives. Wait, and keep aiming if that click used the other hand.
+  setTimeout(() => {
+    if (document.pointerLockElement || !aiming) return;
+    if (performance.now() - handUse < 500) {
+      Promise.resolve(el('foot').requestPointerLock()).catch(() => {});
+      return;
+    }
+    aimGone = performance.now();
+    dropAim();
+  }, 40);
+});
 
 // --- Start point and destination ------------------------------------------------------------------------------
 
@@ -2832,7 +3011,10 @@ document.addEventListener('keydown', (e) => {
   // Each press closes one thing. With nothing open it pauses, unless the mouse is held for looking, which is the browser's to free.
   if (e.key === 'Escape') {
     e.preventDefault();
-    if (!e.repeat && !closeTop() && !dialogOpen && !document.pointerLockElement) setPaused(true);
+    if (e.repeat) return;
+    if (closeTop()) return;
+    if (aiming || performance.now() - aimGone < 400) { dropAim(); releaseMouse(); return; } // the mark goes before pause, so the mouse is free
+    if (!dialogOpen && !document.pointerLockElement) setPaused(true);
     return;
   }
   if (el('settings').classList.contains('open') && e.key.toLowerCase() === 'o') { e.preventDefault(); return closeSettings(); }
@@ -2865,6 +3047,7 @@ document.addEventListener('keydown', (e) => {
   if ((foot || (pocket?.bagOpen && /^[0-9z]$/.test(k))) && !e.repeat && pocket?.pressKey(k)) { e.preventDefault(); return; }
   if (foot && k === 'f' && !e.repeat) { e.preventDefault(); return pressUse(); }
   if (!foot && k === 'r' && !e.repeat) { e.preventDefault(); return openStorage(); }
+  if (foot && k === 'r' && !e.repeat && !pocket?.bagOpen) { e.preventDefault(); return reloadHeld(); }
   if (foot && k === ' ') jumpPressed = true; // a quick tap can come and go between two frames
   if (foot && (k === 'q' || k === 'e')) keys.add(k);
   if (DRIVE_KEYS.has(k)) { keys.add(k); e.preventDefault(); e.stopPropagation(); }
@@ -3313,8 +3496,8 @@ async function startPeople() {
   };
   world.buildings.onRefused = (id, floor, op, why) => {
     if (op.key) {
-      const name = foot?.takenBack(op.key);
-      if (name) pocket?.data.takeFromBag(name);
+      const back = foot?.takenBack(op.key);
+      for (const item of [].concat(back ?? [])) pocket?.data.takeCount(typeof item === 'string' ? item : item.id, item.count || 1);
     }
     notice(why === 'offline' ? 'The world can\'t be reached right now, so that didn\'t happen.' : 'Someone else got there first.', 3000);
   };
@@ -3406,6 +3589,7 @@ async function boot() {
       foot: () => foot, settings, gearbox, saveTrip, engine, radio, map, model, ground: () => ground, match: () => match, onBridge: () => onBridge, placeCar, pressSignal,
       vitals, GAME, world, trip: () => trip, paused: () => paused, deer: () => animals, nav: () => ({ fsd, destination, route, routeIndex, signal, lane, laneNow }),
       crowdTest: async (options) => (await import('./crowdTest.js')).runCrowdTest({ maps3d, map, at: foot ? foot.where() : pos, glbUrl, log: perfLog, ...options }),
+      pocket: () => pocket, aim: () => ({ x: aim.x, y: aim.y, shot: lastShot, hand: aimHand, aiming }),
     });
     if (world.rules.people && world.cars.mine()) takeSeat(world.cars.mine()); // they refreshed in a car
     else if (world.rules.startsOnFoot) await startWalking();

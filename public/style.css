@@ -17,6 +17,25 @@ body.onFoot #footHint { display: block; }
 body.onFoot { --dash: 0px; }
 body.onFoot #dash { display: none; }
 #hud { z-index: 2; pointer-events: none; }
+#scope { position: absolute; inset: 0; z-index: 3; pointer-events: none; }
+#scopeMark {
+  position: absolute; left: 50%; top: 50%; width: 28px; height: 28px; --mark: #ff3b30;
+  transform: translate(calc(-50% + var(--aim-x, 0px)), calc(-50% + var(--aim-y, 0px)));
+  border: 2px solid var(--mark); border-radius: 50%; box-shadow: 0 0 0 1px #000c;
+}
+#scope.onTarget #scopeMark { --mark: #3ddc84; }
+#scopeMark::before, #scopeMark::after { content: ""; position: absolute; background: var(--mark); }
+#scopeMark::before { width: 2px; height: 10px; left: calc(50% - 1px); top: -12px; box-shadow: 0 40px 0 var(--mark); }
+#scopeMark::after { width: 3px; height: 3px; left: calc(50% - 1.5px); top: calc(50% - 1.5px); border-radius: 50%; }
+#scope.fired #scopeMark { --mark: #fff; background: #ff3b3044; }
+#scope.onTarget.fired #scopeMark { background: #3ddc8444; }
+#scopeRounds {
+  position: absolute; left: 50%; top: 50%;
+  transform: translate(calc(-50% + var(--aim-x, 0px)), calc(20px + var(--aim-y, 0px)));
+  color: #fff; font-size: 13px; font-weight: 700; text-shadow: 0 1px 2px #000, 0 0 2px #000;
+}
+#scopeShot { position: absolute; inset: 0; width: 100%; height: 100%; }
+#scopeShot line { stroke: #ffe08a; stroke-width: 2; stroke-linecap: round; }
 /* Evening and headlights: a tint over the map with the beams cut out of it. */
 #night, #beam, #tails, #viewFx { position: absolute; left: 0; top: 0; width: 100%; height: calc(100% - var(--dash)); pointer-events: none; display: none; }
 #night { mix-blend-mode: multiply; z-index: 1; }
@@ -295,6 +314,27 @@ body.onFoot #pockets { display: block; }
 #pockets button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
 #pockets h2 { font-size: 17px; margin: 0; font-weight: 700; }
 #pockets svg { display: block; width: 100%; height: 100%; }
+.hotbar { display: flex; gap: 4px; width: max-content; max-width: calc(100vw - 20px); margin-bottom: 4px; padding: 4px; border-radius: 14px; background: #0d1621e6; border: 1px solid #ffffff26; box-shadow: 0 8px 26px #0006; overflow-x: auto; }
+#pockets.bagOpen .hotbar { border-color: #ffd27a88; }
+#pockets .hotSlot { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 1px; width: 46px; height: 54px; padding: 2px 2px 3px; border-radius: 10px; background: #00000040; flex: none; }
+#pockets .hotSlot.hand { width: 58px; }
+#pockets .hotSlot.quick:first-of-type, #pockets .hotSlot.hand + .hotSlot.quick { margin-left: 8px; }
+#pockets .hotSlot:hover, #pockets .hotSlot:focus-visible { background: #ffffff1c; }
+#pockets .hotSlot.armed { background: #ffd27a2e; box-shadow: inset 0 0 0 2px #ffd27a; }
+#pockets .hotSlot.on { box-shadow: inset 0 0 0 1px #ffd27a; }
+#pockets .hotSlot.armed.on { box-shadow: inset 0 0 0 2px #ffd27a; }
+#pockets .hotSlot.missing { opacity: 0.5; }
+.hotSlot .itemIcon { width: 26px; height: 26px; }
+.hotSlot * { pointer-events: none; }
+#pockets .hotClear { pointer-events: auto; }
+.hotSlot span { max-width: 100%; font-size: 9px; font-weight: 600; line-height: 1.05; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.handMark { height: 26px; font-size: 15px; font-weight: 700; color: #9fd4ff; line-height: 26px; }
+.hotSlot kbd { position: absolute; top: 2px; left: 2px; min-width: 13px; padding: 0 3px; border-radius: 4px; background: #ffffff2e; font: 600 10px system-ui, sans-serif; text-align: center; }
+.hotSlot b { position: absolute; right: 3px; bottom: 13px; font-size: 10px; }
+#pockets .hotClear { position: absolute; top: 1px; right: 1px; z-index: 1; width: 14px; height: 14px; border-radius: 50%; background: #00000088; color: #ffd9d4; font-size: 9px; font-style: normal; line-height: 14px; text-align: center; opacity: 0; }
+#pockets .hotSlot:hover .hotClear, #pockets .hotSlot:focus-within .hotClear, #pockets.bagOpen .hotClear { opacity: 1; }
+@media (pointer: coarse) { #pockets .hotClear { opacity: 1; } }
+#pockets .hotClear:hover { background: #d9483c; color: #fff; }
 .tray { display: flex; gap: 6px; padding: 6px; border-radius: 16px; background: #0d1621e6; border: 1px solid #ffffff26; box-shadow: 0 8px 26px #0006; }
 #pockets .trayItem { position: relative; display: flex; flex-direction: column; align-items: center; gap: 3px; min-width: 66px; padding: 6px 2px 5px; border-radius: 11px; }
 #pockets .trayItem:hover, #pockets .trayItem:focus-visible { background: #ffffff1c; }
@@ -409,7 +449,11 @@ body.onFoot #pockets { display: block; }
 .bagPanel .empty { margin: 11px 4px 2px; color: #d6bea5; }
 @media (max-width: 700px), (pointer: coarse) {
   #pockets { bottom: 62px; left: 6px; }
-  body.onFoot #footHint { left: 8px; transform: none; bottom: 128px; max-width: calc(100% - 118px); }
+  body.onFoot #footHint { left: 8px; transform: none; bottom: 200px; max-width: calc(100% - 118px); }
+  .hotbar { gap: 2px; padding: 3px; }
+  #pockets .hotSlot { width: 40px; height: 48px; }
+  #pockets .hotSlot.hand { width: 48px; }
+  .hotSlot .itemIcon, .handMark { width: 22px; height: 22px; line-height: 22px; font-size: 13px; }
   .tray { gap: 1px; padding: 3px; }
   #pockets .trayItem { width: 52px; padding: 4px 0 3px; }
   .trayArt { width: 33px; height: 33px; }
@@ -437,7 +481,7 @@ body.onFoot #pockets { display: block; }
 /* The car's storage: from the dash the bag opens on its own, over the dashboard. */
 #pockets.storageOnly { display: block; position: fixed; left: 10px; bottom: calc(var(--dash) + 2px); }
 #pockets.storageOnly .tray { visibility: hidden; height: 0; padding: 0; border: 0; }
-#pockets.storageOnly .bagPanel { bottom: 8px; }
+#pockets.storageOnly .bagPanel { bottom: calc(100% + 8px); }
 .bagPanel.withCar { width: 372px; max-height: calc(100vh - var(--dash) - 180px); overflow-y: auto; }
 #pockets button.bagSlot { position: relative; width: 100%; cursor: pointer; }
 .bagSlot.full { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; overflow: hidden; }

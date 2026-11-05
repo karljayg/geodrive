@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { actionsOf, coreQuestions, pushFits, pushTarget, pushThing, inertNear, lookLine, questionsFor, thingsNear, uniqueChoices, usableNear, useThing, withoutTaken, switchNeedsKey, switchSpots, useSwitch } from '../public/js/footActions.js';
+import { actionsOf, coreQuestions, houseGunIn, pushFits, pushTarget, pushThing, inertNear, lookLine, questionsFor, thingsNear, uniqueChoices, usableNear, useThing, withoutTaken, switchNeedsKey, switchSpots, useSwitch } from '../public/js/footActions.js';
 import { SAYINGS } from '../public/js/sayingsConfig.js';
 import { SOUNDS, bagSound, bakeOrder, footfall, lengthOf, play, stepSound, takesOf, useSound } from '../public/js/sounds.js';
 import { GAME } from '../public/js/gameConfig.js';
@@ -277,4 +277,41 @@ test('pushing and driving are offered, and say so', () => {
   assert.ok(useThing(entry('till'), {}, 1, 'b').say);
   assert.deepEqual(questionsFor(entry('till')).map((q) => q.label), ['Use the cash register?', 'Open the cash register?']);
   assert.equal(questionsFor(entry('bin'))[0].label, 'Search the trash can?');
+});
+
+test('about one house in four hides a handgun and 10 casings upstairs, in one drawer', () => {
+  const stand = (u) => ['nightstand', 'cabinetBedDrawer', u, 1, 0, 0, 0, 1];
+  const desk = ['desk', 'desk', 5, 1, 0, 0, 0, 1];
+  const items = [stand(0), stand(2), desk];
+  let houses = 0;
+  for (let n = 0; n < 400; n++) {
+    const plan = { type: 'home', floors: 3 }, id = `house${n}`;
+    const hits = [];
+    for (const floor of [1, 2, 3]) for (const piece of items) {
+      const found = houseGunIn(plan, id, floor, items, piece);
+      if (found) hits.push({ floor, piece, found });
+    }
+    if (!hits.length) continue;
+    houses++;
+    assert.equal(hits.length, 1, id);
+    assert.ok(hits[0].floor >= 2, hits[0].floor);
+    assert.equal(hits[0].piece[0], 'nightstand');
+    assert.equal(hits[0].found.found[0].id, 'Handgun');
+    assert.equal(hits[0].found.found[0].loaded, 8);
+    assert.equal(hits[0].found.found[1].count, 10);
+    const opened = useThing(hits[0].piece, plan, hits[0].floor, id, false, items);
+    assert.equal(opened.found[1].id, '9mm bullets');
+    assert.equal(useThing(hits[0].piece, plan, hits[0].floor, id, false, items).found, undefined);
+    assert.equal(houseGunIn(plan, id, hits[0].floor, items, hits[0].piece).found[0].id, 'Handgun', 'the same drawer next time');
+  }
+  assert.ok(houses > 70 && houses < 130, houses);
+  let cottage = null;
+  for (let n = 0; n < 80 && !cottage; n++) if (houseGunIn({ type: 'home', floors: 1 }, `cot${n}`, 1, items, stand(0))) cottage = `cot${n}`;
+  assert.ok(cottage);
+  assert.equal(houseGunIn({ type: 'home', floors: 1 }, cottage, 2, items, stand(0)), null);
+  assert.equal(houseGunIn({ type: 'office', floors: 4 }, 'office', 2, items, stand(0)), null);
+  const onlyDesk = [desk, ['wardrobe', 'bookcaseClosedDoors', 1, 3, 0, 0, 0, 1]];
+  let hidIn = null;
+  for (let n = 0; n < 80 && !hidIn; n++) hidIn = onlyDesk.find((piece) => houseGunIn({ type: 'home', floors: 2 }, `plain${n}`, 2, onlyDesk, piece));
+  assert.equal(hidIn[0], 'desk');
 });

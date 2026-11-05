@@ -252,17 +252,21 @@ function stepOnce(walker, dx, dy, world) {
 }
 
 // input: forward and strafe -1..1 relative to the view, run, lookX in radians since the last step.
+// While aiming, forward and strafe are relative to aimYaw (where the scope looks) and a step backward uses backPace of that speed.
 export function stepWalker(walker, input, dt, world) {
   walker.yaw += input.lookX || 0;
+  if (input.aiming && Number.isFinite(input.aimYaw)) walker.facing = input.aimYaw;
   const f = input.forward || 0, s = input.strafe || 0, mag = Math.hypot(f, s);
   let walked = 0;
   if (mag && dt) {
-    const speed = input.run ? input.runSpeed ?? RUN_SPEED : input.walkSpeed ?? WALK_SPEED, way = (speed * dt) / mag;
-    const sin = Math.sin(walker.yaw), cos = Math.cos(walker.yaw);
+    const pace = input.aiming && f < 0 ? (input.backPace ?? 0.5) : 1;
+    const speed = (input.run ? input.runSpeed ?? RUN_SPEED : input.walkSpeed ?? WALK_SPEED) * pace, way = (speed * dt) / mag;
+    const basis = input.aiming ? walker.facing : walker.yaw;
+    const sin = Math.sin(basis), cos = Math.cos(basis);
     const dx = (sin * f + cos * s) * way, dy = (cos * f - sin * s) * way;
     const steps = Math.ceil((speed * dt) / SUB_STEP);
     for (let i = 0; i < steps; i++) walked += stepOnce(walker, dx / steps, dy / steps, world);
-    if (walked > 1e-4) {
+    if (!input.aiming && walked > 1e-4) {
       const wanted = Math.atan2(dx, dy), turn = Math.atan2(Math.sin(wanted - walker.facing), Math.cos(wanted - walker.facing));
       walker.facing += turn * (1 - Math.exp(-dt * 12));
     }

@@ -57,6 +57,21 @@ test('D walks to the right of the screen and W walks into it, whichever way the 
   }
 });
 
+test('aiming faces the scope, and backing up is half speed on foot or at a run', () => {
+  const world = worldOf(placeWith());
+  const back = walk(newWalker(0, 0, 0), world, { forward: -1, aiming: true, aimYaw: 0, walkSpeed: 4 }, 1);
+  assert.ok(Math.abs(back.facing) < 0.02, 'still faces the scope');
+  assert.ok(back.y < -1.9 && back.y > -2.1, `walked back ${back.y}, half of 4 m/s`);
+  const ran = walk(newWalker(0, 0, 0), world, { forward: -1, aiming: true, aimYaw: 0, run: true, runSpeed: 8 }, 1);
+  assert.ok(ran.y < -3.8 && ran.y > -4.2, `ran back ${ran.y}, half of 8 m/s`);
+  const ahead = walk(newWalker(0, 0, 0), world, { forward: 1, aiming: true, aimYaw: Math.PI / 2, walkSpeed: 3 }, 1);
+  assert.ok(Math.abs(ahead.facing - Math.PI / 2) < 0.02, 'they face the scope, not the way they started');
+  assert.ok(ahead.x > 2.5 && Math.abs(ahead.y) < 0.2, 'ahead is where the scope looks');
+  const side = walk(newWalker(0, 0, 0), world, { strafe: 1, aiming: true, aimYaw: Math.PI / 2, walkSpeed: 3 }, 1);
+  assert.ok(Math.abs(side.facing - Math.PI / 2) < 0.02, 'strafe does not turn them off the scope');
+  assert.ok(side.y < -2.5 && Math.abs(side.x) < 0.2, 'right of an eastward aim is south');
+});
+
 test('a look to the right turns the bearing clockwise', () => {
   const walker = newWalker(0, 0, 0);
   stepWalker(walker, { lookX: Math.PI / 2 }, 1 / 60, worldOf(placeWith()));

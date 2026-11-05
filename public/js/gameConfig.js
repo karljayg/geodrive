@@ -189,6 +189,23 @@ till: ['Cash', 'Bundle of cash'], produceStand: ['Apple', 'Banana', 'Orange', 'G
   climb: { seconds: 0.6, energy: -1, leastHeight: 0.35 }, // over furniture with F: how long, what it takes out of you, and what's too low to bother with (m)
   hammer: { item: 'Sledgehammer', width: 1.3, reach: 1, swings: 3, swingEvery: 0.7, energy: -10 }, // m wide a hole is, m from a wall it can be swung, and what a hole takes out of you
 
+  // On foot, a weapon in either hand. backPace: walking or running backward while facing the scope, as a share of that speed.
+  // indoorRange: of the outdoor camera distance inside, as furniture is small from there.
+  aim: { backPace: 0.5, indoorRange: 0.45 },
+  // One handgun for now. A caliber is shared, so a later handgun can use the same bullets. magazine: rounds it holds. spare: casings given with it, in the car.
+  weapons: {
+    handgun: { item: 'Handgun', kind: 'gun', caliber: '9mm', magazine: 8, spare: 3 },
+  },
+  calibers: {
+    '9mm': { item: '9mm bullets', casing: 8 }, // one item is a casing of this many rounds
+  },
+  // About one home in four. Upstairs when there is an upstairs, in a drawer, a desk or a cabinet.
+  houseGun: {
+    chance: 0.25,
+    casings: 10,
+    hideIn: ['nightstand', 'desk', 'bathCabinet', 'wardrobe'],
+  },
+
   // Things dropped, which stay where they're left.
   drops: {
     ahead: 1.3,               // m in front of the person that a thing lands, far enough not to be hidden behind them
@@ -209,7 +226,7 @@ till: ['Cash', 'Bundle of cash'], produceStand: ['Apple', 'Banana', 'Orange', 'G
   deer: {
     every: 600, verge: 14, shownWithin: 300, mostShown: 4, stagChance: 0.4,
     idPrefix: 'd', seed: 'deer', dir: 'deer', model: 'deer', stagModel: 'stag', down: 'The deer is down.',
-    hitRadius: 0.7, meat: 20, meatReach: 4, // pieces off one deer; metres from the car that F can load them
+    hitRadius: 0.7, body: 1.6, shotRadius: 1.4, shotBody: 3.2, meat: 20, meatReach: 4, // pieces off one deer; metres from the car that F can load them. A shot uses the wider box
     raw: 'Raw deer meat', cooked: 'Cooked deer meat',
     vision: 7.1, hearing: 4.7, wanderSpeed: 0.78, fleeSpeed: 9.75, wanderRadius: 2.8,
     alarmMs: 4000, fearEveryMs: 250, boltStep: 3, wanderWaitMs: 4000,
@@ -221,7 +238,7 @@ till: ['Cash', 'Bundle of cash'], produceStand: ['Apple', 'Banana', 'Orange', 'G
   chicken: {
     every: 1200, verge: 9, shownWithin: 300, mostShown: 3, stagChance: 0,
     idPrefix: 'c', seed: 'chicken', dir: 'chicken', model: 'chicken', down: 'The chicken is down.',
-    hitRadius: 0.35, meat: 2, meatReach: 4,
+    hitRadius: 0.35, body: 0.5, shotRadius: 3, shotBody: 3.6, meat: 2, meatReach: 4, // a shot's box is wider than the car's: the little model sits above where the ground mark lands
     raw: 'Raw chicken', cooked: 'Cooked chicken',
     vision: 5, hearing: 3.3, wanderSpeed: 0.7, fleeSpeed: 7.3125, wanderRadius: 2.2,
     alarmMs: 4000, fearEveryMs: 250, boltStep: 3, wanderWaitMs: 4000,
@@ -232,7 +249,7 @@ till: ['Cash', 'Bundle of cash'], produceStand: ['Apple', 'Banana', 'Orange', 'G
   rabbit: {
     every: 1200, verge: 12, shownWithin: 300, mostShown: 3, stagChance: 0,
     idPrefix: 'r', seed: 'rabbit', dir: 'rabbit', model: 'rabbit', down: 'The rabbit is down.',
-    hitRadius: 0.35, meat: 2, meatReach: 4,
+    hitRadius: 0.35, body: 0.45, shotRadius: 3, shotBody: 3.6, meat: 2, meatReach: 4,
     raw: 'Raw rabbit', cooked: 'Cooked rabbit',
     vision: 4.5, hearing: 2.9, wanderSpeed: 0.55, fleeSpeed: 7.3125, wanderRadius: 2,
     alarmMs: 4000, fearEveryMs: 250, boltStep: 3, wanderWaitMs: 4000,
