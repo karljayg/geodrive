@@ -487,6 +487,13 @@ export class Foot {
     return left;
   }
 
+  // L on the ground floor leaves, even beside the stairs or the lift. F is how those are used down here.
+  leaveHere() {
+    if (!this.walker.inside || this.level !== GROUND_FLOOR || this.picking) return false;
+    if (this.pose) this.standUp();
+    return !!this.goOutside();
+  }
+
   // What F will offer, for the hint.
   fHint() {
     const choices = this.choices();
@@ -1002,13 +1009,13 @@ export class Foot {
       const near = this.coreHere();
       if (this.pose) return 'Press F or walk to get up';
       const offered = this.fHint(), also = offered ? ` · ${offered}` : '';
-      if (near === 'lift') return `Press L for the elevator${also}`;
-      if (near === 'stairs') {
+      if (this.level > GROUND_FLOOR && near === 'lift') return `Press L for the elevator${also}`;
+      if (this.level > GROUND_FLOOR && near === 'stairs') {
         if (this.level >= plan.floors) return `Press L to go downstairs${also}`;
-        return (this.level > GROUND_FLOOR ? 'L upstairs, Shift+L downstairs' : 'Press L to go upstairs') + also;
+        return `L upstairs, Shift+L downstairs${also}`;
       }
       const dock = this.getDock?.(), spot = this.outletHere();
-      if (offered) return `${dock && spot && this.dockedAt(dock, spot) ? 'Charging · ' : ''}${offered}`;
+      if (offered) return `${dock && spot && this.dockedAt(dock, spot) ? 'Charging · ' : ''}${offered}${this.level === GROUND_FLOOR ? ' · L to leave' : ''}`;
       return this.level > GROUND_FLOOR ? 'Find the stairs to go down' : 'Press L to go back out';
     }
     if (this.canGetIn()) return `Press L to get in · ${this.fHint()}`;

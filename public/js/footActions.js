@@ -348,6 +348,77 @@ function pickedWeapon(buildingId, config) {
   return GAME.weapons[weighted[Math.floor(dice(hashText(`${buildingId}:housegun:which`))() * weighted.length)]];
 }
 
+export function findKind(name) {
+  return GAME.consumables[name]?.kind || 'other';
+}
+
+function rateOf(kind, rates) {
+  const rate = rates?.[kind];
+  return Number.isFinite(rate) ? Math.max(0, rate) : 1;
+}
+
+function weightedIndex(weights, roll) {
+  const sum = weights.reduce((total, weight) => total + weight, 0);
+  if (sum <= 0) return -1;
+  let pick = roll() * sum;
+  for (let i = 0; i < weights.length; i++) {
+    pick -= weights[i];
+    if (pick < 0) return i;
+  }
+  return weights.length - 1;
+}
+
+function pickWeighted(finds, weights, roll) {
+  if (weights.every((weight) => weight === weights[0])) return weights[0] > 0 ? finds[Math.floor(roll() * finds.length)] : null;
+  const index = weightedIndex(weights, roll);
+  return index < 0 ? null : finds[index];
+}
+
+// At every rate of 1 this is the container's own chance and a uniform pick, the same two rolls as before.
+// A higher rate for a kind makes that kind more likely and the container less often empty. The item of the kind is still random.
+export function pickFind(finds, chance, roll, rates = GAME.loot) {
+  if (!finds?.length) return null;
+  const weights = finds.map((name) => rateOf(findKind(name), rates));
+  const sum = weights.reduce((total, weight) => total + weight, 0);
+  const scaled = Math.min(1, Math.max(0, chance * (sum / finds.length)));
+  if (roll() >= scaled) return null;
+  return pickWeighted(finds, weights, roll);
+}
+
+// Which item a machine hands over, once its own chance has already passed.
+export function weightedFind(finds, roll, rates = GAME.loot) {
+  if (!finds?.length) return null;
+  return pickWeighted(finds, finds.map((name) => rateOf(findKind(name), rates)), roll);
+}
+
+function pickGun(keys, buildingId, salt) {
+  const list = (keys || []).filter((key) => GAME.weapons[key]);
+  if (!list.length) return null;
+  return GAME.weapons[list[Math.floor(dice(hashText(`${buildingId}:housegun:${salt}`))() * list.length)]];
+}
+
+// Handgun first, then an advanced gun, so the two chances can be tuned apart. Without those chances, the old single roll and weights.
+function houseWeapon(buildingId, config) {
+  const roll = dice(hashText(`${buildingId}:housegun`))();
+  if (Number.isFinite(config.handgunChance) || Number.isFinite(config.advancedChance)) {
+    const hand = Math.max(0, config.handgunChance || 0);
+    const adv = Math.max(0, config.advancedChance || 0);
+    if (roll < hand) return pickGun(config.common, buildingId, 'hand');
+    if (roll < Math.min(1, hand + adv)) return pickGun(config.rare, buildingId, 'adv');
+    return null;
+  }
+  if (roll >= (config.chance ?? 0.25)) return null;
+  return pickedWeapon(buildingId, config);
+}
+
+function armoryWeapon(buildingId, index, config) {
+  const share = Math.min(1, Math.max(0, Number.isFinite(config.handgunShare) ? config.handgunShare : 3 / 8));
+  const hand = dice(hashText(`${buildingId}:armory:type:${index}`))() < share;
+  const list = (hand ? GAME.houseGun.common : GAME.houseGun.rare).filter((key) => GAME.weapons[key]);
+  if (!list.length) return null;
+  return GAME.weapons[list[Math.floor(dice(hashText(`${buildingId}:armory:${index}`))() * list.length)]];
+}
+
 function gunFound(weapon, count) {
   const ammo = GAME.calibers[weapon.caliber];
   return [
@@ -356,17 +427,17 @@ function gunFound(weapon, count) {
   ];
 }
 
-// About one home in four, in one bedroom wardrobe, cabinet or nightstand, on any floor that has one.
-// A handgun, revolver or .45 is four times as likely as each rarer gun.
+// A share of homes, in one bedroom wardrobe, cabinet or nightstand, on any floor that has one.
+// Handguns and advanced guns are separate chances. Within the type the gun is random.
 export function houseGunIn(plan, buildingId, floor, items, entry, config = GAME.houseGun, zones = null, knownSpot = null) {
   if (!config || plan?.type !== 'home' || !entry) return null;
-  if (dice(hashText(`${buildingId}:housegun`))() >= config.chance) return null;
+  const weapon = houseWeapon(buildingId, config);
+  if (!weapon) return null;
   if (floor !== stashFloor(plan, buildingId, knownSpot)) return null;
   const spots = stashSpots(items, zones, config.hideIn);
   if (!spots.length) return null;
   const chosen = spots[Math.floor(dice(hashText(`${buildingId}:housegun:spot`))() * spots.length)];
   if (thingKey(chosen) !== thingKey(entry)) return null;
-  const weapon = pickedWeapon(buildingId, config);
   const ammo = GAME.calibers[weapon.caliber];
   const count = ammo.feed === 'round' ? config.rounds : config.boxes;
   const found = gunFound(weapon, count);
@@ -396,9 +467,8 @@ export function armoryIn(plan, buildingId, floor, items, entry, config = GAME.ar
   const spots = items.filter((item) => spec.hideIn.includes(item[0])).sort((a, b) => (thingKey(a) < thingKey(b) ? -1 : 1));
   const index = spots.findIndex((item) => thingKey(item) === thingKey(entry));
   if (index < 0 || index >= spec.guns) return null;
-  const keys = Object.keys(GAME.weapons);
-  const shift = Math.floor(dice(hashText(`${buildingId}:armory`))() * keys.length);
-  const weapon = GAME.weapons[keys[(index + shift) % keys.length]];
+  const weapon = armoryWeapon(buildingId, index, config);
+  if (!weapon) return null;
   const found = gunFound(weapon, spec.amount);
   return { give: weapon.item, found, say: line('foundArmory', { name: nameOf(entry[0]), gun: weapon.item, count: spec.amount, ammo: found[1].name }) };
 }
@@ -425,11 +495,11 @@ function doThing(entry, action, plan, floor, buildingId, items, zones = null, kn
     if (stashed) return { ...stashed, offer: true, where: name, take: takeAsk(stashed.give, stashed.found) };
     const finds = GAME.finds[item], chance = GAME.findChance[item] ?? GAME.findChance.default;
     const roll = dice(hashText(`${buildingId}:${floor}:${id}`));
-    if (!finds || roll() >= chance) {
+    const found = finds && pickFind(finds, chance, roll);
+    if (!found) {
       state.opened.push(id);
       return { say: line('emptyThing', { name }) };
     }
-    const found = finds[Math.floor(roll() * finds.length)];
     return { give: found, offer: true, where: name, take: takeAsk(found), say: line('foundIn', { name, found: found.toLowerCase() }) };
   }
   if (action === 'move' || action === 'drive') return { push: action === 'drive' ? GAME.push.driveStep : GAME.push.step, say: line(action === 'drive' ? 'droveIt' : 'pushed', { name }), stuck: line('pushStuck', { name }) };
@@ -443,7 +513,11 @@ function doThing(entry, action, plan, floor, buildingId, items, zones = null, kn
       state.opened.push(id);
       return { say: line(machine.empty), empty: true };
     }
-    const give = machine.give[Math.floor(roll() * machine.give.length)];
+    const give = weightedFind(machine.give, roll);
+    if (!give) {
+      state.opened.push(id);
+      return { say: line(machine.empty), empty: true };
+    }
     return { say: line(machine.say, { found: give.toLowerCase() }), give, offer: true, where: name, take: takeAsk(give) };
   }
   const effect = GAME.uses[item];

@@ -161,6 +161,9 @@ till: ['Cash', 'Bundle of cash'], produceStand: ['Apple', 'Banana', 'Orange', 'G
     till: 0.25, fridge: 0.55, counter: 0.4, walkInFridge: 0.7, medCart: 0.4, bathCabinet: 0.4, sideTable: 0.4, desk: 0.3, barCounter: 0.5, prepTable: 0.55,
     storeShelf: 0.15, fridgeCase: 0.3, produceStand: 0.3, breadRack: 0.4, diningTable: 0.12, // shops have many of these: a big supermarket has about 190 shelves, and a restaurant a dozen tables
   },
+  // Times that container's own chance, per kind. 1 is as written above. The item is still a random one of that kind from the container.
+  // other is clothes, keys, cash, tools and the rest.
+  loot: { food: 1, drink: 1, medicine: 1, other: 1 },
 
   // Machines that hand something over, once each, when they have it.
   machines: {
@@ -217,10 +220,13 @@ till: ['Cash', 'Bundle of cash'], produceStand: ['Apple', 'Banana', 'Orange', 'G
     shells: { item: 'Shells', feed: 'round' },
     precision: { item: 'Precision rounds', feed: 'round' },
   },
-  // About one home in four. Any floor that has a bedroom, in a wardrobe, cabinet or nightstand there.
-  // A handgun, revolver or .45 is commonWeight times as likely as each rarer gun. boxes: of a box-fed caliber. rounds: shells or precision rounds.
+  // Homes. handgunChance and advancedChance are separate, and a home is checked for a handgun first.
+  // Together they are the old one home in four, split 12:5 the way the old weights did. Within a type the gun is random.
+  // common is a pistol, revolver or .45. rare is an SMG, shotgun, hunting rifle, AR-15 or sniper.
+  // boxes: of a box-fed caliber. rounds: shells or precision rounds. commonWeight still applies when the two chances aren't set.
   houseGun: {
-    chance: 0.25,
+    handgunChance: 0.25 * 12 / 17,
+    advancedChance: 0.25 * 5 / 17,
     boxes: 10,
     rounds: 12,
     hideIn: ['wardrobe', 'nightstand', 'bathCabinet'],
@@ -231,9 +237,11 @@ till: ['Cash', 'Bundle of cash'], produceStand: ['Apple', 'Banana', 'Orange', 'G
   },
   // Police always. About one shop in ten stands in for a gun shop, since the map has no shop of that name. About one mall in four.
   // guns: how many lockers, cabinets or shelves on a floor hold one. amount: boxes, or rounds, with it.
+  // handgunShare of those guns are handguns; the rest are advanced. Which one of the type is random.
   armory: {
     gunShopChance: 0.1,
     mallChance: 0.25,
+    handgunShare: 3 / 8,
     police: { guns: 4, amount: 24, hideIn: ['filingCabinet', 'locker', 'desk'] },
     gunShop: { guns: 6, amount: 30, hideIn: ['storeShelf', 'desk', 'counter'] },
     mall: { guns: 4, amount: 20, hideIn: ['storeShelf', 'counter', 'desk'] },

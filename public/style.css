@@ -609,6 +609,10 @@ body:not(.onFoot) .speechBubble::after { left: auto; right: 22px; }
 
 /* Test windows: stay open over the game, so nothing here stops it. */
 .testWin { position: fixed; z-index: 60; top: 70px; right: 16px; display: flex; flex-direction: column; gap: 8px; width: min(340px, calc(100vw - 32px)); max-height: calc(100vh - 100px); padding: 10px 12px 12px; color: #e8eef2; font-size: 13px; background: #0d1621f2; border: 1px solid #ffffff2e; border-radius: 12px; }
+.testWin.wide { width: min(440px, calc(100vw - 32px)); }
+.testWin label.slide { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 2px 8px; }
+.testWin label.slide input[type=range] { flex: 1 0 100%; margin: 0; }
+.testWin label.slide .fig { color: #a9b8c4; font-variant-numeric: tabular-nums; }
 .testWin .testHead { display: flex; align-items: center; justify-content: space-between; font-weight: 650; cursor: move; user-select: none; touch-action: none; }
 .testWin button { padding: 4px 9px; color: #e8eef2; font: inherit; background: #ffffff1c; border: 0; border-radius: 7px; cursor: pointer; }
 .testWin button:hover { background: #ffffff33; }

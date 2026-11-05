@@ -2,11 +2,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { BuildingStore, buildingId, dice, hashText, ownFrame } from '../public/js/buildings.js';
-import { Place, fromLocal, inRings, toLocal } from '../public/js/footData.js';
+import { Place, distToSegment, fromLocal, inRings, toLocal } from '../public/js/footData.js';
 import { Mesh, clipToRect, lowWall, roomMesh } from '../public/js/footScene.js';
 import { FLOOR_VERSION, upgradeFloor, axisOf, colourFor, coreNear, coreOf, frameOf, layoutFloor, plainFloor, solidsOf, worldBearing } from '../public/js/furnish.js';
 import { ITEMS, bake, isSolid, parseFurniture, triangleCount, usedModels } from '../public/js/furniture.js';
-import { JUMP_HEIGHT, frameOf as walkerFrame, newWalker, stepClearOfThings, stepWalker } from '../public/js/footWalker.js';
+import { JUMP_HEIGHT, RADIUS, frameOf as walkerFrame, newWalker, stepClearOfThings, stepWalker } from '../public/js/footWalker.js';
 
 const bytes = readFileSync(new URL('../public/furniture.bin', import.meta.url));
 const { models, colours } = parseFurniture(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.length));
@@ -866,6 +866,79 @@ test('every room can be walked to from the way in without jumping, whatever the 
       }
     }
   }
+});
+
+test('a person can walk into every room, doors and furniture included', () => {
+  const notch = piece([{ x: 0, y: 0 }, { x: 18, y: 0 }, { x: 18, y: 12 }, { x: 12, y: 12 }, { x: 12, y: 5 }, { x: 6, y: 5 }, { x: 6, y: 12 }, { x: 0, y: 12 }]);
+  const stands = (x, y, walls, boxes) => {
+    for (const w of walls) if (distToSegment(x, y, w.ax, w.ay, w.bx, w.by) < RADIUS - 0.02) return false;
+    for (const box of boxes) {
+      const dx = x - box.x, dy = y - box.y, lx = dx * box.c - dy * box.s, ly = dx * box.s + dy * box.c;
+      if (Math.abs(lx) < box.hw + RADIUS - 0.02 && Math.abs(ly) < box.hd + RADIUS - 0.02) return false;
+    }
+    return true;
+  };
+  const reachable = (p, record, label) => {
+    const frame = frameOf([p], record.axis), { walls, boxes } = solidsOf(record, frame, models);
+    const step = 0.25, off = 0.07, rings = p.rings.map((r) => r.pts), cells = [];
+    for (let x = p.minX; x <= p.maxX; x += step) for (let y = p.minY; y <= p.maxY; y += step) {
+      const px = x + off, py = y + off;
+      if (inRings(rings, px, py) && stands(px, py, walls, boxes)) cells.push([px, py]);
+    }
+    assert.ok(cells.length, `${label}: nowhere to stand`);
+    const seen = new Uint8Array(cells.length), at = new Map(cells.map((c, i) => [`${Math.round(c[0] / step)},${Math.round(c[1] / step)}`, i]));
+    let start = 0;
+    if (record.entry) {
+      const door = frame.toWorld(...record.entry);
+      let best = Infinity;
+      cells.forEach(([x, y], i) => {
+        const d = Math.hypot(x - door.x, y - door.y);
+        if (d < best) { best = d; start = i; }
+      });
+    }
+    const stack = [start];
+    seen[start] = 1;
+    while (stack.length) {
+      const i = stack.pop(), [x, y] = cells[i];
+      for (const [dx, dy] of [[step, 0], [-step, 0], [0, step], [0, -step]]) {
+        const j = at.get(`${Math.round((x + dx) / step)},${Math.round((y + dy) / step)}`);
+        if (j === undefined || seen[j]) continue;
+        const [nx, ny] = cells[j];
+        if (!stands((x + nx) / 2, (y + ny) / 2, walls, boxes)) continue;
+        seen[j] = 1;
+        stack.push(j);
+      }
+    }
+    const reached = (u, v) => {
+      const spot = frame.toWorld(u, v);
+      return cells.some(([x, y], i) => seen[i] && Math.hypot(x - spot.x, y - spot.y) < step);
+    };
+    for (const z of record.zones) {
+      if (z[0] === 'vault') continue;
+      let hits = 0, got = 0;
+      for (let u = z[1] + 0.4; u < z[3] - 0.2; u += 0.5) for (let v = z[2] + 0.4; v < z[4] - 0.2; v += 0.5) {
+        const spot = frame.toWorld(u, v);
+        if (!inRings(rings, spot.x, spot.y)) continue;
+        hits++;
+        if (reached(u, v)) got++;
+      }
+      assert.ok(hits < 3 || got > 0, `${label}: the ${z[0]} has nowhere to stand`);
+    }
+  };
+  const run = (type, p, floors, seeds) => {
+    for (let seed = 0; seed < seeds; seed++) {
+      const plan = { type, floors, style: 'modern' };
+      if (floors > 1) plan.core = coreOf([p], plan, models, dice(seed));
+      for (const floor of floors > 1 ? [1, 2] : [1]) reachable(p, layoutFloor([p], plan, floor, models, dice(hashText(`person${type}${seed}:${floor}`))), `${type} ${p.maxX - p.minX}x${p.maxY - p.minY} f${floor} s${seed}`);
+    }
+  };
+  run('home', rectangle(13, 9), 2, 4);
+  run('home', lShape, 2, 3);
+  run('home', notch, 2, 3);
+  run('home', rectangle(9, 7), 1, 4);
+  run('apartments', rectangle(36, 16), 3, 2);
+  run('office', rectangle(28, 16), 2, 2);
+  run('bank', rectangle(24, 16), 2, 2);
 });
 
 test('a saved floor survives: it is kept as found, and only ones the game can no longer read are redone', () => {

@@ -19,7 +19,7 @@ Live: https://www.psistorm.com/geodrive/
 | P | Pause, with the trip's time, miles and other stats. P or Esc resumes |
 | O | Settings: car size, remembered in this browser |
 | K | Show or hide the key list |
-| L | Get out of a stopped car and walk (WASD, mouse to look, Shift to run). Beside the car, L gets back in |
+| L | Get out of a stopped car and walk (WASD, mouse to look, Shift to run). Beside a building, L goes in. On the ground floor, L leaves from anywhere. Beside the car, L gets back in |
 | Q / E | One press signals left / right: takes the next turn that way, or changes lane if none is coming up. Press again to cancel |
 | G | Enter a destination; the car drives there in FSD |
 | F | FSD on / off. Steering or braking also turns it off |

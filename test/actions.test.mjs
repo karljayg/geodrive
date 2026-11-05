@@ -1,10 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
-import { actionsOf, armoryIn, claimOpened, coreQuestions, houseGunIn, pushFits, pushTarget, pushThing, inertNear, lookLine, questionsFor, releaseOpened, thingsNear, uniqueChoices, usableNear, useThing, withoutTaken, switchNeedsKey, switchSpots, useSwitch } from '../public/js/footActions.js';
+import { actionsOf, armoryIn, claimOpened, coreQuestions, houseGunIn, pickFind, pushFits, pushTarget, pushThing, inertNear, lookLine, questionsFor, releaseOpened, thingsNear, uniqueChoices, usableNear, useThing, withoutTaken, switchNeedsKey, switchSpots, useSwitch } from '../public/js/footActions.js';
 import { SAYINGS } from '../public/js/sayingsConfig.js';
 import { CLIPS, SOUNDS, bagSound, bakeOrder, footfall, lengthOf, play, stepSound, takesOf, useSound } from '../public/js/sounds.js';
 import { GAME } from '../public/js/gameConfig.js';
+import { dice, hashText } from '../public/js/buildings.js';
 import { ITEMS, parseFurniture } from '../public/js/furniture.js';
 import { frameOf } from '../public/js/furnish.js';
 import { SIT_FRAME, personParts, poseAt } from '../public/js/footPerson.js';
@@ -361,6 +362,77 @@ test('about one house in four hides a gun in a bedroom wardrobe, cabinet or nigh
   }
   assert.equal(onGround, 0);
   assert.ok(upstairs > 20, upstairs);
+});
+
+test('the usual find rates pick the same item as a plain roll, and a kind can be turned off', () => {
+  const finds = GAME.finds.counter, chance = GAME.findChance.counter, rates = { food: 1, drink: 1, medicine: 1, other: 1 };
+  for (let i = 0; i < 30; i++) {
+    const salt = `plain${i}`;
+    const plainRoll = dice(hashText(salt));
+    const plain = plainRoll() >= chance ? null : finds[Math.floor(plainRoll() * finds.length)];
+    assert.equal(pickFind(finds, chance, dice(hashText(salt)), rates), plain);
+  }
+  const mixed = ['Apple', 'Wrench'];
+  assert.equal(pickFind(mixed, 1, () => 0, { ...rates, food: 0, other: 0 }), null);
+  assert.equal(pickFind(mixed, 1, () => 0, { ...rates, other: 0 }), 'Apple');
+  assert.equal(pickFind(mixed, 1, () => 0, { ...rates, food: 0 }), 'Wrench');
+  const saved = { ...GAME.loot };
+  GAME.loot.food = 0;
+  GAME.loot.drink = 1;
+  try {
+    let food = 0, drink = 0;
+    for (let i = 0; i < 80; i++) {
+      const give = useThing(entry('fridge', i, 0), {}, 1, `food${i}`).give;
+      const kind = GAME.consumables[give]?.kind;
+      if (kind === 'food') food++;
+      else if (kind === 'drink') drink++;
+    }
+    assert.equal(food, 0);
+    assert.ok(drink > 10, drink);
+  } finally {
+    Object.assign(GAME.loot, saved);
+  }
+});
+
+test('handguns and advanced guns are separate chances, and a shop can stock only one type', () => {
+  const zones = [['bedroom'], ['living'], ['bathroom']];
+  const stand = ['nightstand', 'cabinetBedDrawer', 0, 1, 0, 0, 0, 1];
+  const items = [stand];
+  const hand = { ...GAME.houseGun, handgunChance: 1, advancedChance: 0 };
+  const advanced = { ...GAME.houseGun, handgunChance: 0, advancedChance: 1 };
+  const none = { ...GAME.houseGun, handgunChance: 0, advancedChance: 0 };
+  let hands = 0, rares = 0;
+  for (let i = 0; i < 30; i++) {
+    const found = houseGunIn({ type: 'home', floors: 1 }, `hand${i}`, 1, items, stand, hand, zones);
+    assert.ok(found);
+    hands++;
+    const key = Object.keys(GAME.weapons).find((k) => GAME.weapons[k].item === found.found[0].id);
+    assert.ok(GAME.houseGun.common.includes(key), key);
+    const other = houseGunIn({ type: 'home', floors: 1 }, `adv${i}`, 1, items, stand, advanced, zones);
+    assert.ok(other);
+    rares++;
+    const rareKey = Object.keys(GAME.weapons).find((k) => GAME.weapons[k].item === other.found[0].id);
+    assert.ok(GAME.houseGun.rare.includes(rareKey), rareKey);
+  }
+  assert.equal(hands, 30);
+  assert.equal(rares, 30);
+  assert.equal(houseGunIn({ type: 'home', floors: 1 }, 'none', 1, items, stand, none, zones), null);
+  const legacy = { ...GAME.houseGun, chance: 1, rareWeight: 0 };
+  delete legacy.handgunChance;
+  delete legacy.advancedChance;
+  const old = houseGunIn({ type: 'home', floors: 1 }, 'legacy', 1, items, stand, legacy, zones);
+  const oldKey = Object.keys(GAME.weapons).find((k) => GAME.weapons[k].item === old.found[0].id);
+  assert.ok(GAME.houseGun.common.includes(oldKey), oldKey);
+  const cabinet = (u) => ['filingCabinet', 'filingCabinet', u, 1, 0, 0, 0, 1];
+  const police = [cabinet(0), cabinet(2), cabinet(4), cabinet(6)];
+  const config = { ...GAME.armory, handgunShare: 0 };
+  const hits = police.filter((piece) => armoryIn({ type: 'police', floors: 1 }, 'rare-station', 1, police, piece, config));
+  assert.equal(hits.length, 4);
+  for (const piece of hits) {
+    const found = armoryIn({ type: 'police', floors: 1 }, 'rare-station', 1, police, piece, config);
+    const key = Object.keys(GAME.weapons).find((k) => GAME.weapons[k].item === found.found[0].id);
+    assert.ok(GAME.houseGun.rare.includes(key), key);
+  }
 });
 
 test('a police station, some shops and some malls stock a gun and a pile of its ammunition', () => {

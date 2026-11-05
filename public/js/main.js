@@ -1986,6 +1986,7 @@ el('vitals').addEventListener('click', async (e) => {
 function pressL() {
   if (!foot) return getOut();
   if (foot.canGetIn()) return world.rules.ownCar ? stopFoot() : getInWorldCar(foot.carHere()?.record);
+  if (foot.leaveHere()) return;
   const done = foot.pressBuilding(keys.has('shift'));
   if (done?.locked !== undefined) return showLocked(done.locked);
   if (done) return; // a building still being looked up goes in by itself, or says it's locked
@@ -2848,12 +2849,20 @@ const testWindows = new TestWindows(world, {
   },
   dieNow: () => world.link.ask({ t: 'succumb' }),
   copyInvite: (answer) => copyInvite(answer, 'Rejoin link copied. It works once and lasts a day.'),
+  spacing: (name) => settings[name],
+  setSpacing(name, value) {
+    settings[name] = value;
+    saveSettings();
+    replantFrequency();
+  },
+  spacingDefault: (name) => DEFAULTS[name],
+  replant: () => replantFrequency(),
 });
 const openTestWindow = (name) => {
   closeSettings();
   testWindows.show(name);
 };
-for (const [id, name] of [['testSpawn', 'spawn'], ['testConfig', 'config'], ['testPlayers', 'players'], ['testScene', 'scene']]) el(id).addEventListener('click', () => openTestWindow(name));
+for (const [id, name] of [['testSpawn', 'spawn'], ['testConfig', 'config'], ['testPlayers', 'players'], ['testScene', 'scene'], ['testAppear', 'appear']]) el(id).addEventListener('click', () => openTestWindow(name));
 setInterval(() => testWindows.changed('scene'), 1000);
 el('openSettings').addEventListener('click', () => {
   if (el('settings').classList.contains('open')) closeSettings();
@@ -3032,6 +3041,7 @@ el('confirm').addEventListener('click', (e) => { if (e.target === el('confirm'))
 function closeTop() {
   if (openId === 'dest') { finishDialog(); return true; }
   if (openId === 'start') { dismissStart(); return true; }
+  if (testWindows.closeFront()) return true; // these sit over the settings panel
   if (el('settings').classList.contains('open')) { closeSettings(); return true; }
   if (el('help').classList.contains('open')) { el('help').classList.remove('open'); return true; }
   if (paused) { setPaused(false); return true; }
@@ -3082,7 +3092,7 @@ document.addEventListener('keydown', (e) => {
     if (['ArrowUp', 'ArrowDown', 'Enter'].includes(e.key)) return;
     e.target.blur();
   }
-  if (e.target.matches?.('.testWin input, .testWin select')) return; // a test window's own keys, and Esc there leaves its box
+  if (e.target.matches?.('.testWin input, .testWin select, .testWin textarea') && e.key !== 'Escape') return; // a test window's own keys; Esc closes it
   if (e.target.matches?.('#pockets textarea, #pockets input[type=text], #chatLine input')) { // typing a note or a message
     if (e.key === 'Escape') e.target.blur();
     return;
@@ -3552,7 +3562,7 @@ async function startPeople() {
     canShow: (thread) => !(pocket?.app === 'messages' && world.chat.threadWith(pocket.contact === 'group' ? null : pocket.contact) === thread),
   });
   world.whereAmI = whereIAm;
-  world.on.tuned = () => testWindows.changed('config');
+  world.on.tuned = () => { testWindows.changed('config', 'appear'); replantFrequency(); };
   world.on.died = ({ member, lives, how, by, at }) => {
     if (world.you.id !== member) {
       if (at && how === 'crash') { sfxNear(at); peopleView.explode(at); }

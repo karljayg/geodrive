@@ -95,7 +95,8 @@ A shop or restaurant POI in a building of 5 or more floors fills the ground floo
 
 ## Rules every layout follows
 Reviewed 2026-11-02 against what real buildings are like, with an audit of every type.
-- **A way in.** A door in an outside wall of the entrance room (lobby, hall, foyer, reception), or failing that the first public room, never a bedroom, toilet or kitchen. Pressing L anywhere at a building brings you in there.
+- **A way in.** A door in an outside wall of the entrance room (lobby, hall, foyer, reception), or failing that the first public room, never a bedroom, toilet or kitchen. Pressing L anywhere at a building brings you in there. On the ground floor, L leaves again from anywhere in the building. Beside the stairs or a lift down there, F is what uses them.
+- **Every room can be walked to.** A doorway is 1.5 m, wide enough for a person, and kept clear of furniture. After the rooms are placed, any room still cut off gets another opening, and solid things standing in the way are taken out. A vault is the one room with no way in. Saved floors from before this (version 3 and earlier) are rebuilt.
 - **Stairs and lifts.** In a corner for garages, warehouses, halls and other big open spaces, in the middle only for towers (offices, hotels, apartments, hospitals, dorms, care homes), and at a wall otherwise. The lobby is the room nearest them with an outside wall, and they're kept out of toilets and stock rooms.
 - **Homes.** Rooms run from the front door in: hall, living room, dining, kitchen, then bathroom and bedrooms furthest. With an upstairs, the other bedrooms are up there, and the ground floor keeps one bedroom when the floor has room for it.
 - **Banks.** A lobby of their own, the teller hall, little offices, and a vault sealed on every side.
@@ -277,7 +278,7 @@ geodrive_rooms_v1_<id>_<n>   [ [item, x, y, rotation, shape, colour, state], ...
 - **Limits:** saved in one browser only. A "Forget building interiors" button goes in Settings.
 
 ## Saved buildings survive updates
-Better layouts and types apply to buildings not yet visited, and a visited building stays as it was found. So don't raise `FLOOR_OLDEST` or rename `STORE`: for a change saved data can't work without, add a step to `upgradeFloor`. What someone did in a building is in `plan.state`, apart from its layout, and over the storage limit those buildings lose their saved floors last. The bag is saved separately. "Forget building interiors" in Settings is how to see improvements in visited buildings.
+Better layouts and types apply to buildings not yet visited, and a visited building stays as it was found. So don't raise `FLOOR_OLDEST` or rename `STORE`: for a change saved data can't work without, add a step to `upgradeFloor`. Floor version 4 is the exception, while interiors are still being tested: older saved floors had doorways too narrow to walk through, so they are rebuilt. What someone did in a building is in `plan.state`, apart from its layout, and over the storage limit those buildings lose their saved floors last. The bag is saved separately. "Forget building interiors" in Settings is how to see improvements in visited buildings.
 
 ## What has to change in the game
 | Today | Needed |
@@ -293,15 +294,15 @@ Better layouts and types apply to buildings not yet visited, and a visited build
 ## Order of work
 1. Done: read POIs, classify buildings, make ids, and show the type and floor count in the hint. Saved from the start.
 2. Done: Kenney models converted (`scripts/build-furniture.mjs` makes `public/furniture.bin` from `assets/kenney-furniture`), item catalogue, placement and saved floors for homes. Inner walls and doorways moved here from step 3, because "against a wall" means nothing without them.
-3. Done: stairs and lifts, and the floors above. L beside stairs goes up, or down from the top floor; on a floor between, Shift+L goes down. L beside a lift lets W and S choose a floor (Shift for 10), and L goes. You can only leave a building from its ground floor. A building too narrow for stairs becomes one floor. Saved floors from before stairs existed are laid out again once.
+3. Done: stairs and lifts, and the floors above. Above the ground floor, L beside stairs goes up, or down from the top floor; on a floor between, Shift+L goes down. L beside a lift up there lets W and S choose a floor (Shift for 10), and L goes. On the ground floor L always leaves, and F uses the stairs or the lift. You can only leave a building from its ground floor. A building too narrow for stairs becomes one floor. Saved floors from before stairs existed are laid out again once. Floor version 4 lays a floor out again when its doorways were too narrow to walk through.
 4. Done, all at once rather than in groups: the remaining types. Limits that keep a first visit to about 160 ms at most: at most 200 solid things and 16 rooms a floor, a 1 m grid from 1,500 m² rather than 0.5 m, a budget for checking nothing is shut off, and only `WINDOW` (45 m each way from the centre) is furnished. Past that, a huge floor is an open hall, rather than the walk-as-you-go generation planned earlier. Tall halls still have the 3 m outer walls.
 
 ## Decisions
 | Question | Decision |
 |---|---|
 | How to see inside | Cutaway: today's overhead camera with the roof off, and inner walls drawn about waist high |
-| Changing floors | Stairs and lifts are real spots on the plan. L beside stairs goes one floor, with Shift+L for down on a floor between; L beside a lift picks a floor. No climbing animation |
+| Changing floors | Stairs and lifts are real spots on the plan. Above the ground floor, L beside stairs goes one floor, with Shift+L for down on a floor between, and L beside a lift picks a floor. On the ground floor L leaves, and F uses the stairs or the lift. No climbing animation |
 | What items do at first | Visible and solid. Each records what it could do later, with no interaction yet |
 | Which types first | All of them, as one first version |
 
-Left out of the first version unless the owner says otherwise: people in buildings, basements, locked rooms (a vault is open) and closing times.
+Left out unless the owner says otherwise: people in buildings, basements, locked rooms other than the vault, and closing times. The vault is the one room with no way in. Every other room can be walked into.

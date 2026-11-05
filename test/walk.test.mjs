@@ -340,6 +340,22 @@ test('every frame of the person is a whole figure about 1.75 m tall, and they di
   assert.equal(new TextDecoder().decode(buildPersonGlb(personParts(3)).slice(0, 4)), 'glTF');
 });
 
+test('leaving finds a way out even when the nearest wall faces another building, and a spot still indoors does not count', () => {
+  const house = building([{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 10 }, { x: 0, y: 10 }]);
+  const neighbour = building([{ x: 10.4, y: 0 }, { x: 20, y: 0 }, { x: 20, y: 10 }, { x: 10.4, y: 10 }]);
+  const world = worldOf(placeWith({ buildings: [house, neighbour] }));
+  const stuck = newWalker(5, 5, 0);
+  stuck.inside = house;
+  stuck.outside = { x: 5, y: 5 };
+  assert.equal(leaveBuilding(stuck, world), true);
+  assert.equal(stuck.inside, null);
+  assert.equal(world.place.footprintAt(stuck.x, stuck.y), null);
+  const again = newWalker(5, 5, 0);
+  again.inside = house;
+  assert.equal(leaveBuilding(again, world), true);
+  assert.equal(world.place.footprintAt(again.x, again.y), null);
+});
+
 test('someone inside is by an outside wall only close to one', async () => {
   const { byOutsideWall } = await import('../public/js/footWalker.js');
   const building = {}, world = { place: { walls: () => [{ ax: 0, ay: 0, bx: 20, by: 0 }] } };

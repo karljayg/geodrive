@@ -73,7 +73,7 @@ Google usage and spend can only be seen in Google Cloud Console; the API key can
 | `pocketArt.js` | The pictures of what you carry, as vector art | Yes |
 | `overture.js` | Reads places from Overture's PMTiles file | Yes |
 | `buildings.js` | A building's type, floors and style, and saving them | Yes |
-| `furnish.js` | One floor's rooms, inner walls, doorways and what stands in them | Yes |
+| `furnish.js` | One floor's rooms, inner walls, doorways wide enough to walk through, and what stands in them. A vault is the room with no way in | Yes |
 | `furniture.js` | The item catalogue, and reading and drawing the models in `furniture.bin` | Yes |
 | `footScene.js` | Meshes and ground pictures for walking | Yes |
 | `footGl.js` | WebGL2 renderer | Matrices yes, drawing browser |

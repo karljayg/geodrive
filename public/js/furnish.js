@@ -8,7 +8,7 @@ import { ITEMS, isSolid } from './furniture.js';
 const FINE_CELL = 0.5, COARSE_CELL = 1; // m a side of the grid used for rooms and for checking you can get about
 const COARSE_FROM = 1500;  // m² of floor from which the grid is coarse, as checks cost by the cell
 const MIN_ROOM = 2;        // m wide
-const DOOR_WIDTH = 1;      // m
+const DOOR_WIDTH = 1.5;    // m, wide enough that a person 0.7 m across can walk through, jambs included
 const DOOR_CLEAR = 0.9;    // m each side of a doorway kept free
 const CLEARANCE = 0.35;    // m around a thing that a person can't stand, as they are that wide
 const SIDE_GAPS = [0.08, 0.3, 0.55]; // m from a wall to try; a wall the grid doesn't line up with can be further off
@@ -117,8 +117,9 @@ const CORE_CLEAR = 1.4;    // m in front of the stairs and lift kept free on eve
 const CORE_REACH = 1.6;    // m from them that L or F uses them
 // Layouts can improve without this changing: a saved floor stays as it was found. Only for a change a saved floor can't work without,
 // add a step to upgradeFloor rather than raising FLOOR_OLDEST, which throws saved floors away.
-export const FLOOR_VERSION = 3;
-const FLOOR_OLDEST = 3;
+// Version 4 did throw the older ones away: their doorways were too narrow to walk through.
+export const FLOOR_VERSION = 4;
+const FLOOR_OLDEST = 4;
 
 // A saved floor brought up to date, or null if it's from before this game could read them.
 export function upgradeFloor(record) {
@@ -1141,9 +1142,10 @@ function openDoor(grid, alongU, edges, doors) {
   const first = edges[0].index, i = first % grid.nu, j = Math.floor(first / grid.nu), width = edges.length * grid.cell;
   const line = alongU ? grid.minU + (i + 1) * grid.cell : grid.minV + (j + 1) * grid.cell;
   const from = alongU ? grid.minV + j * grid.cell : grid.minU + i * grid.cell;
+  const end = CLEARANCE; // furniture stays off the jambs, or the opening is too tight to walk
   doors.push(alongU
-    ? { u0: line - DOOR_CLEAR, u1: line + DOOR_CLEAR, v0: from, v1: from + width }
-    : { u0: from, u1: from + width, v0: line - DOOR_CLEAR, v1: line + DOOR_CLEAR });
+    ? { u0: line - DOOR_CLEAR, u1: line + DOOR_CLEAR, v0: from - end, v1: from + width + end }
+    : { u0: from - end, u1: from + width + end, v0: line - DOOR_CLEAR, v1: line + DOOR_CLEAR });
 }
 
 // One doorway in each cut, on its longest unbroken stretch.
@@ -1157,8 +1159,9 @@ function addDoors(grid, cuts, doors, roll) {
     }
     const longest = runs.reduce((best, run) => (run.length > best.length ? run : best), []);
     if (!longest.length) continue;
-    const edges2 = Math.ceil(DOOR_WIDTH / grid.cell), start = Math.floor(roll() * Math.max(1, longest.length - edges2 + 1));
-    openDoor(grid, alongU, longest.slice(start, start + edges2), doors);
+    const need = Math.ceil(DOOR_WIDTH / grid.cell), spare = longest.length - need, inset = spare >= 2 ? 1 : 0;
+    const start = inset + Math.floor(roll() * Math.max(1, spare - 2 * inset + 1));
+    openDoor(grid, alongU, longest.slice(start, start + need), doors);
   }
 }
 
@@ -1182,13 +1185,307 @@ function joinUp(grid, cuts, doors, sealed = [], blocked = null) {
         return wall[edge.index] && a !== b && a >= 0 && b >= 0 && (a === main || b === main) && !inSealed(i, j) && !inSealed(ni, nj);
       });
       if (at < 0) continue;
-      const next = edges[at + 1]?.k === edges[at].k + 1 ? at + 1 : edges[at - 1]?.k === edges[at].k - 1 ? at - 1 : at;
-      openDoor(grid, alongU, [edges[Math.min(at, next)], edges[Math.max(at, next)]].filter((e, n, list) => n === 0 || e !== list[0]), doors);
+      const need = Math.ceil(DOOR_WIDTH / grid.cell);
+      const separates = (n) => {
+        if (n < 0 || n >= edges.length || edges[n].k !== edges[at].k + (n - at)) return false;
+        const [a, b] = across(edges[n]);
+        const i = edges[n].index % grid.nu, j = Math.floor(edges[n].index / grid.nu), [ni, nj] = alongU ? [i + 1, j] : [i, j + 1];
+        return wall[edges[n].index] && a !== b && a >= 0 && b >= 0 && !inSealed(i, j) && !inSealed(ni, nj);
+      };
+      let lo = at, hi = at;
+      while (separates(lo - 1)) lo--;
+      while (separates(hi + 1)) hi++;
+      const run = edges.slice(lo, hi + 1), cover = at - lo;
+      const from = Math.max(0, Math.min(run.length - 1, Math.min(Math.max(0, run.length - need), cover - Math.floor((need - 1) / 2))));
+      openDoor(grid, alongU, run.slice(from, from + need), doors);
       opened = true;
       break;
     }
     if (!opened) return; // what's left can't be reached through any cut, so it's the shape of the building
   }
+}
+
+// A person stands in the middle of a cell, CLEARANCE from its edge, so a cell against a wall or a thing is not somewhere they can be.
+const pointSeg = (px, py, ax, ay, bx, by) => {
+  const dx = bx - ax, dy = by - ay, len2 = dx * dx + dy * dy || 1, t = Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / len2));
+  return Math.hypot(px - (ax + dx * t), py - (ay + dy * t));
+};
+
+function pointCrowded(grid, u, v) {
+  const { cell } = grid, i = Math.floor((u - grid.minU) / cell), j = Math.floor((v - grid.minV) / cell);
+  for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) {
+    const ni = i + di, nj = j + dj;
+    if (ni < 0 || nj < 0 || ni >= grid.nu || nj >= grid.nv) continue;
+    const at = grid.at(ni, nj), wu = grid.minU + (ni + 1) * cell, us = grid.minU + ni * cell, vn = grid.minV + (nj + 1) * cell, vs = grid.minV + nj * cell;
+    if (grid.wallEast[at] && pointSeg(u, v, wu, vs, wu, vs + cell) < CLEARANCE) return true;
+    if (grid.wallNorth[at] && pointSeg(u, v, us, vn, us + cell, vn) < CLEARANCE) return true;
+  }
+  return false;
+}
+
+function wallTooClose(grid, i, j) {
+  return pointCrowded(grid, grid.minU + (i + 0.5) * grid.cell, grid.minV + (j + 0.5) * grid.cell);
+}
+
+// The straight step between two cell centres also has to clear the jambs. A corner can clip that step while both centres look free.
+function gapClear(grid, i, j, ni, nj) {
+  return !pointCrowded(grid, grid.minU + (i + ni + 1) * 0.5 * grid.cell, grid.minV + (j + nj + 1) * 0.5 * grid.cell);
+}
+
+function canStand(grid, i, j, blocked) {
+  return grid.has(i, j) && !blocked?.[grid.at(i, j)] && !wallTooClose(grid, i, j);
+}
+
+const inSealedRect = (sealed, i, j) => sealed.some((r) => i >= r.i0 && i <= r.i1 && j >= r.j0 && j <= r.j1);
+
+function snapStand(grid, u, v, blocked) {
+  const i0 = Math.floor((u - grid.minU) / grid.cell), j0 = Math.floor((v - grid.minV) / grid.cell);
+  if (canStand(grid, i0, j0, blocked)) return [i0, j0];
+  for (let r = 1; r <= 4; r++) for (let dj = -r; dj <= r; dj++) for (let di = -r; di <= r; di++) {
+    if (Math.abs(di) !== r && Math.abs(dj) !== r) continue;
+    if (canStand(grid, i0 + di, j0 + dj, blocked)) return [i0 + di, j0 + dj];
+  }
+  return null;
+}
+
+function nearestStand(grid, i0, j0, blocked, sealed) {
+  let best = null, bestD = Infinity;
+  for (let j = 0; j < grid.nv; j++) for (let i = 0; i < grid.nu; i++) {
+    if (!canStand(grid, i, j, blocked) || inSealedRect(sealed, i, j)) continue;
+    const d = Math.abs(i - i0) + Math.abs(j - j0);
+    if (d < bestD) { bestD = d; best = [i, j]; }
+  }
+  return best;
+}
+
+function floodStand(grid, seed, blocked, sealed) {
+  const seen = new Uint8Array(grid.nu * grid.nv);
+  let [i, j] = seed;
+  if (!canStand(grid, i, j, blocked) || inSealedRect(sealed, i, j)) {
+    const hit = nearestStand(grid, i, j, blocked, sealed);
+    if (!hit) return seen;
+    [i, j] = hit;
+  }
+  const stack = [i, j];
+  seen[grid.at(i, j)] = 1;
+  while (stack.length) {
+    const y = stack.pop(), x = stack.pop();
+    for (const [ni, nj] of [[x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]]) {
+      if (!canStand(grid, ni, nj, blocked) || !gapClear(grid, x, y, ni, nj) || inSealedRect(sealed, ni, nj)) continue;
+      const at = grid.at(ni, nj);
+      if (seen[at]) continue;
+      seen[at] = 1;
+      stack.push(ni, nj);
+    }
+  }
+  return seen;
+}
+
+function roomReached(grid, room, seen) {
+  const { i0, i1, j0, j1 } = room.rect;
+  let floor = false;
+  for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
+    if (!grid.has(i, j)) continue;
+    floor = true;
+    if (seen[grid.at(i, j)]) return true;
+  }
+  return !floor;
+}
+
+// Pulls the jambs back where a gap is already open but still too tight to stand in.
+function pinchOpen(grid, i, j, sealed) {
+  let changed = false;
+  const { cell } = grid, u = grid.minU + (i + 0.5) * cell, v = grid.minV + (j + 0.5) * cell;
+  const clear = (flag, ni, nj, u0, v0, u1, v1, oi, oj) => {
+    if (ni < 0 || nj < 0 || ni >= grid.nu || nj >= grid.nv || oi < 0 || oj < 0 || oi >= grid.nu || oj >= grid.nv) return;
+    const at = grid.at(ni, nj);
+    if (!flag[at] || pointSeg(u, v, u0, v0, u1, v1) >= CLEARANCE) return;
+    if (inSealedRect(sealed, ni, nj) || inSealedRect(sealed, oi, oj)) return;
+    flag[at] = 0;
+    changed = true;
+  };
+  for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) {
+    const ni = i + di, nj = j + dj;
+    if (ni < 0 || nj < 0 || ni >= grid.nu || nj >= grid.nv) continue;
+    const wu = grid.minU + (ni + 1) * cell, us = grid.minU + ni * cell, vn = grid.minV + (nj + 1) * cell, vs = grid.minV + nj * cell;
+    clear(grid.wallEast, ni, nj, wu, vs, wu, vs + cell, ni + 1, nj);
+    clear(grid.wallNorth, ni, nj, us, vn, us + cell, vn, ni, nj + 1);
+  }
+  return changed;
+}
+
+// Opens a walkable gap in the wall between (i, j) and the next cell, centred on that edge.
+function openWideAt(grid, alongU, i, j, doors, sealed) {
+  const wall = alongU ? grid.wallEast : grid.wallNorth, need = Math.ceil(DOOR_WIDTH / grid.cell), k0 = alongU ? j : i;
+  const cellAt = (k) => (alongU ? [i, k] : [k, j]);
+  const both = (k) => {
+    const [ii, jj] = cellAt(k), [ni, nj] = alongU ? [ii + 1, jj] : [ii, jj + 1];
+    return grid.has(ii, jj) && grid.has(ni, nj) && !inSealedRect(sealed, ii, jj) && !inSealedRect(sealed, ni, nj);
+  };
+  if (!both(k0)) return false;
+  let lo = k0, hi = k0;
+  while (both(lo - 1)) lo--;
+  while (both(hi + 1)) hi++;
+  let a = k0, b = k0;
+  while (b - a + 1 < need && (a > lo || b < hi)) {
+    if (b < hi && (a <= lo || k0 - a >= b - k0)) b++;
+    else a--;
+  }
+  const edges = [];
+  let changed = false;
+  for (let k = a; k <= b; k++) {
+    const [ii, jj] = cellAt(k), index = grid.at(ii, jj);
+    if (wall[index]) changed = true;
+    edges.push({ k, index });
+  }
+  if (!changed) return false;
+  openDoor(grid, alongU, edges, doors);
+  return true;
+}
+
+// Every room but a sealed one gets a gap a person can walk through, from the entrance. Stairs already stand, so the way goes round them.
+function connectRooms(grid, rooms, doors, blocked, sealed, seed) {
+  for (let n = 0; n < 40; n++) {
+    const seen = floodStand(grid, seed, blocked, sealed);
+    const missing = rooms.find((r) => !SEALED.has(r.zone) && !roomReached(grid, r, seen));
+    if (!missing) return;
+    if (!openInto(grid, seen, missing, doors, sealed, blocked)) return;
+  }
+}
+
+function openInto(grid, seen, room, doors, sealed, blocked) {
+  const prev = new Int32Array(grid.nu * grid.nv).fill(-1), crossed = new Uint8Array(grid.nu * grid.nv);
+  const free = [], paid = [];
+  let fh = 0, ph = 0;
+  for (let at = 0; at < prev.length; at++) if (seen[at]) prev[at] = -2;
+  const consider = (i, j, ni, nj) => {
+    if (!grid.has(ni, nj) || blocked?.[grid.at(ni, nj)] || inSealedRect(sealed, ni, nj)) return;
+    const at = grid.at(ni, nj);
+    if (prev[at] !== -1) return;
+    const alongU = nj === j, walled = alongU ? grid.wallEast[grid.at(Math.min(i, ni), j)] : grid.wallNorth[grid.at(i, Math.min(j, nj))];
+    prev[at] = grid.at(i, j);
+    crossed[at] = walled ? 1 : 0;
+    (walled ? paid : free).push(at);
+  };
+  for (let j = 0; j < grid.nv; j++) for (let i = 0; i < grid.nu; i++) if (seen[grid.at(i, j)]) {
+    consider(i, j, i + 1, j); consider(i, j, i - 1, j); consider(i, j, i, j + 1); consider(i, j, i, j - 1);
+  }
+  const { i0, i1, j0, j1 } = room.rect;
+  let goal = -1;
+  while ((fh < free.length || ph < paid.length) && goal < 0) {
+    const at = fh < free.length ? free[fh++] : paid[ph++];
+    const i = at % grid.nu, j = Math.floor(at / grid.nu);
+    if (i >= i0 && i <= i1 && j >= j0 && j <= j1 && !seen[at]) { goal = at; break; }
+    consider(i, j, i + 1, j); consider(i, j, i - 1, j); consider(i, j, i, j + 1); consider(i, j, i, j - 1);
+  }
+  if (goal < 0) return false;
+  let opened = false;
+  for (let at = goal; prev[at] >= 0; at = prev[at]) {
+    if (!crossed[at]) continue;
+    const i = at % grid.nu, j = Math.floor(at / grid.nu), from = prev[at], pi = from % grid.nu, pj = Math.floor(from / grid.nu);
+    const alongU = j === pj;
+    const wi = alongU ? Math.min(i, pi) : i, wj = alongU ? j : Math.min(j, pj);
+    const widened = openWideAt(grid, alongU, wi, wj, doors, sealed);
+    opened = widened || opened;
+    if (!widened) opened = pinchOpen(grid, i, j, sealed) || pinchOpen(grid, pi, pj, sealed) || opened;
+  }
+  if (opened) return true;
+  // The gap is already open on the grid, but a jamb still clips the step through it.
+  for (let at = goal; prev[at] >= 0; at = prev[at]) {
+    const i = at % grid.nu, j = Math.floor(at / grid.nu), from = prev[at];
+    if (from < 0) break;
+    const pi = from % grid.nu, pj = Math.floor(from / grid.nu);
+    if (canStand(grid, i, j, blocked) && gapClear(grid, pi, pj, i, j)) continue;
+    const u = grid.minU + (i + pi + 1) * 0.5 * grid.cell, v = grid.minV + (j + pj + 1) * 0.5 * grid.cell;
+    if (pinchPoint(grid, u, v, sealed) || pinchOpen(grid, i, j, sealed)) return true;
+  }
+  return false;
+}
+
+function pinchPoint(grid, u, v, sealed) {
+  let changed = false;
+  const { cell } = grid, i0 = Math.floor((u - grid.minU) / cell), j0 = Math.floor((v - grid.minV) / cell);
+  for (let dj = -2; dj <= 2; dj++) for (let di = -2; di <= 2; di++) {
+    const ni = i0 + di, nj = j0 + dj;
+    if (ni < 0 || nj < 0 || ni >= grid.nu || nj >= grid.nv) continue;
+    const at = grid.at(ni, nj), wu = grid.minU + (ni + 1) * cell, us = grid.minU + ni * cell, vn = grid.minV + (nj + 1) * cell, vs = grid.minV + nj * cell;
+    const cut = (flag, u0, v0, u1, v1, oi, oj) => {
+      if (!flag[at] || pointSeg(u, v, u0, v0, u1, v1) >= CLEARANCE) return;
+      if (oi < 0 || oj < 0 || oi >= grid.nu || oj >= grid.nv) return;
+      if (inSealedRect(sealed, ni, nj) || inSealedRect(sealed, oi, oj)) return;
+      flag[at] = 0;
+      changed = true;
+    };
+    cut(grid.wallEast, wu, vs, wu, vs + cell, ni + 1, nj);
+    cut(grid.wallNorth, us, vn, us + cell, vn, ni, nj + 1);
+  }
+  return changed;
+}
+
+const KEPT = new Set(['stairs', 'stairwell', 'lift', 'vaultDoor']);
+
+// Takes away solid things that still leave a room with nowhere to stand. The stairs, lift and vault door stay.
+function dropBlockers(grid, rooms, items, models, sealed, seed) {
+  for (let round = 0; round < 24; round++) {
+    const owners = Array.from({ length: grid.nu * grid.nv }, () => []), blocked = new Uint8Array(grid.nu * grid.nv), stuck = new Uint8Array(grid.nu * grid.nv);
+    items.forEach((entry, index) => {
+      const [item, name, u, v, , rot] = entry;
+      if (!isSolid(item) || !models[name]) return;
+      const box = boxAt(u, v, reach(models[name], Math.round(rot / 90) * 90)), kept = KEPT.has(item);
+      for (let j = 0; j < grid.nv; j++) for (let i = 0; i < grid.nu; i++) {
+        const cu = grid.minU + (i + 0.5) * grid.cell, cv = grid.minV + (j + 0.5) * grid.cell;
+        if (cu <= box.u0 - CLEARANCE || cu >= box.u1 + CLEARANCE || cv <= box.v0 - CLEARANCE || cv >= box.v1 + CLEARANCE) continue;
+        const at = grid.at(i, j);
+        blocked[at] = 1;
+        if (kept) stuck[at] = 1;
+        else owners[at].push(index);
+      }
+    });
+    const seen = floodStand(grid, seed, blocked, sealed);
+    const missing = rooms.find((r) => !SEALED.has(r.zone) && !roomReached(grid, r, seen));
+    if (!missing) return;
+    const drop = wayItems(grid, seen, missing, owners, sealed, stuck);
+    if (!drop.length) return;
+    const gone = new Set(drop);
+    for (let i = items.length - 1; i >= 0; i--) if (gone.has(i)) items.splice(i, 1);
+  }
+}
+
+function wayItems(grid, seen, room, owners, sealed, stuck) {
+  const prev = new Int32Array(grid.nu * grid.nv).fill(-1), free = [], paid = [];
+  let fh = 0, ph = 0;
+  for (let at = 0; at < prev.length; at++) if (seen[at]) prev[at] = -2;
+  const consider = (ni, nj, from) => {
+    const fi = from % grid.nu, fj = Math.floor(from / grid.nu);
+    if (!canStand(grid, ni, nj, stuck) || !gapClear(grid, fi, fj, ni, nj) || inSealedRect(sealed, ni, nj)) return;
+    const at = grid.at(ni, nj);
+    if (prev[at] !== -1) return;
+    prev[at] = from;
+    (owners[at].length && !seen[at] ? paid : free).push(at);
+  };
+  for (let j = 0; j < grid.nv; j++) for (let i = 0; i < grid.nu; i++) if (seen[grid.at(i, j)]) {
+    const at = grid.at(i, j);
+    consider(i + 1, j, at); consider(i - 1, j, at); consider(i, j + 1, at); consider(i, j - 1, at);
+  }
+  const { i0, i1, j0, j1 } = room.rect;
+  let goal = -1;
+  while ((fh < free.length || ph < paid.length) && goal < 0) {
+    const at = fh < free.length ? free[fh++] : paid[ph++];
+    const i = at % grid.nu, j = Math.floor(at / grid.nu);
+    if (i >= i0 && i <= i1 && j >= j0 && j <= j1 && !seen[at]) { goal = at; break; }
+    consider(i + 1, j, at); consider(i - 1, j, at); consider(i, j + 1, at); consider(i, j - 1, at);
+  }
+  if (goal < 0) return [];
+  const drop = new Set();
+  for (let at = goal; prev[at] >= 0; at = prev[at]) for (const index of owners[at]) drop.add(index);
+  return [...drop];
+}
+
+function startCell(grid, entry, core) {
+  const point = entry || (core ? [core.clear[0] + 0.3, core.clear[1] + 0.3] : null);
+  if (point) return [Math.floor((point[0] - grid.minU) / grid.cell), Math.floor((point[1] - grid.minV) / grid.cell)];
+  for (let j = 0; j < grid.nv; j++) for (let i = 0; i < grid.nu; i++) if (grid.has(i, j)) return [i, j];
+  return [0, 0];
 }
 
 // No walls where the stairs and lift and the way to them are, as those are the same on every floor and the rooms are not.
@@ -1282,8 +1579,8 @@ class Furnisher {
   // Cells that stay free: a way from the entrance to every doorway and the stairs, so nobody needs to jump to get about.
   keepRoutes(from, targets) {
     const { grid } = this, cellAt = ([u, v]) => {
-      const i = Math.floor((u - grid.minU) / grid.cell), j = Math.floor((v - grid.minV) / grid.cell);
-      return grid.has(i, j) && !this.blocked[grid.at(i, j)] ? grid.at(i, j) : -1;
+      const hit = snapStand(grid, u, v, this.blocked);
+      return hit ? grid.at(hit[0], hit[1]) : -1;
     };
     const route = new Set(), goals = new Set(targets.map(cellAt).filter((at) => at >= 0)), start = cellAt(from);
     if (start < 0) return;
@@ -1297,9 +1594,9 @@ class Furnisher {
       for (let n = 0; n < queue.length && found < 0; n++) {
         const at = queue[n], i = at % grid.nu, j = Math.floor(at / grid.nu);
         const go = (ni, nj, walled) => {
-          if (walled || !grid.has(ni, nj)) return;
+          if (walled || !canStand(grid, ni, nj, this.blocked) || !gapClear(grid, i, j, ni, nj)) return;
           const next = grid.at(ni, nj);
-          if (came.has(next) || this.blocked[next]) return;
+          if (came.has(next)) return;
           came.set(next, at);
           queue.push(next);
           if (goals.has(next) && found < 0) found = next;
@@ -1662,12 +1959,15 @@ function corridorFloor(grid, plan, floor, roll, doors, spec) {
     return made;
   };
   const door = ({ alongU, edges }) => {
-    let run = [];
+    const runs = [];
     for (const edge of edges) {
-      run = run.at(-1)?.k === edge.k - 1 ? [...run, edge] : [edge];
-      if (run.length >= Math.ceil(DOOR_WIDTH / cell) && roll() < 0.5) break;
+      const last = runs.at(-1);
+      if (last && last.at(-1).k === edge.k - 1) last.push(edge);
+      else runs.push([edge]);
     }
-    const used = run.slice(-Math.ceil(DOOR_WIDTH / cell));
+    const run = runs.reduce((best, one) => (one.length > best.length ? one : best), []);
+    const need = Math.ceil(DOOR_WIDTH / cell), from = Math.max(0, Math.floor((run.length - need) / 2));
+    const used = run.slice(from, from + need);
     if (used.length) openDoor(grid, alongU, used, doors);
     return used;
   };
@@ -1983,10 +2283,13 @@ export function layoutFloor(pieces, plan, floor, models, roll) {
     }
   }
   for (const { u, v, rot } of frontDoors) furnisher.items.push(['frontDoor', 'frontDoor', round(u), round(v), 0, rot, -1, 1]);
-  if (rooms.length) {
+  const seed = rooms.length ? startCell(grid, entry, plan.core) : null;
+  if (seed) {
+    connectRooms(grid, rooms, doors, furnisher.blocked, sealed, seed);
+    furnisher.stranded = furnisher.strandedBy(furnisher.blocked);
     const start = entry || (plan.core ? [plan.core.clear[0] + 0.3, plan.core.clear[1] + 0.3] : null), ends = doors.flatMap(({ u0, u1, v0, v1 }) => {
-      const u = (u0 + u1) / 2, v = (v0 + v1) / 2, reach = grid.cell * 0.8;
-      return [[u - reach, v], [u + reach, v], [u, v - reach], [u, v + reach]];
+      const u = (u0 + u1) / 2, v = (v0 + v1) / 2, span = grid.cell * 0.8;
+      return [[u - span, v], [u + span, v], [u, v - span], [u, v + span]];
     });
     if (start) furnisher.keepRoutes(start, ends);
   }
@@ -1999,6 +2302,7 @@ export function layoutFloor(pieces, plan, floor, models, roll) {
     const share = (room.u1 - room.u0) * (room.v1 - room.v0) / Math.max(1, grid.nu * grid.nv * grid.cell * grid.cell);
     furnisher.fill(zone, room, index, share);
   });
+  if (seed) dropBlockers(grid, rooms, furnisher.items, models, sealed, seed);
   return { v: FLOOR_VERSION, axis, zones, walls: wallLengths(grid), items: furnisher.items, look: { wall: plan.look.wall, outer: plan.look.outer }, ...(entry ? { entry } : {}) };
 }
 

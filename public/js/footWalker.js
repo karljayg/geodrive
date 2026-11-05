@@ -111,21 +111,38 @@ export function enterBuilding(walker, world) {
   return true;
 }
 
-// L inside goes back out where you came in. A building that filled in around someone has no such place, so they leave by its nearest wall.
+// A point just outside this building. Several places along each wall, and a step further out if the first still lands in a neighbour.
+function exitSpot(walker, building, world) {
+  const pieces = building.pieces || [building];
+  let best = null, bestDist = Infinity;
+  for (const piece of pieces) {
+    for (const w of world.place.walls(piece)) {
+      const dx = w.bx - w.ax, dy = w.by - w.ay, len = Math.hypot(dx, dy) || 1, nx = dy / len, ny = -dx / len;
+      const steps = Math.max(1, Math.round(len / 2));
+      for (let s = 1; s < steps; s++) {
+        const t = s / steps, px = w.ax + dx * t, py = w.ay + dy * t, d = Math.hypot(walker.x - px, walker.y - py);
+        if (best && d >= bestDist) continue;
+        for (const dist of [STEP_INSIDE, STEP_INSIDE + 0.8, STEP_INSIDE + 1.6]) {
+          for (const side of [1, -1]) {
+            const spot = { x: px + nx * side * dist, y: py + ny * side * dist };
+            if (world.place.footprintAt(spot.x, spot.y)) continue;
+            best = spot;
+            bestDist = d;
+          }
+        }
+      }
+    }
+  }
+  return best;
+}
+
+// L inside goes back out where you came in, when that spot is still outdoors. Otherwise the nearest clear place outside.
 export function leaveBuilding(walker, world) {
   const building = walker.inside;
   if (!building) return false;
-  let to = walker.outside;
-  if (!to) {
-    let bestDist = Infinity;
-    for (const w of world.place.walls(building)) {
-      const d = distToSegment(walker.x, walker.y, w.ax, w.ay, w.bx, w.by);
-      if (d >= bestDist) continue;
-      const dx = w.bx - w.ax, dy = w.by - w.ay, len = Math.hypot(dx, dy) || 1, mx = (w.ax + w.bx) / 2, my = (w.ay + w.by) / 2;
-      const spot = [1, -1].map((side) => ({ x: mx + (dy / len) * side * STEP_INSIDE, y: my - (dx / len) * side * STEP_INSIDE })).find((p) => !world.place.footprintAt(p.x, p.y));
-      if (spot) { to = spot; bestDist = d; }
-    }
-  }
+  const remembered = walker.outside;
+  const outdoors = (p) => p && !world.place.footprintAt(p.x, p.y);
+  const to = outdoors(remembered) ? remembered : exitSpot(walker, building, world);
   if (!to) return false;
   walker.x = to.x;
   walker.y = to.y;

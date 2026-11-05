@@ -63,7 +63,7 @@ export const KEY_LIST = {
         [['R'], 'Load the gun in your hand'],
       ] },
       { name: 'Doing things', keys: [
-        [['L'], 'Car, doors, stairs and lifts'],
+        [['L'], 'Leave on the ground floor. Above that: stairs and lifts'],
         [['Shift', 'L'], 'Downstairs, between floors'],
         [['F'], 'Use what\'s near. It asks: F or a number says yes, walking away or Esc says no. That number is used before your hands. At the car, it offers to load it. At an outlet, leave your phone or flashlight charging and come back for it. At a tap, fill an empty water bottle'],
         [['0–9'], 'In a lift: the floor, while its panel is open'],

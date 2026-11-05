@@ -4,6 +4,45 @@ import { LIVES_MOST, SPAWN_MOST, fileValue, spawnCatalog, spawnMatches, tunables
 
 const CONFIG_SHOWN = 80;
 const STATS = () => [...Object.entries(GAME.stats).map(([key, stat]) => [key, stat.label]), ['health', GAME.health.label]];
+const pct = (v) => `${(v * 100).toFixed(1)}%`;
+const times = (v) => `${Number(v.toFixed(1))}×`;
+const metres = (v) => `${v} m`;
+const countText = (v) => `${v}`;
+const snap = (value, step) => Number((Math.round(value / step) * step).toFixed(6));
+const near = (a, b) => Math.abs(a - b) < 1e-4;
+
+// The How often window. spacing is a browser setting; path is a world override. also is set to the same number.
+const APPEAR = [
+  { group: 'Along the road', note: 'How far apart, and how far off the road an animal stands. Only the nearest few of each are drawn. Spacing is this browser. Letting go of a slider replants them.' },
+  { label: 'Parked cars', spacing: 'carEvery', min: 100, max: 2000, step: 50, text: metres },
+  { label: 'Deer', spacing: 'deerEvery', min: 200, max: 4000, step: 100, text: metres },
+  { label: 'Deer, off the road', path: 'deer.verge', min: 2, max: 40, step: 1, text: metres, replant: true },
+  { label: 'Chickens', spacing: 'chickenEvery', min: 200, max: 4000, step: 100, text: metres },
+  { label: 'Chickens, off the road', path: 'chicken.verge', min: 2, max: 40, step: 1, text: metres, replant: true },
+  { label: 'Rabbits', spacing: 'rabbitEvery', min: 200, max: 4000, step: 100, text: metres },
+  { label: 'Rabbits, off the road', path: 'rabbit.verge', min: 2, max: 40, step: 1, text: metres, replant: true },
+  { group: 'Food and supplies', note: '1 is the usual chance for that fridge, shelf or drawer. 0 finds none of that kind. The item is a random one of the kind.' },
+  { label: 'Food', path: 'loot.food', min: 0, max: 4, step: 0.1, text: times },
+  { label: 'Drink', path: 'loot.drink', min: 0, max: 4, step: 0.1, text: times },
+  { label: 'Medicine', path: 'loot.medicine', min: 0, max: 4, step: 0.1, text: times },
+  { label: 'Other finds', path: 'loot.other', min: 0, max: 4, step: 0.1, text: times, hint: 'Clothes, keys, cash, tools and anything that is not food, drink or medicine.' },
+  { group: 'Guns', note: 'Handguns are a pistol, revolver or .45. Advanced guns are an SMG, shotgun, hunting rifle, AR-15 or sniper. A home is checked for a handgun first, then an advanced gun. The particular gun of that type is random.' },
+  { label: 'Handguns in homes', path: 'houseGun.handgunChance', min: 0, max: 1, step: 0.01, text: (v) => `${pct(v)} of homes` },
+  { label: 'Advanced guns in homes', path: 'houseGun.advancedChance', min: 0, max: 1, step: 0.01, text: (v) => `${pct(v)} of homes` },
+  { label: 'Boxes with a box-fed gun', path: 'houseGun.boxes', min: 0, max: 40, step: 1, text: countText },
+  { label: 'Rounds with a shotgun or sniper', path: 'houseGun.rounds', min: 0, max: 40, step: 1, text: countText },
+  { label: 'Shops that sell guns', path: 'armory.gunShopChance', min: 0, max: 1, step: 0.01, text: pct },
+  { label: 'Malls that sell guns', path: 'armory.mallChance', min: 0, max: 1, step: 0.01, text: pct },
+  { label: 'Handguns in those places', path: 'armory.handgunShare', min: 0, max: 1, step: 0.01, text: (v) => `${pct(v)} handguns` },
+  { label: 'Guns at a police station', path: 'armory.police.guns', min: 0, max: 12, step: 1, text: countText },
+  { label: 'Guns at a gun shop', path: 'armory.gunShop.guns', min: 0, max: 12, step: 1, text: countText },
+  { label: 'Guns at a mall', path: 'armory.mall.guns', min: 0, max: 12, step: 1, text: countText },
+  { group: 'Water and machines', note: 'A machine still hands over a random item of whatever kinds are turned up above. A place you already searched stays as it was.' },
+  { label: 'Vending machines stocked', path: 'machines.vendingMachine.chance', min: 0, max: 1, step: 0.01, text: pct },
+  { label: 'Coffee machines stocked', path: 'machines.coffeeMachine.chance', min: 0, max: 1, step: 0.01, text: pct },
+  { label: 'Working taps', path: 'uses.sink.works', also: ['uses.basin.works'], min: 0, max: 1, step: 0.01, text: pct },
+  { label: 'Working outlets', path: 'outlets.workingChance', min: 0, max: 1, step: 0.01, text: pct },
+];
 
 function make(tag, props = {}, ...children) {
   const node = Object.assign(document.createElement(tag), props);
@@ -19,22 +58,26 @@ export class TestWindows {
     Object.assign(this, { world, calls });
     this.open = new Map(); // name: { box, refresh }
     this.opened = 0;
+    this.front = null;
+    this.z = 60;
   }
 
   // One of each. Asking again brings it forward.
   show(name) {
     const known = this.open.get(name);
-    if (known) return known.box.querySelector('input')?.focus();
-    const { title, body, refresh } = this[name]();
-    const box = make('div', { className: 'testWin', role: 'dialog', ariaLabel: title });
+    if (known) { this.raise(name); return known.box.querySelector('input')?.focus(); }
+    const { title, body, refresh, wide } = this[name]();
+    const box = make('div', { className: `testWin${wide ? ' wide' : ''}`, role: 'dialog', ariaLabel: title });
     box.style.top = `${70 + this.opened * 26}px`;
     box.style.right = `${16 + this.opened * 26}px`;
     this.opened = (this.opened + 1) % 5;
     const head = make('div', { className: 'testHead' }, title, button('×', () => this.close(name)));
     box.append(head, ...body);
     this.drag(head, box);
+    box.addEventListener('pointerdown', () => this.raise(name));
     document.body.append(box);
     this.open.set(name, { box, refresh });
+    this.raise(name);
     refresh?.();
     box.querySelector('input')?.focus();
   }
@@ -42,6 +85,24 @@ export class TestWindows {
   close(name) {
     this.open.get(name)?.box.remove();
     this.open.delete(name);
+    if (this.front === name) this.front = [...this.open.keys()].at(-1) ?? null;
+  }
+
+  // The one Esc closes: the window with the keyboard, or else the one last clicked.
+  closeFront() {
+    const focused = [...this.open.entries()].find(([, known]) => known.box.contains(document.activeElement));
+    const name = focused?.[0] ?? (this.open.has(this.front) ? this.front : [...this.open.keys()].at(-1));
+    if (!name) return false;
+    this.close(name);
+    return true;
+  }
+
+  raise(name) {
+    const known = this.open.get(name);
+    if (!known) return;
+    this.z += 1;
+    known.box.style.zIndex = String(this.z);
+    this.front = name;
   }
 
   // Something changed that a window may be showing.
@@ -182,5 +243,57 @@ export class TestWindows {
       status,
     ];
     return { title: 'Set up a scene', refresh, body: [make('div', { className: 'scroll' }, ...body)] };
+  }
+
+  appear() {
+    const status = make('p');
+    const fields = [];
+    const blocks = [];
+    const read = (spec) => spec.spacing ? this.calls.spacing(spec.spacing) : (this.world.overrides[spec.path] ?? fileValue(spec.path));
+    for (const spec of APPEAR) {
+      if (spec.group) {
+        blocks.push(make('h4', { textContent: spec.group }), make('p', { textContent: spec.note }));
+        continue;
+      }
+      const figure = make('span', { className: 'fig' });
+      const input = make('input', { type: 'range', min: spec.min, max: spec.max, step: spec.step, ariaLabel: spec.label, title: spec.hint || spec.label });
+      const show = () => {
+        const value = Number(read(spec));
+        input.value = value;
+        figure.textContent = spec.text(value);
+      };
+      input.addEventListener('input', () => { figure.textContent = spec.text(snap(input.valueAsNumber, spec.step)); });
+      input.addEventListener('change', () => this.commitAppear(spec, snap(input.valueAsNumber, spec.step), status));
+      fields.push({ input, show });
+      blocks.push(make('label', { className: 'slide' }, make('span', { textContent: spec.label }), figure, input));
+    }
+    const refresh = () => {
+      status.textContent = this.world.rules.people
+        ? 'Spacing is this browser. The rest applies to everyone in this world. Somewhere you already searched stays as it was.'
+        : 'Somewhere you already searched stays as it was.';
+      for (const field of fields) if (document.activeElement !== field.input) field.show();
+    };
+    const reset = button('Put these back', async () => {
+      for (const spec of APPEAR) {
+        if (spec.group) continue;
+        if (spec.spacing) this.calls.setSpacing(spec.spacing, this.calls.spacingDefault(spec.spacing));
+        else for (const path of [spec.path, ...(spec.also || [])]) if (path in this.world.overrides) await this.world.tune(path, null);
+      }
+      this.calls.replant();
+      refresh();
+    });
+    return { title: 'How often', wide: true, refresh, body: [status, make('div', { className: 'scroll' }, ...blocks, reset)] };
+  }
+
+  async commitAppear(spec, value, status) {
+    if (spec.spacing) {
+      this.calls.setSpacing(spec.spacing, value);
+      return;
+    }
+    for (const path of [spec.path, ...(spec.also || [])]) {
+      const answer = await this.world.tune(path, near(value, fileValue(path)) ? null : value);
+      if (answer?.why) status.textContent = `Not changed: ${answer.why}.`;
+    }
+    if (spec.replant) this.calls.replant();
   }
 }
