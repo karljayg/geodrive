@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { CAR, newCar, stepCar } from '../public/js/physics.js';
+import { CAR, coastPedals, newCar, stepCar } from '../public/js/physics.js';
 import { formatTime, newTrip, tripFigures, updateTrip } from '../public/js/trip.js';
 import { leadDistance, move, distance, easeAngle } from '../public/js/camera.js';
 
@@ -76,6 +76,16 @@ test('coasting from 5 mph stops in about a second, not a long crawl', () => {
   crawl.speed = CAR.lowCoastBelow + 1;
   run(crawl, {}, 1.2);
   assert.ok(crawl.speed > CAR.lowCoastBelow * 0.5, 'above 5 mph still uses ordinary rolling');
+});
+
+test('a dead engine only brakes, so it cannot set off in reverse and a roll can still be stopped', () => {
+  const held = newCar();
+  for (let i = 0; i < 3 * 60; i++) stepCar(held, coastPedals({ throttle: 0, reverse: true, brake: 0 }), DT);
+  assert.equal(held.speed, 0);
+  const rolling = newCar();
+  rolling.speed = -8;
+  for (let i = 0; i < 2 * 60; i++) stepCar(rolling, coastPedals({ throttle: 1, reverse: false, brake: 0 }), DT);
+  assert.equal(rolling.speed, 0);
 });
 
 test('FSD pedals: part throttle is gentler, and its brake stops without reversing', () => {

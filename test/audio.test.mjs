@@ -133,6 +133,7 @@ test('brake lights: on while slowing, through the stop and while reversing, off 
   assert.equal(brakeLit(20, held({ handbrake: true })), true);
   assert.equal(brakeLit(20, held({}), true), true, 'pulling up on arrival');
   assert.equal(brakeLit(-8, held({ throttle: 1 })), true, 'W stops a reversing car');
+  assert.equal(brakeLit(-8, held({ brake: 15 })), true, 'and so does the brake while rolling back');
   assert.equal(brakeLit(20, held({ throttle: 1 })), false);
   assert.equal(brakeLit(20, held({})), false, 'coasting');
   assert.equal(brakeLit(0, held({})), false, 'parked');

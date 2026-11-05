@@ -43,7 +43,7 @@ export function torchPools(reach, wide) {
 // Whether the brake lights are on: slowing down, or S held, which carries on from braking into reversing, so they stay lit
 // through the stop and all the way back. controls is the game loop's input.
 export const brakeLit = (speed, controls, arriving = false) => !!controls.reverse
-  || (speed > 0.5 && (!!controls.handbrake || controls.brake > 0 || arriving))
+  || (Math.abs(speed) > 0.5 && (!!controls.handbrake || controls.brake > 0 || arriving))
   || (speed < -0.5 && controls.throttle > 0);
 
 // Tail lights as small lit dots on screen, kept a fixed size in pixels so they stay visible at any zoom: clearly on

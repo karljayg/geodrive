@@ -24,6 +24,14 @@ export const CAR = {
 
 export const newCar = () => ({ speed: 0, heading: 0, steer: 0 });
 
+// The engine is dead: neither pedal can drive it, and either one brakes, so a roll can still be stopped.
+export function coastPedals(controls, brake = CAR.brake) {
+  if (controls.throttle || controls.reverse) controls.brake = Math.max(controls.brake || 0, brake);
+  controls.throttle = 0;
+  controls.reverse = false;
+  return controls;
+}
+
 const towardZero = (v, amount) => (v > 0 ? Math.max(0, v - amount) : Math.min(0, v + amount));
 
 // input: { throttle (0..1), reverse, steer (-1 left .. 1 right), handbrake, brake (m/s², from FSD; never reverses) }. Returns the metres moved along the heading.

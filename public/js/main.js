@@ -6,7 +6,7 @@ import { spawnSpots } from './testTools.js';
 import { GAME } from './gameConfig.js';
 import { keyListHtml } from './keyList.js';
 import { say } from './sayings.js';
-import { newCar, stepCar } from './physics.js';
+import { coastPedals, newCar, stepCar } from './physics.js';
 import { distance, easeAngle, leadDistance, move } from './camera.js';
 import { aimOf, firstInShot, screenOfGround, stepAim } from './aim.js';
 import { placeCamera } from './footWalker.js';
@@ -785,11 +785,11 @@ function frame(t) {
 
     const guide = currentGuide();
     applySpeed(controls, guide);
-    braking = brakeLit(car.speed, controls, arriving);
     // Pull up at the destination, unless the driver has already taken over.
     if (arriving && (controls.throttle || controls.reverse || controls.steer || car.speed <= 0)) arriving = false;
     if (arriving) controls.brake = PLAN_DECEL;
     if (!riding && (myCar || !world.rules.people)) limitByCondition(controls, t);
+    braking = brakeLit(car.speed, controls, arriving);
     const meters = riding ? followDriver() : stepCar(car, controls, dt);
     if (!riding) {
       if (world.rules.people) wearCar(controls, t);
@@ -1223,7 +1223,7 @@ function conditionNow() {
 let toldDead = false, toldEmpty = false;
 function limitByCondition(controls, t) {
   if (world.rules.people && trip.fuel <= 0) {
-    controls.throttle = 0;
+    coastPedals(controls);
     if (!toldEmpty) {
       toldEmpty = true;
       setFsd(false);
@@ -1233,7 +1233,7 @@ function limitByCondition(controls, t) {
   }
   const condition = conditionNow();
   if (!drivable(condition)) {
-    controls.throttle = 0;
+    coastPedals(controls);
     if (!toldDead) {
       toldDead = true;
       setFsd(false);
@@ -3306,7 +3306,6 @@ function hitAnything(meters) {
   if (!meters) return;
   const now = performance.now(), me = { ...pos, heading: car.heading, speed: car.speed, ...carShape(myCar?.type) }, hit = firstHit(me, meters, obstacles(now));
   if (!hit) {
-    if (!world.rules.people) return;
     const wall = hitBuilding(me, meters);
     if (wall) {
       Object.assign(pos, move(pos.lat, pos.lng, car.heading, -wall.back));
@@ -3333,8 +3332,8 @@ function stoppedByHit(other, closing) {
     sfx(small ? 'thump' : 'carHit');
     perfLog.event('bump', { kind: other.kind, mph: Math.round(mph) });
     if (small || other.kind === 'deer') return animalStruck(other, closing, small);
-    if (other.member) world.link.send({ t: 'bump', to: other.member, closing });
-    world.link.send({ t: 'crash', kind: other.kind, other: other.member ?? other.id, closing, lat: pos.lat, lng: pos.lng, planted: other.record });
+    if (other.member) world.link?.send({ t: 'bump', to: other.member, closing });
+    world.link?.send({ t: 'crash', kind: other.kind, other: other.member ?? other.id, closing, lat: pos.lat, lng: pos.lng, planted: other.record });
     return;
   }
   car.speed = -Math.sign(car.speed || 1) * Math.min(BOUNCE, Math.abs(car.speed));
@@ -3342,8 +3341,8 @@ function stoppedByHit(other, closing) {
   if (!bumps.allows(other.id, performance.now())) return;
   if (closing > 2) sfx('thud');
   perfLog.event('bump', { kind: other.kind, mph: Math.round(mph) });
-  if (other.member) world.link.send({ t: 'bump', to: other.member, closing });
-  world.link.send({ t: 'crash', kind: other.kind, other: other.member ?? other.id, closing, lat: pos.lat, lng: pos.lng, planted: other.record });
+  if (other.member) world.link?.send({ t: 'bump', to: other.member, closing });
+  world.link?.send({ t: 'crash', kind: other.kind, other: other.member ?? other.id, closing, lat: pos.lat, lng: pos.lng, planted: other.record });
 }
 
 // The sandbox keeps its own condition. A world asks the server, which uses the same curve.

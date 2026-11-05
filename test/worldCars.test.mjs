@@ -10,6 +10,7 @@ import { stationFor, stationWorks } from '../public/js/stations.js';
 import { carDamageAt, coastDistance, coastPlace, conditionLeft, cutsOut, drivable, healthLossHit, healthLossInCar, healthLossStrike, offRoadSlowing, offRoadWear, powerOf, reliabilityText } from '../public/js/carDamage.js';
 import { BumpLimit, FootprintIndex, buildingHit, carTouchesPerson, carsTouch, closingSpeed, firstHit } from '../public/js/collide.js';
 import { metresApart } from '../public/js/protocol.js';
+import { move } from '../public/js/camera.js';
 
 const METRE = 1 / 111320;
 // A long straight road north, from a given start, in the shape vector.js gives.
@@ -332,6 +333,12 @@ test('a car stops short of a wall, a little inside the outline, and never jumps 
   assert.ok(fast.back > 20, `and it goes back to the wall: ${fast.back}`);
   assert.equal(buildingHit({ ...me(5), lng: -77.4 - 40 / 111320 }, 10, contains, 1), null, 'going past the side, nothing');
   assert.equal(buildingHit({ lat: 38.9, lng: -77.4, heading: 90, ...CAR_BOX }, 0.5, contains, 1), null, 'and a car that finds itself inside can always drive out');
+  const north = 38.9 + 20 / 111320;
+  const backing = { lat: north + 1 / 111320, lng: -77.4, heading: 0, ...CAR_BOX };
+  const hit = buildingHit(backing, -0.8, contains, 1);
+  assert.ok(hit && hit.back < 0, 'reversing into the wall behind');
+  const out = move(backing.lat, backing.lng, backing.heading, -hit.back);
+  assert.ok(out.lat > backing.lat && !contains(out.lat, out.lng), 'the way out is forward, back outside');
 });
 
 test('hitting a building takes the car, not the building', () => {
