@@ -19,15 +19,15 @@ const USABLE = 0.75;       // of a floor's area goes to rooms' targets; the rest
 const MIN_SHARE = 0.5;     // of its target, the least a part of the floor can have
 
 // target: m² it would like, which also decides if there's room for it at all. The first few always get a try, as a home needs them.
-const GROUND_ZONES = [['living', 28], ['kitchen', 15], ['bathroom', 6], ['hall', 6], ['dining', 14], ['study', 10], ['laundry', 6]];
+const GROUND_ZONES = [['living', 28], ['kitchen', 15], ['bathroom', 6], ['hall', 6], ['bedroom', 16], ['dining', 14], ['study', 10], ['laundry', 6]];
 const SINGLE_ZONES = [['living', 28], ['kitchen', 15], ['bathroom', 6], ['bedroom', BEDROOM], ['hall', 6], ['bedroom', BEDROOM], ['dining', 14], ['study', 10], ['laundry', 6], ['bedroom', BEDROOM]];
 // A home's rooms from the front door in: what guests see first, and the bedrooms furthest. Dividing keeps this order, so they end up at opposite ends.
 const HOME_ORDER = { hall: 0, living: 1, openLiving: 1, dining: 2, kitchen: 3, workshop: 3.5, study: 4, laundry: 5, bathroom: 6, bedroom: 7 };
 // Homes aren't all alike. Chosen once by size and dice, and saved in the plan as homeKind. first: rooms it always tries, then as many others as fit.
 const HOME_KINDS = {
-  cottage: { single: [['living', 22], ['kitchen', 12], ['bathroom', 6], ['bedroom', 14], ['bedroom', 12]], ground: [['living', 22], ['kitchen', 12], ['bathroom', 6]], upper: [['bedroom', 14], ['bathroom', 6], ['bedroom', 12]], first: 3 },
-  openPlan: { single: [['openLiving', 50], ['bathroom', 6], ['bedroom', BEDROOM], ['hall', 6], ['bedroom', BEDROOM], ['study', 10], ['bedroom', BEDROOM]], ground: [['openLiving', 55], ['bathroom', 6], ['hall', 6], ['study', 10]], upper: [['bedroom', BEDROOM], ['bathroom', 6], ['bedroom', BEDROOM], ['study', 10], ['bedroom', BEDROOM]], first: 3 },
-  large: { single: [['living', 30], ['kitchen', 18], ['bathroom', 7], ['bedroom', 20], ['hall', 8], ['dining', 16], ['bedroom', BEDROOM], ['bathroom', 6], ['study', 12], ['laundry', 7], ['workshop', 25], ['bedroom', BEDROOM]], ground: [['living', 30], ['kitchen', 18], ['bathroom', 7], ['hall', 8], ['dining', 16], ['study', 12], ['laundry', 7], ['workshop', 25]], upper: [['bedroom', 22], ['bathroom', 7], ['bedroom', BEDROOM], ['bedroom', BEDROOM], ['bathroom', 6], ['study', 10], ['bedroom', BEDROOM]], first: 4 },
+  cottage: { single: [['living', 22], ['kitchen', 12], ['bathroom', 6], ['bedroom', 14], ['bedroom', 12]], ground: [['living', 22], ['kitchen', 12], ['bathroom', 6], ['bedroom', 14]], upper: [['bedroom', 14], ['bathroom', 6], ['bedroom', 12]], first: 3 },
+  openPlan: { single: [['openLiving', 50], ['bathroom', 6], ['bedroom', BEDROOM], ['hall', 6], ['bedroom', BEDROOM], ['study', 10], ['bedroom', BEDROOM]], ground: [['openLiving', 55], ['bathroom', 6], ['hall', 6], ['bedroom', 16], ['study', 10]], upper: [['bedroom', BEDROOM], ['bathroom', 6], ['bedroom', BEDROOM], ['study', 10], ['bedroom', BEDROOM]], first: 3 },
+  large: { single: [['living', 30], ['kitchen', 18], ['bathroom', 7], ['bedroom', 20], ['hall', 8], ['dining', 16], ['bedroom', BEDROOM], ['bathroom', 6], ['study', 12], ['laundry', 7], ['workshop', 25], ['bedroom', BEDROOM]], ground: [['living', 30], ['kitchen', 18], ['bathroom', 7], ['hall', 8], ['bedroom', 16], ['dining', 16], ['study', 12], ['laundry', 7], ['workshop', 25]], upper: [['bedroom', 22], ['bathroom', 7], ['bedroom', BEDROOM], ['bedroom', BEDROOM], ['bathroom', 6], ['study', 10], ['bedroom', BEDROOM]], first: 4 },
 };
 const COTTAGE_UNDER = 75, LARGE_OVER = 170, OPEN_PLAN_CHANCE = 0.3; // m², m²
 const UPPER_ZONES = [['bedroom', BEDROOM], ['bathroom', 6], ['bedroom', BEDROOM], ['study', 10], ['bedroom', BEDROOM], ['bathroom', 6]];

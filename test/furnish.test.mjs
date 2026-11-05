@@ -141,9 +141,9 @@ test('each room gets about its share of the floor, whichever end it lands at', (
   }
 });
 
-test('a house with an upstairs keeps its beds there', () => {
+test('a house with an upstairs keeps a bedroom downstairs when the floor has room, and the rest upstairs', () => {
   const ground = lay(SHAPES.house, 2, { floors: 2, style: 'luxury' }, 1), upper = lay(SHAPES.house, 2, { floors: 2, style: 'luxury' }, 2);
-  assert.ok(!ground.zones.some((z) => z[0] === 'bedroom'));
+  assert.equal(ground.zones.filter((z) => z[0] === 'bedroom').length, 1);
   assert.ok(upper.zones.some((z) => z[0] === 'bedroom'));
   assert.ok(!upper.zones.some((z) => z[0] === 'kitchen'));
 });

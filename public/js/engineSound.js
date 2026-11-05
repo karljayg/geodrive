@@ -2,7 +2,7 @@
 // with a limiter. Browsers only allow audio after a click or key press, so start() is called from those.
 import { AUDIO_PRESETS, engineCutoff, engineIntensity, layerMix, roadLevel, windLevel } from './engineMix.js';
 import { SynthEngine } from './synthEngine.js';
-import { bakeOrder, lengthOf, play, SOUNDS, takesOf } from './sounds.js';
+import { bakeOrder, GUN_CLIPS, lengthOf, play, SOUNDS, takesOf } from './sounds.js';
 
 const UPDATE_EVERY = 0.03; // s; the audio engine smooths in between, so this needn't match the frame rate
 const ATTACK = 0.03, RELEASE = 0.08, RATE_GLIDE = 0.05, BLEND_GLIDE = 0.08;
@@ -239,10 +239,33 @@ export class EngineAudio {
     }
   }
 
+  // A gun's own recording. An automatic one keeps the burst that is already playing. Before the file arrives, the plain gunshot stands in.
+  playClip(name) {
+    const spec = GUN_CLIPS[name];
+    if (!spec || !this.ctx) return false;
+    this.gunVoices ||= {};
+    let voice = this.gunVoices[name];
+    if (!voice) {
+      voice = this.gunVoices[name] = { buffer: null, playing: false };
+      this.fetchBuffer(spec.file).then((buffer) => { voice.buffer = buffer; });
+    }
+    if (!voice.buffer) return false;
+    if (spec.hold && voice.playing) return true;
+    const source = this.ctx.createBufferSource(), gain = this.ctx.createGain();
+    source.buffer = voice.buffer;
+    gain.gain.value = spec.gain;
+    source.connect(gain).connect(this.fxBus);
+    voice.playing = true;
+    source.onended = () => { voice.playing = false; source.disconnect(); gain.disconnect(); };
+    source.start();
+    return true;
+  }
+
   // The sound of doing something (sounds.js), playing at once. Nearly always follows a key press or click, so audio is allowed to start.
   effect(name) {
     this.start();
     if (!this.ctx) return;
+    if (GUN_CLIPS[name]) { if (this.playClip(name)) return; name = 'gunshot'; }
     const takes = this.baked.get(SOUNDS[name] ? name : 'ack');
     if (!takes) return play(this.ctx, this.fxBus, name);
     const source = this.ctx.createBufferSource();

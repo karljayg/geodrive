@@ -77,6 +77,7 @@ export class ChatView {
     const read = readChatLine(this.input.value, this.names(), GAME.world.chatLength);
     if (!read) return this.close();
     if (read.error) return this.tell(read.error === 'unknown-name' ? `There's nobody called ${read.name}.` : PROBLEMS[read.error]);
+    if (read.to && this.phoneAway?.()) return this.tell('Your phone is charging.');
     if (read.to && this.phoneDead()) return this.tell('Your phone\'s dead.');
     const to = read.to ? this.world.people.byName(read.to)?.id : null;
     const text = this.input.value;
@@ -123,7 +124,7 @@ export class ChatView {
 
   // One new message. It's kept whatever happens; this is only the preview, which doesn't show with the thread already open.
   said(line) {
-    if (this.phoneDead() || !this.canShow(line.thread)) return;
+    if ((line.thread !== GROUP_THREAD && (this.phoneAway?.() || this.phoneDead())) || !this.canShow(line.thread)) return;
     const mine = line.sender === this.world.you.id;
     if (!mine) this.sound();
     this.addCard({
@@ -139,7 +140,7 @@ export class ChatView {
   }
 
   missed(count) {
-    if (this.phoneDead()) return;
+    if (this.phoneAway?.() || this.phoneDead()) return;
     this.addCard({ thread: 'missed', title: 'Messages', text: `${count} new message${count === 1 ? '' : 's'}`, ms: 6000 });
   }
 

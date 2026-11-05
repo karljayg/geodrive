@@ -66,7 +66,7 @@ Google usage and spend can only be seen in Google Cloud Console; the API key can
 | `footWalker.js` | The person: movement, what blocks them, camera | Yes |
 | `pocket.js` | The tray and the phone's apps on foot | Browser |
 | `pocketData.js` | Notes, messages, the bag, the way to the car | Yes |
-| `weapons.js` | What a hand can aim, and loading a caliber | Yes |
+| `weapons.js` | Guns, what they load, and the chance a shot hits at that range | Yes |
 | `aim.js` | The scope mark and the ground it shoots at | Yes |
 | `pocketArt.js` | The pictures of what you carry, as vector art | Yes |
 | `overture.js` | Reads places from Overture's PMTiles file | Yes |

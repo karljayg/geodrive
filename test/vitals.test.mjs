@@ -5,7 +5,7 @@ import { Vitals } from '../public/js/vitals.js';
 import { newWalk, updateWalk, walkFigures } from '../public/js/trip.js';
 import { SAYINGS } from '../public/js/sayingsConfig.js';
 import { say } from '../public/js/sayings.js';
-import { outletSpots, useThing } from '../public/js/footActions.js';
+import { claimOpened, outletSpots, useThing } from '../public/js/footActions.js';
 import { ITEMS } from '../public/js/furniture.js';
 
 const memory = () => { const m = new Map(); return { getItem: (k) => m.get(k) ?? null, setItem: (k, v) => m.set(k, v) }; };
@@ -173,8 +173,14 @@ test('food is rare: fridges have it about as often as the config says', () => {
 test('machines give once at most, and a toilet relieves both needs', () => {
   let some = 0;
   for (let i = 0; i < 100; i++) {
-    const plan = {}, machine = entry('vendingMachine', i, 0), first = useThing(machine, plan, 1, 'b'), again = useThing(machine, plan, 1, 'b');
-    if (first.give) some++;
+    const plan = {}, machine = entry('vendingMachine', i, 0), first = useThing(machine, plan, 1, 'b');
+    if (first.give) {
+      some++;
+      assert.equal(first.offer, true);
+      assert.equal(useThing(machine, plan, 1, 'b').give, first.give);
+      claimOpened(plan, 1, machine);
+    }
+    const again = useThing(machine, plan, 1, 'b');
     assert.equal(again.give, undefined);
     assert.ok(SAYINGS.vendingEmpty.includes(again.say), again.say);
   }

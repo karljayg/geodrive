@@ -62,7 +62,8 @@ export class Vitals {
         if (doing.music) rate += stat.using.music;
       }
       if (name === 'flashlight' && doing.light === 'flash') rate += stat.using.light;
-      if (doing.charging && stat.charging && (name !== 'flashlight' || doing.chargingFlashlight)) rate = stat.charging;
+      if (name === 'phone' && (doing.chargingPhone ?? doing.charging) && stat.charging) rate = stat.charging;
+      if (name === 'flashlight' && doing.chargingFlashlight && stat.charging) rate = stat.charging;
       rates[name] = rate;
     }
     const empties = Object.entries(health.lossWhenEmpty).filter(([name]) => this.stats[name] <= 0);
@@ -144,7 +145,7 @@ export class Vitals {
       const before = stats[name];
       stats[name] = clamp(before + rate * hours);
       if (rate > 0) {
-        if (doing.charging && (name === 'phone' || name === 'flashlight')) state.totals.charged += stats[name] - before;
+        if ((name === 'phone' && (doing.chargingPhone ?? doing.charging)) || (name === 'flashlight' && doing.chargingFlashlight)) state.totals.charged += stats[name] - before;
         if (before < 100 && stats[name] >= 100 && (name === 'phone' || name === 'flashlight')) events.push({ type: 'full', stat: name });
       }
       if (before > 0 && stats[name] <= 0) this.ranOut(name, events);

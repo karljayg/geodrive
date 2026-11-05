@@ -50,14 +50,14 @@ export const GAME = {
       accident: { resetTo: 100, health: -3, say: 'accidentTwo' },
     },
     phone: {
-      label: 'Phone', tip: 'Press F at a blue outlet low on a wall.', start: 100,
+      label: 'Phone', tip: 'Leave it at a blue outlet and come back for it.', start: 100,
       perHour: { all: -2.5 }, // about 40 h on standby
       using: { screen: -10, light: -15, music: -6 }, // added while these are on: 8 h of screen, 5 h of light, 12 h of music
       charging: 50,           // empty to full in 2 h
       warn: [[20, 'phoneLow'], [5, 'phoneVeryLow']],
     },
     flashlight: {
-      label: 'Flashlight', tip: 'Press F at a blue outlet, or use batteries.', start: 100,
+      label: 'Flashlight', tip: 'Leave it at a blue outlet, or use batteries.', start: 100,
       perHour: { all: -0.05 }, // keeps its charge for months when off
       using: { light: -20 },  // 5 h on a charge
       charging: 25,           // empty to full in 4 h
@@ -91,7 +91,7 @@ export const GAME = {
     'Orange juice': { thirst: 28, hunger: 6, bladder: -7, say: 'You drink the juice.', kind: 'drink' },
     'Cold soda': { thirst: 22, energy: 4, bladder: -6, say: 'You drink the soda.', kind: 'drink' },
     'Cold drink': { thirst: 22, bladder: -6, say: 'You drink it.', kind: 'drink' },
-    'Bottle of water': { thirst: 35, bladder: -9, say: 'You drink the water.', kind: 'drink' },
+    'Bottle of water': { thirst: 35, bladder: -9, say: 'You drink the water.', kind: 'drink', leaves: 'Water bottle' },
     'Cup of coffee': { thirst: 10, energy: 18, bladder: -8, say: 'You drink the coffee.', kind: 'drink' },
     'Leftover pizza': { hunger: 30, thirst: -4, bowels: -7, say: 'You eat the pizza.', kind: 'food' },
     'Can of soup': { hunger: 25, thirst: 8, bowels: -5, say: 'You eat the soup cold.', kind: 'food' },
@@ -140,10 +140,13 @@ export const GAME = {
     'Pack of batteries': { flashlight: 100, say: 'You put new batteries in the flashlight.', kind: 'supply' },
   },
 
+  // An empty bottle is filled at a working tap and comes back empty after you drink. A full one is Bottle of water.
+  vessels: { empty: 'Water bottle', full: 'Bottle of water' },
+
   // What opening or searching each thing can turn up. Anything that opens without a list is empty.
   finds: {
-    fridge: ['Milk', 'Leftover pizza', 'Orange juice', 'Cold soda', 'Yogurt', 'Cheese', 'Juice box', 'Slice of cake'], counter: ['Can of soup', 'Box of cereal', 'Silverware', 'Instant noodles', 'Peanut butter', 'Bag of chips', 'Can of beans'], wardrobe: ['Old jacket', 'Spare keys', 'Shoebox'],
-    nightstand: ['Flashlight', 'Paperback', 'Reading glasses'], sideTable: ['Batteries', 'Pack of cards', 'Old letters', 'Candy bar'], tvStand: ['TV remote', 'Old DVD'], bathCabinet: ['Toothpaste', 'Band-Aids', 'Aspirin'],
+    fridge: ['Milk', 'Leftover pizza', 'Orange juice', 'Cold soda', 'Yogurt', 'Cheese', 'Juice box', 'Slice of cake', 'Water bottle', 'Bottle of water'], counter: ['Can of soup', 'Box of cereal', 'Silverware', 'Instant noodles', 'Peanut butter', 'Bag of chips', 'Can of beans', 'Water bottle', 'Bottle of water'], wardrobe: ['Old jacket', 'Spare keys', 'Shoebox'],
+    nightstand: ['Flashlight', 'Paperback', 'Reading glasses', 'Water bottle'], sideTable: ['Batteries', 'Pack of cards', 'Old letters', 'Candy bar'], tvStand: ['TV remote', 'Old DVD'], bathCabinet: ['Toothpaste', 'Band-Aids', 'Aspirin'],
     bookcase: ['Novel', 'Atlas', 'Photo album'], desk: ['Stapler', 'Notebook', 'USB stick', 'Building key', 'Granola bar', 'Bag of chips'], filingCabinet: ['Old invoices', 'Paperclips', 'Sealed envelope', 'Building key'], locker: ['Gym towel', 'Padlock', 'Sneakers', 'Building key', 'Protein bar', 'Energy drink'],
     box: ['Old newspapers', 'Packing tape', 'Holiday lights'], bin: ['Crumpled receipt', 'Empty can'], cashCart: ['Bundle of cash'], toolChest: ['Wrench', 'Screwdriver', 'Tape measure', 'Building key'], medCart: ['Bandages', 'Thermometer'],
     storeShelf: ['Can of beans', 'Bottle of water', 'Pack of batteries', 'Bag of chips', 'Instant noodles', 'Can of soup', 'Box of cereal', 'Granola bar', 'Peanut butter'], clothesRack: ['Denim jacket', 'Silk scarf'], displayTable: ['Gift card', 'Sunglasses'], displayCase: ['Old coin', 'Museum guide'],
@@ -191,19 +194,48 @@ till: ['Cash', 'Bundle of cash'], produceStand: ['Apple', 'Banana', 'Orange', 'G
 
   // On foot, a weapon in either hand. backPace: walking or running backward while facing the scope, as a share of that speed.
   // indoorRange: of the outdoor camera distance inside, as furniture is small from there.
-  aim: { backPace: 0.5, indoorRange: 0.45 },
-  // One handgun for now. A caliber is shared, so a later handgun can use the same bullets. magazine: rounds it holds. spare: casings given with it, in the car.
+  // Past effectiveRangeFeet, a lined-up shot's chance halves for each further complete rangeStepFeet. feetPerMetre turns the world's metres into that.
+  aim: { backPace: 0.5, indoorRange: 0.45, rangeStepFeet: 50, feetPerMetre: 3.28084 },
+  // magazine: rounds it holds. spare: boxes of its caliber given with the starter gun, in the car. A box fills whichever gun of that caliber you load, and only when it is empty.
+  // Shells and precision rounds are one each. fireMode auto repeats while the button is held. damage is kept for later; a hit downs an animal in one shot.
   weapons: {
-    handgun: { item: 'Handgun', kind: 'gun', caliber: '9mm', magazine: 8, spare: 3 },
+    handgun: { item: 'Handgun', kind: 'gun', category: 'handgun', caliber: '9mm', magazine: 8, effectiveRangeFeet: 50, damage: 1, fireMode: 'single', fireIntervalMs: 280, spare: 3, sound: 'shot9mm' },
+    handgun45: { item: '.45 Handgun', kind: 'gun', category: 'handgun', caliber: '.45', magazine: 8, effectiveRangeFeet: 50, damage: 2, fireMode: 'single', fireIntervalMs: 320, spare: 0, sound: 'shot45' },
+    revolver: { item: 'Revolver', kind: 'gun', category: 'revolver', caliber: 'revolver', magazine: 6, effectiveRangeFeet: 60, damage: 2, fireMode: 'single', fireIntervalMs: 450, spare: 0, sound: 'shotRevolver' },
+    smg: { item: 'SMG', kind: 'gun', category: 'smg', caliber: '9mm', magazine: 30, effectiveRangeFeet: 80, damage: 1, fireMode: 'auto', fireIntervalMs: 90, spare: 0, sound: 'shotSmg' },
+    shotgun: { item: 'Shotgun', kind: 'gun', category: 'shotgun', caliber: 'shells', magazine: 6, effectiveRangeFeet: 40, damage: 4, fireMode: 'single', fireIntervalMs: 700, spare: 0, sound: 'shotShotgun' },
+    huntingRifle: { item: 'Hunting Rifle', kind: 'gun', category: 'rifle', caliber: 'rifle', magazine: 5, effectiveRangeFeet: 200, damage: 3, fireMode: 'single', fireIntervalMs: 900, spare: 0, sound: 'shotRifle' },
+    ar15: { item: 'AR-15', kind: 'gun', category: 'assaultRifle', caliber: 'rifle', magazine: 30, effectiveRangeFeet: 150, damage: 2, fireMode: 'auto', fireIntervalMs: 100, spare: 0, sound: 'shotAr' },
+    sniper: { item: 'Sniper Rifle', kind: 'gun', category: 'sniperRifle', caliber: 'precision', magazine: 5, effectiveRangeFeet: 400, damage: 5, fireMode: 'single', fireIntervalMs: 1100, spare: 0, sound: 'shotSniper' },
   },
   calibers: {
-    '9mm': { item: '9mm bullets', casing: 8 }, // one item is a casing of this many rounds
+    '9mm': { item: '9mm bullets', feed: 'box' },
+    '.45': { item: '.45 bullets', feed: 'box' },
+    revolver: { item: 'Revolver rounds', feed: 'box' },
+    rifle: { item: 'Rifle rounds', feed: 'box' },
+    shells: { item: 'Shells', feed: 'round' },
+    precision: { item: 'Precision rounds', feed: 'round' },
   },
-  // About one home in four. Upstairs when there is an upstairs, in a drawer, a desk or a cabinet.
+  // About one home in four. Any floor that has a bedroom, in a wardrobe, cabinet or nightstand there.
+  // A handgun, revolver or .45 is commonWeight times as likely as each rarer gun. boxes: of a box-fed caliber. rounds: shells or precision rounds.
   houseGun: {
     chance: 0.25,
-    casings: 10,
-    hideIn: ['nightstand', 'desk', 'bathCabinet', 'wardrobe'],
+    boxes: 10,
+    rounds: 12,
+    hideIn: ['wardrobe', 'nightstand', 'bathCabinet'],
+    common: ['handgun', 'revolver', 'handgun45'],
+    rare: ['smg', 'shotgun', 'huntingRifle', 'ar15', 'sniper'],
+    commonWeight: 4,
+    rareWeight: 1,
+  },
+  // Police always. About one shop in ten stands in for a gun shop, since the map has no shop of that name. About one mall in four.
+  // guns: how many lockers, cabinets or shelves on a floor hold one. amount: boxes, or rounds, with it.
+  armory: {
+    gunShopChance: 0.1,
+    mallChance: 0.25,
+    police: { guns: 4, amount: 24, hideIn: ['filingCabinet', 'locker', 'desk'] },
+    gunShop: { guns: 6, amount: 30, hideIn: ['storeShelf', 'desk', 'counter'] },
+    mall: { guns: 4, amount: 20, hideIn: ['storeShelf', 'counter', 'desk'] },
   },
 
   // Things dropped, which stay where they're left.

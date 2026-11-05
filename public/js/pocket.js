@@ -4,7 +4,7 @@ import { clockText } from './daylight.js';
 import { say } from './sayings.js';
 import { drawNav } from './dash.js';
 import { GAME } from './gameConfig.js';
-import { caliberOf, weaponSpec } from './weapons.js';
+import { caliberOf, carried, weaponSpec } from './weapons.js';
 import { itemIcon } from './itemArt.js';
 import { ART } from './pocketArt.js';
 import { BAG_SLOTS, CAR_SLOTS, CONTACTS, PocketData, addRecent, bearingToCar, compassName, distanceText, hotbarIndex, hotbarKey, hotbarKeys, hotbarPlace, noteTitle, songParts, turnToCar } from './pocketData.js';
@@ -95,6 +95,7 @@ export class Pocket {
   // --- Opening and closing --------------------------------------------------------------------------------------
 
   openApp(id) {
+    if (this.calls.phoneAway?.()) return this.calls.say('phoneCharging');
     if (this.calls.phoneDead()) return this.calls.say('phoneDead');
     if (id === 'torch') return this.calls.phoneLight(); // it does its one job, rather than opening
     this.calls.sound('tap');
@@ -177,9 +178,10 @@ export class Pocket {
       this.calls.sound('ack');
       return this.tell(hand ? 'handEmpty' : 'slotEmpty', hand ? { hand } : { key: hotbarKey(index) });
     }
-    const item = this.data.bag.find((i) => i.id === id);
+    const item = carried(this.data.bag, id);
     if (!item) {
       this.calls.sound('ack');
+      if (id === 'Flashlight' && this.calls.flashAway?.()) return this.tell('flashlightCharging');
       return this.tell('notCarrying', { name: id.toLowerCase() });
     }
     if (!this.calls.onFoot() && (item.id === 'Flashlight' || item.id === GAME.hammer.item)) {
@@ -230,15 +232,15 @@ export class Pocket {
     }
   }
 
-  assignArmed(id) {
+  assignArmed(id, uid) {
     const index = this.armed;
-    this.data.setHotbar(index, id);
+    this.data.setHotbar(index, uid || id);
     if (index < 2 && weaponSpec(id)) this.calls.aimHand?.(index);
     this.armed = null;
     this.calls.sound('rustle');
     this.renderBag();
     const note = this.bagPanel.querySelector('.empty');
-    const item = this.data.bag.find((i) => i.id === id);
+    const item = carried(this.data.bag, uid || id);
     const where = index < 2 ? `in your ${hotbarPlace(index)}` : `on ${hotbarKey(index)}`;
     if (note) note.textContent = `${item?.name || id} is ${where}. Press ${hotbarKey(index)} to use it.`;
   }
@@ -259,8 +261,8 @@ export class Pocket {
     return `${near ? 'Click something to move it between your bag and the car. ' : 'Stand next to the car to reach its storage. '}${set}`;
   }
 
-  pressSlot(id, side) {
-    if (side === 'bag' && caliberOf(id)) return this.calls.loadAmmo(id); // a casing loads the gun, beside the car too
+  pressSlot(id, side, uid) {
+    if (side === 'bag' && caliberOf(id)) return this.calls.loadAmmo(id); // a box or a round loads the gun, beside the car too
     if (!this.calls.nearCar()) {
       if (id === 'Flashlight') this.calls.flashlight();
       else if (id === GAME.hammer.item) {
@@ -273,7 +275,7 @@ export class Pocket {
       }
       return;
     }
-    const moved = this.data.move(id, side === 'bag');
+    const moved = this.data.move(id, side === 'bag', uid);
     if (moved) this.calls.carChanged?.();
     this.calls.sound(moved ? 'rustle' : 'ack');
     if (moved && id === 'Flashlight' && side === 'bag') this.calls.stowed();
@@ -282,12 +284,12 @@ export class Pocket {
   }
 
   // Leaves one behind, with a chance to change your mind until the bag next changes or closes.
-  dropItem(id, side) {
-    const item = (side === 'car' ? this.data.car : this.data.bag).find((i) => i.id === id);
-    if (!item || !this.data.drop(id, side === 'car')) return;
+  dropItem(id, side, uid) {
+    const item = (side === 'car' ? this.data.car : this.data.bag).find((i) => (uid ? i.uid === uid : i.id === id));
+    if (!item || !this.data.drop(item.id, side === 'car', item.uid)) return;
     if (side === 'car') this.calls.carChanged?.();
     this.calls.sound('drop');
-    this.dropped = { id: item.id, name: item.name, side, world: this.calls.dropped(item.name) };
+    this.dropped = { id: item.id, name: item.name, loaded: item.loaded, uid: item.uid, side, world: this.calls.dropped(Number.isFinite(item.loaded) ? { name: item.name, loaded: item.loaded } : item.name) };
     if (id === 'Flashlight' && !this.data.bagHas(id)) this.calls.stowed();
     this.renderBag();
     this.bagPanel.querySelector('.empty').innerHTML = `You dropped the ${esc(item.name.toLowerCase())}. It's where you left it. <button class="undoDrop" data-undo-drop>Undo <span class="keyHint">(Z)</span></button>`;
@@ -305,14 +307,21 @@ export class Pocket {
 
   // Shift and a number, with the bag open: one of whatever that hand or slot points at.
   dropNumber(key) {
-    const id = this.data.state.hotbar[hotbarIndex(key)];
-    if (id && this.data.bagHas(id)) this.dropItem(id, 'bag');
+    const slot = this.data.state.hotbar[hotbarIndex(key)];
+    const item = carried(this.data.bag, slot);
+    if (item) this.dropItem(item.id, 'bag', item.uid);
   }
 
-  // Eats, drinks or takes one of it, if it's that sort of thing.
+  // Eats, drinks or takes one of it, if it's that sort of thing. A full bottle leaves the empty one.
   useItem(id) {
+    if (id === GAME.vessels.empty) {
+      this.tell('bottleEmpty');
+      return false;
+    }
+    const left = GAME.consumables[id]?.leaves;
     if (!this.calls.useItem(id)) return false;
-    this.data.takeFromBag(id);
+    if (left) this.data.turnInto(id, left);
+    else this.data.takeFromBag(id);
     this.renderBag();
     return true;
   }
@@ -320,8 +329,15 @@ export class Pocket {
   // Something found, for the bag. One name, or a list of { id, name, count, loaded }. False if the bag has no room for the new ones.
   collect(found) {
     const list = (Array.isArray(found) ? found : [{ id: found, name: found }]).map((item) => (typeof item === 'string' ? { id: item, name: item } : item));
-    const fresh = list.filter((item) => !this.data.bag.some((have) => have.id === item.id));
-    if (this.data.bag.length + fresh.length > BAG_SLOTS) return false;
+    const stacked = new Set(this.data.bag.filter((have) => !weaponSpec(have.id)).map((have) => have.id));
+    let extra = 0;
+    for (const item of list) {
+      if (weaponSpec(item.id) || !stacked.has(item.id)) {
+        extra++;
+        if (!weaponSpec(item.id)) stacked.add(item.id);
+      }
+    }
+    if (this.data.bag.length + extra > BAG_SLOTS) return false;
     for (const item of list) this.data.addToBag({ id: item.id, name: item.name || item.id, count: item.count || 1, loaded: item.loaded });
     if (this.bagOpen) this.renderBag();
     else this.renderHotbar();
@@ -457,12 +473,12 @@ export class Pocket {
     }
     const button = e.target.closest('button, [data-open-note], [data-thread], [data-dial-contact]');
     if (!button) return;
-    if (button.dataset.drop) return this.dropItem(button.dataset.drop, button.dataset.side);
+    if (button.dataset.drop) return this.dropItem(button.dataset.drop, button.dataset.side, button.dataset.uid);
     if ('undoDrop' in button.dataset) return this.undoDrop();
     if (button.dataset.hotbar != null) return this.onHotbar(Number(button.dataset.hotbar));
     if (button.dataset.slot) {
-      if (this.armed != null && button.dataset.side === 'bag') return this.assignArmed(button.dataset.slot);
-      return this.pressSlot(button.dataset.slot, button.dataset.side);
+      if (this.armed != null && button.dataset.side === 'bag') return this.assignArmed(button.dataset.slot, button.dataset.uid);
+      return this.pressSlot(button.dataset.slot, button.dataset.side, button.dataset.uid);
     }
     if ('healthReset' in button.dataset) return this.startOver();
     const { tray, app, thread, digit, dialContact, radius } = button.dataset;
@@ -719,15 +735,16 @@ export class Pocket {
     const { bag, car } = this.data, near = this.calls.nearCar();
     const slots = (list, size, side) => Array.from({ length: size }, (_, i) => list[i]).map((item) => {
       if (!item) return '<div class="bagSlot"></div>';
-      const marks = side === 'bag' ? hotbarKeys(this.data.state.hotbar, item.id) : [];
+      const marks = side === 'bag' ? hotbarKeys(this.data.state.hotbar, item.id, item, this.data.bag) : [];
       const title = this.armed != null && side === 'bag' ? (this.armed < 2 ? `Put it in your ${hotbarPlace(this.armed)}` : `Put it on ${hotbarPlace(this.armed)}`) : item.name;
-      const badge = item.loaded != null ? item.loaded : item.count > 1 ? item.count : 0;
-      return `<div class="slotBox"><button class="bagSlot full" data-slot="${esc(item.id)}" data-side="${side}" title="${esc(title)}">${marks.length ? `<kbd>${marks.join(' ')}</kbd>` : ''}<i class="itemIcon">${itemIcon(item.id)}</i><span>${esc(item.name)}</span>${badge ? `<b>${badge}</b>` : ''}</button><button class="slotDrop" data-drop="${esc(item.id)}" data-side="${side}" title="Drop ${esc(item.name)}" aria-label="Drop ${esc(item.name)}">✕</button></div>`;
+      const badge = item.loaded != null ? `${item.loaded}${weaponSpec(item.id) ? `/${weaponSpec(item.id).magazine}` : ''}` : item.count > 1 ? item.count : 0;
+      const uid = item.uid ? ` data-uid="${esc(item.uid)}"` : '';
+      return `<div class="slotBox"><button class="bagSlot full" data-slot="${esc(item.id)}"${uid} data-side="${side}" title="${esc(title)}">${marks.length ? `<kbd>${marks.join(' ')}</kbd>` : ''}<i class="itemIcon">${itemIcon(item.id)}</i><span>${esc(item.name)}</span>${badge ? `<b>${badge}</b>` : ''}</button><button class="slotDrop" data-drop="${esc(item.id)}"${uid} data-side="${side}" title="Drop ${esc(item.name)}" aria-label="Drop ${esc(item.name)}">✕</button></div>`;
     }).join('');
     this.nearShown = near;
     this.bagPanel.classList.toggle('withCar', near);
     this.bagPanel.innerHTML = `<div class="bagHead"><span class="bagArt">${picture('bag')}</span><h2>Bag</h2><small>${bag.length} of ${BAG_SLOTS}</small><button data-close-bag aria-label="Close" title="Close (Esc)"><span class="keyHint">Esc</span> ✕</button></div>
-      <div class="bagGrid">${slots(bag, BAG_SLOTS, 'bag')}</div>
+      <div class="bagGrid">${slots(bag, Math.max(BAG_SLOTS, bag.length), 'bag')}</div>
       <p class="empty">${this.bagHint(near)}</p>
       ${near ? `<div class="bagHead carHead"><h2>Car storage</h2><small>${car.length} of ${CAR_SLOTS}</small></div><div class="bagGrid carGrid">${slots(car, CAR_SLOTS, 'car')}</div>` : ''}`;
     this.renderHotbar();
@@ -738,7 +755,7 @@ export class Pocket {
     if (!this.hotbar) return;
     const light = this.calls.flashlightOn();
     const html = this.data.state.hotbar.map((id, index) => {
-      const item = id ? this.data.bag.find((i) => i.id === id) : null;
+      const item = id ? carried(this.data.bag, id) : null;
       const key = hotbarKey(index);
       const hand = index < 2;
       const title = `${hand ? `${index === 0 ? 'Left' : 'Right'} hand (${key})` : `Slot ${key}`}${id ? `: ${item?.name || id}` : ''}`;

@@ -54,7 +54,7 @@ export const SOUNDS = {
   wallBreak: [tone(70, 36, 0, 0.3, 0.5), noise(1200, 260, 0, 0.45, 0.32), noise(2400, 700, 0.18, 0.2, 0.14), noise(1800, 500, 0.36, 0.22, 0.1)],
   clank: [tone(1250, 1190, 0, 0.26, 0.09, 'triangle'), tone(2830, 2780, 0, 0.16, 0.05, 'triangle'), noise(800, 500, 0, 0.05, 0.3)],
   clack: [tone(2600, 2300, 0, 0.022, 0.32, 'triangle'), noise(3000, 2400, 0, 0.018, 0.25)],
-  gunshot: [noise(3800, 700, 0, 0.06, 0.5, 1.2), tone(160, 50, 0, 0.09, 0.42), noise(900, 180, 0.02, 0.14, 0.22)],
+  gunshot: [noise(3800, 700, 0, 0.06, 0.5, 1.2), tone(160, 50, 0, 0.09, 0.42), noise(900, 180, 0.02, 0.14, 0.22)], // until a gun's own recording has loaded
   dryFire: [tone(1700, 1200, 0, 0.02, 0.18, 'square'), noise(2800, 1800, 0, 0.015, 0.16)],
   reload: [noise(2200, 900, 0, 0.04, 0.28), tone(420, 260, 0.08, 0.07, 0.22), noise(1400, 700, 0.16, 0.05, 0.24)],
   paper: each([0, 0.07, 0.15, 0.22], (at, i) => [noise(4600 - i * 300, 3400, at, 0.06, 0.32, 1)]),
@@ -96,6 +96,19 @@ export const SOUNDS = {
   powerDown: [tone(700, 240, 0, 0.32, 0.13, 'triangle')],
   accident: [noise(280, 180, 0, 0.45, 0.2, 0.7, true), tone(110, 80, 0, 0.3, 0.12)],
   collapse: [tone(110, 40, 0, 0.3, 0.55), noise(500, 120, 0, 0.16, 0.3)],
+};
+
+// Recordings in public/audio/guns, Pixabay Content License. gain sits them with the other effects, which are much quieter than a full-scale file.
+// hold: an automatic burst, played once and left running while the trigger stays down, rather than restarted on every round.
+export const GUN_CLIPS = {
+  shot9mm: { file: 'audio/guns/9mm.mp3', gain: 0.4 },
+  shot45: { file: 'audio/guns/45.mp3', gain: 0.28 },
+  shotRevolver: { file: 'audio/guns/gun-shot.mp3', gain: 0.5 },
+  shotRifle: { file: 'audio/guns/gun-shot.mp3', gain: 0.5 },
+  shotSniper: { file: 'audio/guns/sniper.mp3', gain: 0.4 },
+  shotShotgun: { file: 'audio/guns/shotgun.mp3', gain: 0.4 },
+  shotAr: { file: 'audio/guns/ar15.mp3', gain: 0.45, hold: true },
+  shotSmg: { file: 'audio/guns/smg.mp3', gain: 0.35, hold: true },
 };
 
 // Worth several takes, as they repeat and any one of them heard over and over sounds like a machine. Baked first, as they're the ones used all the time.

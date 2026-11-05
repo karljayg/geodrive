@@ -1,6 +1,6 @@
 // What a person carries, kept in this browser: notes, text messages and the bag. Pure, tested in node.
 import { GAME } from './gameConfig.js';
-import { weaponSpec } from './weapons.js';
+import { weaponSpec, weaponUid } from './weapons.js';
 
 const STORE = 'geodrive_pocket_v1';
 export const BAG_SLOTS = 12;
@@ -24,9 +24,14 @@ export const hotbarIndex = (key) => (key === '0' ? HOTBAR_SIZE - 1 : Number(key)
 export const hotbarKey = (index) => String((index + 1) % 10);
 export const hotbarPlace = (index) => (index === 0 ? 'left hand' : index === 1 ? 'right hand' : hotbarKey(index));
 
-export function hotbarKeys(hotbar, id) {
+// item and list tell two guns of the same name apart. A slot holding an id still marks the first of that name.
+export function hotbarKeys(hotbar, id, item = null, list = null) {
   const keys = [];
-  for (let i = 0; i < hotbar.length; i++) if (hotbar[i] === id) keys.push(hotbarKey(i));
+  for (let i = 0; i < hotbar.length; i++) {
+    const slot = hotbar[i];
+    if (item?.uid && slot === item.uid) keys.push(hotbarKey(i));
+    else if (slot === (item?.id || id) && (!item?.uid || !list || list.find((other) => other.id === item.id) === item)) keys.push(hotbarKey(i));
+  }
   return keys;
 }
 
@@ -70,6 +75,8 @@ export class PocketData {
       const saved = JSON.parse(this.storage.getItem(STORE));
       this.state = { ...blank(), ...saved };
       for (const list of [this.state.bag, this.state.car]) renameOld(list);
+      this.state.bag = splitWeapons(this.state.bag);
+      this.state.car = splitWeapons(this.state.car);
       if (!this.state.hammerGiven) { // once, to new players and those from before there was one
         this.state.hammerGiven = true;
         this.state.car.push({ id: HAMMER, name: HAMMER, count: 1 });
@@ -77,7 +84,7 @@ export class PocketData {
       if (!this.state.gunGiven) { // once, the same way, so a handgun is there to aim with
         this.state.gunGiven = true;
         const gun = GAME.weapons.handgun, ammo = GAME.calibers[gun.caliber];
-        this.state.car.push({ id: gun.item, name: gun.item, count: 1, loaded: gun.magazine });
+        this.state.car.push({ id: gun.item, name: gun.item, count: 1, loaded: gun.magazine, uid: weaponUid() });
         this.state.car.push({ id: ammo.item, name: ammo.item, count: gun.spare });
       }
       if (saved?.bag && !saved.car) this.state.bag.length < BAG_SLOTS ? this.state.bag.push(blank().bag[0]) : this.state.car.push(blank().bag[0]); // saved before there was a flashlight
@@ -155,8 +162,15 @@ export class PocketData {
     return this.state.bag;
   }
 
-  // item: { id, name, count, loaded }. False if the bag is full; the same thing again adds to its count. A weapon remembers the rounds in it.
+  // item: { id, name, count, loaded }. False if the bag is full; the same thing again adds to its count.
+  // A gun is its own entry, so two of them keep their own rounds and one can be dropped.
   addToBag(item) {
+    if (weaponSpec(item.id)) {
+      if (this.state.bag.length >= BAG_SLOTS) return false;
+      this.state.bag.push(bagEntry({ ...item, count: 1 }));
+      this.save();
+      return true;
+    }
     const known = this.state.bag.find((i) => i.id === item.id);
     const n = item.count || 1;
     if (known) known.count += n;
@@ -174,6 +188,49 @@ export class PocketData {
     return this.state.bag.some((item) => item.id === id);
   }
 
+  // Room for one more of addId once one of removingId has gone. A stack of addId needs no new slot.
+  roomFor(addId, removingId) {
+    if (!weaponSpec(addId) && this.state.bag.some((item) => item.id === addId)) return true;
+    if (this.state.bag.length < BAG_SLOTS) return true;
+    const gone = removingId && this.state.bag.find((item) => item.id === removingId);
+    return gone?.count === 1;
+  }
+
+  // One empty bottle becomes a full one. False only when there isn't an empty one. A full bag doesn't matter: it's the same bottle.
+  fillVessel(emptyId, fullId) {
+    return this.turnInto(emptyId, fullId);
+  }
+
+  // One of fromId becomes one of toId. A stack joins the other kind, and a lone bottle keeps its slot.
+  // If the bag is already full and the other kind needs its own slot, it still changes: the bottle was already being carried.
+  turnInto(fromId, toId) {
+    const from = this.state.bag.find((item) => item.id === fromId && item.count > 0);
+    if (!from) return false;
+    const to = this.state.bag.find((item) => item.id === toId);
+    if (from.count === 1 && !to) {
+      from.id = toId;
+      from.name = toId;
+      this.pointHotbar(fromId, toId);
+      this.save();
+      return true;
+    }
+    from.count -= 1;
+    if (from.count <= 0) {
+      this.state.bag = this.state.bag.filter((item) => item !== from);
+      this.pointHotbar(fromId, toId);
+    }
+    if (to) to.count += 1;
+    else this.state.bag.push(bagEntry({ id: toId, name: toId, count: 1 }));
+    this.save();
+    return true;
+  }
+
+  // A hand that was holding a bottle that just changed kind follows it, once none of the old kind are left.
+  pointHotbar(fromId, toId) {
+    if (this.state.bag.some((item) => item.id === fromId)) return;
+    this.state.hotbar = this.state.hotbar.map((slot) => (slot === fromId ? toId : slot));
+  }
+
   // Points a hand or quick slot at something in the bag. The thing stays in the bag; the slot only remembers its id.
   setHotbar(index, id) {
     if (index < 0 || index >= HOTBAR_SIZE) return false;
@@ -182,11 +239,19 @@ export class PocketData {
     return true;
   }
 
-  // One of a thing from the bag to the car, or back. False if there's no room where it's going.
-  move(id, toCar) {
+  // One of a thing from the bag to the car, or back. False if there's no room where it's going. uid picks one gun of a shared name.
+  move(id, toCar, uid = null) {
     const [from, to, room] = toCar ? [this.state.bag, this.state.car, CAR_SLOTS] : [this.state.car, this.state.bag, BAG_SLOTS];
-    const item = from.find((i) => i.id === id);
+    const item = findCarried(from, id, uid);
     if (!item) return false;
+    if (weaponSpec(item.id)) {
+      if (to.length >= room) return false;
+      from.splice(from.indexOf(item), 1);
+      to.push(item);
+      if (toCar) releaseWeapon(this.state, item);
+      this.save();
+      return true;
+    }
     const there = to.find((i) => i.id === id);
     if (!there && to.length >= room) return false;
     if (there) there.count++;
@@ -197,19 +262,26 @@ export class PocketData {
   }
 
   // Leaves one of a thing behind, from the bag or the car, for good. False if there isn't one.
-  drop(id, fromCar = false) {
-    const list = fromCar ? this.state.car : this.state.bag, item = list.find((i) => i.id === id);
+  drop(id, fromCar = false, uid = null) {
+    const list = fromCar ? this.state.car : this.state.bag, item = findCarried(list, id, uid);
     if (!item) return false;
-    if (--item.count <= 0) list.splice(list.indexOf(item), 1);
+    if (weaponSpec(item.id)) {
+      list.splice(list.indexOf(item), 1);
+      if (!fromCar) releaseWeapon(this.state, item);
+    } else if (--item.count <= 0) list.splice(list.indexOf(item), 1);
     this.save();
     return true;
   }
 
   // Undoes a drop, which always has room as the drop made it.
   putBack(item, toCar = false) {
-    const list = toCar ? this.state.car : this.state.bag, there = list.find((i) => i.id === item.id);
-    if (there) there.count++;
-    else list.push(bagEntry(item));
+    const list = toCar ? this.state.car : this.state.bag;
+    if (weaponSpec(item.id)) list.push(bagEntry(item));
+    else {
+      const there = list.find((i) => i.id === item.id);
+      if (there) there.count++;
+      else list.push(bagEntry(item));
+    }
     this.save();
   }
 
@@ -225,10 +297,23 @@ export class PocketData {
     return this.takeCount(id, 1) > 0;
   }
 
-  // Several of one thing, for loading a gun. How many actually went.
-  takeCount(id, n) {
+  // Several of one thing, for loading a gun. How many actually went. loaded picks which gun, when a shot has to come back out.
+  takeCount(id, n, loaded) {
+    if (n <= 0) return 0;
+    if (weaponSpec(id)) {
+      let taken = 0;
+      while (taken < n) {
+        const index = this.state.bag.findLastIndex((i) => i.id === id && (loaded == null || i.loaded === loaded));
+        if (index < 0) break;
+        const gone = this.state.bag.splice(index, 1)[0];
+        releaseWeapon(this.state, gone);
+        taken++;
+      }
+      if (taken) this.save();
+      return taken;
+    }
     const known = this.state.bag.find((i) => i.id === id);
-    if (!known || n <= 0) return 0;
+    if (!known) return 0;
     const taken = Math.min(known.count, n);
     known.count -= taken;
     if (known.count <= 0) this.state.bag = this.state.bag.filter((i) => i !== known);
@@ -237,11 +322,44 @@ export class PocketData {
   }
 }
 
-// A new bag or car entry. A weapon starts full unless it already says how many rounds it has.
+// A saved stack of the same gun becomes one entry each. The first keeps the rounds it had; the rest are full.
+function splitWeapons(list) {
+  const out = [];
+  for (const item of list || []) {
+    const spec = weaponSpec(item.id);
+    if (!spec) { out.push(item); continue; }
+    const n = Math.max(1, item.count || 1);
+    for (let i = 0; i < n; i++) {
+      out.push({
+        id: item.id, name: item.name || item.id, count: 1,
+        loaded: i === 0 && Number.isFinite(item.loaded) ? item.loaded : spec.magazine,
+        uid: i === 0 && item.uid ? item.uid : weaponUid(),
+      });
+    }
+  }
+  return out;
+}
+
+function findCarried(list, id, uid) {
+  if (uid) return list.find((item) => item.uid === uid) || null;
+  return list.find((item) => item.id === id) || null;
+}
+
+// A hand that pointed at this gun lets go of it. A hand that only named the kind keeps another of that kind.
+function releaseWeapon(state, item) {
+  const left = state.bag.some((other) => other !== item && other.id === item.id);
+  state.hotbar = state.hotbar.map((slot) => (slot === item.uid || (slot === item.id && !left)) ? null : slot);
+}
+
+// A new bag or car entry. A weapon starts full unless it already says how many rounds it has, and never shares a stack.
 function bagEntry(item) {
   const made = { id: item.id, name: item.name, count: item.count || 1 };
   const spec = weaponSpec(item.id);
-  if (spec) made.loaded = Number.isFinite(item.loaded) ? item.loaded : spec.magazine;
+  if (spec) {
+    made.count = 1;
+    made.loaded = Number.isFinite(item.loaded) ? item.loaded : spec.magazine;
+    made.uid = item.uid || weaponUid();
+  }
   return made;
 }
 

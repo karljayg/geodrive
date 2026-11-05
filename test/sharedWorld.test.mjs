@@ -79,6 +79,7 @@ test('the first to say what a building is keeps it, and later ones only fill in 
 
 test('a dropped thing is checked before it\'s kept', () => {
   assert.deepEqual(cleanDrop({ id: 'a', name: 'Box', lat: 1, lng: 2, facing: 1, extra: '<script>' }), { id: 'a', name: 'Box', facing: 1, lat: 1, lng: 2 });
+  assert.deepEqual(cleanDrop({ id: 'a', name: 'Handgun', lat: 1, lng: 2, facing: 0, loaded: 4, uid: 'g1' }), { id: 'a', name: 'Handgun', facing: 0, lat: 1, lng: 2, loaded: 4 });
   assert.deepEqual(cleanDrop({ id: 'a', name: 'Box', buildingId: '1_2', floor: 2, axis: 0, u: 1, v: 2 }), { id: 'a', name: 'Box', facing: 0, buildingId: '1_2', floor: 2, axis: 0, u: 1, v: 2 });
   for (const bad of [null, {}, { id: 'a' }, { id: 'a', name: 'B', lat: 200, lng: 0 }, { id: 'a', name: 'B', lat: 'x', lng: 0 }, { id: 'a', name: 'B', buildingId: '1_2', floor: 1.5, axis: 0, u: 0, v: 0 }]) assert.equal(cleanDrop(bad), null, JSON.stringify(bad));
 });

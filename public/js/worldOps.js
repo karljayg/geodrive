@@ -80,6 +80,7 @@ export function mergePlan(kept, incoming) {
 export function cleanDrop(drop) {
   if (!drop || !okKey(drop.id) || !okKey(drop.name) || !okNumber(drop.facing ?? 0)) return null;
   const common = { id: drop.id, name: drop.name, facing: drop.facing ?? 0 };
+  if (Number.isInteger(drop.loaded) && drop.loaded >= 0 && drop.loaded <= 500) common.loaded = drop.loaded;
   if (drop.buildingId !== undefined) {
     if (!okKey(drop.buildingId) || !Number.isInteger(drop.floor) || ![drop.axis, drop.u, drop.v].every(okNumber)) return null;
     return { ...common, buildingId: drop.buildingId, floor: drop.floor, axis: drop.axis, u: drop.u, v: drop.v };

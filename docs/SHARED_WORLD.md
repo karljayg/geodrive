@@ -168,13 +168,13 @@ The game asks for data and asks for things to be done. Which of the three modes 
 | The car I'm driving, my person | Me, instantly | Driving must not wait on a network. The server limits speeds and sizes, no more |
 | Other people | Them | Drawn about 150 ms in the past, smoothly. A jump over 100 m is a teleport, not a glide |
 | Getting in a car | Server, first come first served | One driver, always |
-| Taking, opening, picking up, using | Server, first come first served | In one step, off the world and into the bag, so nothing can be lost or doubled. A full bag is refused |
+| Taking, opening, picking up, using | Server, first come first served | Opening shows what's there and asks. Taking it is one step, off the world and into the bag, so nothing can be lost or doubled. A full bag, or saying no, leaves it there |
 | Pushing, holes, lights, dropping | Server, in order | Shown at once and sent. If refused, it's put back |
 | First layout of a floor | First to arrive | The server keeps it, and everyone uses that from then on |
 | Clock | Server | It sends a starting point and a rate, not a stream of times |
 | A collision | Whoever's game saw it | See "Collisions" |
 
-`useEntry` already has the shape for this: it undoes a take when the bag is full.
+`useEntry` undoes a take when the bag is full, and a container stays unsearched until its find is actually taken.
 
 Needs are worked out in the browser and sent, so someone determined could fake theirs in the console. That's fine among friends.
 

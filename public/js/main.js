@@ -10,7 +10,7 @@ import { newCar, stepCar } from './physics.js';
 import { distance, easeAngle, leadDistance, move } from './camera.js';
 import { aimOf, firstInShot, screenOfGround, stepAim } from './aim.js';
 import { placeCamera } from './footWalker.js';
-import { caliberOf, gunToLoad, heldWeapon, reload as reloadGun, shoot } from './weapons.js';
+import { caliberOf, cooldownUntil, gunToLoad, heldWeapon, hitChance, reload as reloadGun, shoot, shotLands, shotReady } from './weapons.js';
 import { FLAG_ONEWAY, RoadNet } from './road.js';
 import { Path, brakeFor, pursuitYaw, rerouteWait } from './route.js';
 import { CAR_PROFILES, hornFor, profileFor } from './cars.js';
@@ -159,7 +159,7 @@ let carRadio = null; // what the car's radio was doing when they got out
 let pocket = null; // the phone, compass, notepad and bag, made the first time someone gets out
 let people = null, foot = null, footLoading = false, lookX = 0, lookY = 0, touchLook = null; // the walk in progress, while out of the car
 const aim = { x: 0, y: 0 }; // scope mark, pixels from the middle of the view
-let aiming = false, aimGone = 0, aimHand = 1, lastShot = null, shotUntil = 0;
+let aiming = false, aimGone = 0, aimHand = 1, lastShot = null, shotUntil = 0, triggerDown = false, holdOff = false, nextShotAt = 0;
 const scenes = new Scenes(MUSIC);
 let soundtrack = null, darkSince = null, musicTest = null; // musicTest: the mood picked in Settings, heard over everything
 const debug = { hold: false, car, pos, keys, roads, tiles, perfLog }; // window.__geodrive, for checks from the console
@@ -903,7 +903,7 @@ function syncScope() {
   }
   mark.style.setProperty('--aim-x', `${aim.x}px`);
   mark.style.setProperty('--aim-y', `${aim.y}px`);
-  const rounds = String(held.item.loaded ?? 0);
+  const rounds = `${held.item.loaded ?? 0}/${held.spec.magazine}`;
   if (el('scopeRounds').textContent !== rounds) el('scopeRounds').textContent = rounds;
   if (lastShot) {
     mark.dataset.ahead = lastShot.ahead.toFixed(2);
@@ -912,7 +912,7 @@ function syncScope() {
   }
   const firing = performance.now() < shotUntil;
   mark.classList.toggle('fired', firing);
-  mark.classList.toggle('onTarget', !!creatureUnderShot());
+  mark.classList.toggle('onTarget', aimedCreature()?.chance === 1);
   const svg = el('scopeShot');
   if (firing && lastShot) {
     const view = aimView(), from = screenOfGround(0, 0, view);
@@ -921,22 +921,26 @@ function syncScope() {
   } else if (svg.innerHTML) svg.innerHTML = '';
 }
 
-function fireHeld() {
+function tryFire() {
   const held = heldNow();
   if (!held || !aiming || aimBlocked()) return;
+  const now = performance.now();
+  if (!shotReady(now, nextShotAt)) return;
   const result = shoot(held.item);
   pocket.data.save();
   pocket.renderHotbar();
   if (!result.ok) {
+    nextShotAt = cooldownUntil(now, held.spec);
     sfx('dryFire');
     notice(say('gunEmpty'), 1600);
     return;
   }
-  sfx('gunshot');
-  shotUntil = performance.now() + 220;
-  const animal = creatureUnderShot();
-  if (animal) {
-    const body = killAnimal(animal.id);
+  nextShotAt = cooldownUntil(now, held.spec);
+  sfx(held.spec.sound || 'gunshot');
+  shotUntil = now + 220;
+  const aimed = aimedCreature();
+  if (aimed && shotLands(aimed.chance)) {
+    const body = killAnimal(aimed.animal.id);
     if (body) notice(body.down || 'It is down.', 3000);
   }
   syncScope();
@@ -955,6 +959,14 @@ function creatureUnderShot() {
   return firstInShot(cam.eye, end, animals);
 }
 
+// The creature under the mark, and this gun's chance of hitting it from where you stand. Green only when that chance is certain.
+function aimedCreature() {
+  const animal = creatureUnderShot(), spec = heldNow()?.spec;
+  if (!animal || !spec || !foot) return null;
+  const metres = Math.hypot(animal.x - foot.walker.x, animal.y - foot.walker.y);
+  return { animal, metres, chance: hitChance(metres, spec) };
+}
+
 // Selecting a casing, or R with a gun in hand. One casing fills the magazine.
 function loadAmmo(id) {
   const caliber = caliberOf(id);
@@ -971,8 +983,8 @@ function loadAmmo(id) {
   pocket.renderHotbar();
   if (pocket.bagOpen) pocket.renderBag();
   sfx(result.taken ? 'reload' : 'ack');
-  const key = result.taken ? 'reloaded' : result.reason === 'full' ? 'gunFull' : 'noRounds';
-  notice(say(key, { loaded: result.loaded, casing: result.casing }), 2000);
+  const key = result.taken ? 'reloaded' : result.reason === 'loaded' ? 'gunLoaded' : result.reason === 'full' ? 'gunFull' : 'noRounds';
+  notice(say(key, { loaded: result.loaded, magazine: result.magazine, ammo: ammo?.name || id }), 2000);
 }
 
 function reloadHeld() {
@@ -1050,6 +1062,7 @@ function runFoot(t, dt) {
   const began = performance.now(), live = !debug.hold && !dialogOpen && !paused;
   const fromX = foot.walker.x, fromY = foot.walker.y;
   foot.update(live ? dt : 0, live ? footInput(dt) : {}, world.clock.hour);
+  if (live && triggerDown && !holdOff && heldNow()?.spec.fireMode === 'auto') tryFire();
   if (live) tipAboutPushing(fromX, fromY, dt);
   syncScope();
   syncFootScene(dt);
@@ -1319,6 +1332,28 @@ async function startWalking(leftCar = null) {
     foot.meatHere = () => animalBodies(foot.where(), GAME.drops.reach).map((body) => ({ label: 'Take the meat?', run: () => { collectMeat(body, false); return ''; } }));
     foot.canCook = () => [GAME.deer, GAME.chicken, GAME.rabbit].some((kind) => pocket.data.bagHas(kind.raw));
     foot.cookRaw = () => cookFromBag();
+    foot.getDock = () => pocket.data.state.dock || null;
+    foot.chargeOf = (which) => Math.round(vitals.stats[which === 'phone' ? 'phone' : 'flashlight']);
+    foot.hasFlash = () => pocket.data.bagHas('Flashlight');
+    foot.hasEmptyBottle = () => pocket.data.bagHas(GAME.vessels.empty);
+    foot.fillBottle = () => pocket.data.fillVessel(GAME.vessels.empty, GAME.vessels.full);
+    foot.setDock = (dock, which) => {
+      const prev = pocket.data.state.dock || null;
+      if (which === 'flash' && dock?.flash && !prev?.flash) {
+        if (foot.light === 'flash') foot.toggleLight('flash');
+        if (!pocket.data.takeFromBag('Flashlight')) return false;
+      }
+      if (!dock?.flash && prev?.flash && !pocket.data.addToBag({ id: 'Flashlight', name: 'Flashlight', count: 1 })) return false;
+      pocket.data.state.dock = dock;
+      pocket.data.save();
+      if (which === 'phone' && dock?.phone) {
+        if (pocket.app === 'music') pocket.calls.music(false);
+        pocket.closePhone();
+        if (foot.light === 'phone') foot.toggleLight('phone');
+      }
+      pocket.renderHotbar();
+      return true;
+    };
     showPerson(personSize);
   } catch (err) {
     console.warn('getting out:', err);
@@ -1558,10 +1593,11 @@ async function pressCarF() {
   ], { car: true });
 }
 
-function ask(choices, where) {
-  asking = { choices, ...where };
+function ask(choices, where = {}) {
+  asking = { ...where, choices };
   const many = choices.length > 1, box = el('asking');
-  box.innerHTML = `${choices.map(({ label, html }, i) => `<button data-answer="${i}">${many ? `<kbd>${i + 1}</kbd> ` : ''}${html || label}</button>`).join('')}
+  const note = where.note ? `<p class="found">${where.note}</p>` : '';
+  box.innerHTML = `${note}${choices.map(({ label, html }, i) => `<button data-answer="${i}">${many ? `<kbd>${i + 1}</kbd> ` : ''}${html || label}</button>`).join('')}
     <small>${many ? 'Press a number, walk away or Esc' : 'F for yes, walk away or Esc'}</small>`;
   box.classList.toggle('many', many);
   document.body.classList.add('asked');
@@ -1574,10 +1610,15 @@ async function loadCar() {
 }
 
 function answer(index) {
-  const choice = asking?.choices[index];
+  const where = asking;
+  const choice = where?.choices[index];
   stopAsking();
   if (!choice) return;
   const said = choice.run();
+  if (said && typeof said === 'object' && said.choices) {
+    ask(said.choices, { ...where, note: said.note });
+    return;
+  }
   if (typeof said === 'string' && said) notice(said, 2500); // some run on after answering, and say what they have to say themselves
 }
 
@@ -1605,11 +1646,12 @@ const dropPictures = new Map(); // name: the model's address, once made from the
 let dropsSyncedAt = -Infinity;
 
 // From the bag or the car's storage: a step ahead of someone on foot, or beside the car from inside it.
-function leaveDrop(name) {
+function leaveDrop(what) {
   dropsSyncedAt = -Infinity;
-  if (foot) return foot.placeDrop(name);
+  const item = typeof what === 'string' ? { name: what } : what;
+  if (foot) return foot.placeDrop(item);
   const { lat, lng } = move(pos.lat, pos.lng, car.heading + 90, GAME.drops.beside);
-  return drops.add({ name, lat, lng, facing: rad(car.heading) });
+  return drops.add({ name: item.name, ...(Number.isFinite(item.loaded) ? { loaded: item.loaded } : {}), lat, lng, facing: rad(car.heading) });
 }
 
 function dropPicture(name) {
@@ -1703,6 +1745,8 @@ async function pocketReady() {
     dropped: leaveDrop,
     undropped: (id) => { if (foot) foot.removeDrop(id); else drops.remove(id); dropsSyncedAt = -Infinity; },
     phoneDead: () => vitals.stats.phone <= 0,
+    phoneAway: () => !!pocket.data.state.dock?.phone,
+    flashAway: () => !!pocket.data.state.dock?.flash,
     say: (text, blanks) => notice(say(text, blanks), 2500),
     useItem: (name) => {
       const said = vitals.consume(name);
@@ -1739,6 +1783,9 @@ async function pocketReady() {
 // On, or off if it's on. The flashlight has to be in the bag.
 function carryLight(kind) {
   if (!foot) return;
+  const dock = pocket?.data.state.dock;
+  if (kind === 'flash' && dock?.flash) return notice(say('flashlightCharging'), 2500);
+  if (kind === 'phone' && dock?.phone) return notice(say('phoneCharging'), 2500);
   if (kind === 'flash' && !pocket?.data.bagHas('Flashlight')) return notice(say('flashlightNotInBag'), 2500);
   sfx('click'); // a dead one still clicks
   if (foot.light !== kind && vitals.stats[kind === 'flash' ? 'flashlight' : 'phone'] <= 0) return notice(say(kind === 'flash' ? 'flashlightDead' : 'phoneDead'), 2500);
@@ -1802,11 +1849,14 @@ const vitals = world.vitals;
 let vitalsSavedAt = 0, vitalsDrawnAt = 0;
 
 function doingNow() {
-  if (!foot) return { activity: 'driving', music: false };
-  const charging = foot.chargingNow();
+  const dock = pocket?.data.state.dock;
+  const chargingPhone = !!dock?.phone, chargingFlashlight = !!dock?.flash;
+  if (!foot) return { activity: 'driving', music: false, charging: chargingPhone, chargingPhone, chargingFlashlight };
+  const light = foot.light === 'phone' && chargingPhone ? null : foot.light === 'flash' && chargingFlashlight ? null : foot.light;
   return {
-    activity: foot.pose?.kind === 'sleep' && vitals.isCritical ? 'resting' : foot.activity(), screen: !!pocket?.app, light: foot.light, music: !!(radio.on && pocket?.app === 'music'),
-    charging, chargingFlashlight: charging && !!pocket?.data.bagHas('Flashlight'),
+    activity: foot.pose?.kind === 'sleep' && vitals.isCritical ? 'resting' : foot.activity(),
+    screen: chargingPhone ? false : !!pocket?.app, light, music: chargingPhone ? false : !!(radio.on && pocket?.app === 'music'),
+    charging: chargingPhone, chargingPhone, chargingFlashlight,
   };
 }
 
@@ -1883,20 +1933,22 @@ let vitalsShown = {};
 
 // Bars in the corner of the view, full being good, written only when one has moved.
 function drawVitals() {
-  const box = el('vitals'), charging = !!foot?.charging;
+  const box = el('vitals'), dock = pocket?.data.state.dock;
   if (!box.childElementCount) {
     box.innerHTML = VITAL_ROWS.map((name) => `<div class="vital" data-vital="${name}"><span>${name === 'health' ? GAME.health.label : GAME.stats[name].label}</span><i><b></b></i></div>`).join('');
     vitalsShown = {};
   }
   for (const name of VITAL_ROWS) {
-    const value = Math.round(vitals.stats[name]), level = vitals.levelOf(name), said = `${value}|${level}|${charging}`;
+    const value = Math.round(vitals.stats[name]), level = vitals.levelOf(name);
+    const charging = (name === 'phone' && !!dock?.phone) || (name === 'flashlight' && !!dock?.flash);
+    const said = `${value}|${level}|${charging}`;
     if (vitalsShown[name] === said) continue;
     vitalsShown[name] = said;
     const row = box.querySelector(`[data-vital="${name}"]`);
     row.querySelector('b').style.width = `${value}%`;
     row.classList.remove('good', 'caution', 'critical');
     row.classList.add(level);
-    row.classList.toggle('charging', charging && (name === 'phone' || (name === 'flashlight' && pocket?.data.bagHas('Flashlight'))));
+    row.classList.toggle('charging', charging);
     row.title = `${value}%. ${level === 'good' ? (foot ? 'Click for details.' : '') : tipFor(name)}`;
   }
 }
@@ -1927,7 +1979,7 @@ function useSecondHand() {
   if (performance.now() - handUse < 400) return;
   handUse = performance.now();
   const held = heldNow();
-  if (aiming && held?.index === 1) fireHeld();
+  if (aiming && held?.index === 1) tryFire();
   else pocket.useHotbar(1);
   if (aiming && document.pointerLockElement !== el('foot')) Promise.resolve(el('foot').requestPointerLock()).catch(() => {});
 }
@@ -1937,14 +1989,17 @@ el('foot').addEventListener('pointerdown', (e) => {
   if (e.pointerType === 'mouse') {
     if (e.button === 2) { e.preventDefault(); useSecondHand(); return; }
     if (e.button === 0 && heldNow() && !aimBlocked()) {
+      triggerDown = true;
       if (document.pointerLockElement !== el('foot')) Promise.resolve(el('foot').requestPointerLock()).catch(() => {});
       if (!aiming) {
         aiming = true;
+        holdOff = true; // holding through the first click only brings the mark up
         aim.x = aim.y = 0;
         syncScope();
-        return; // the first click only brings the mark up
+        return;
       }
-      return fireHeld();
+      holdOff = false;
+      return tryFire();
     }
     if (e.button === 0) Promise.resolve(el('foot').requestPointerLock()).catch(() => {}); // refused just after Esc; the next click works
   } else {
@@ -1963,7 +2018,7 @@ el('foot').addEventListener('pointermove', (e) => {
     lookY += e.movementY;
   }
 });
-for (const kind of ['pointerup', 'pointercancel']) el('foot').addEventListener(kind, () => { touchLook = null; });
+for (const kind of ['pointerup', 'pointercancel']) el('foot').addEventListener(kind, () => { touchLook = null; triggerDown = false; holdOff = false; });
 el('foot').addEventListener('contextmenu', (e) => { if (foot) { e.preventDefault(); useSecondHand(); } });
 document.addEventListener('pointerlockchange', () => {
   if (document.pointerLockElement || !aiming) return;
@@ -3450,7 +3505,7 @@ async function startPeople() {
   const [{ PeopleView }, { ChatView }] = await Promise.all([import('./peopleView.js'), import('./chatView.js')]);
   peopleView = new PeopleView({ maps3d, map, people: world.people, glbUrl, cars: world.cars, mine: () => (foot || riding ? null : myCar?.id), offset: () => world.clock.offset ?? 0 });
   chatView = new ChatView({
-    world, line: el('chatLine'), previews: el('previews'), speechBox: el('speech'), spoke: flashSeat, sound: () => sfx('message'), phoneDead: () => vitals.stats.phone <= 0,
+    world, line: el('chatLine'), previews: el('previews'), speechBox: el('speech'), spoke: flashSeat, sound: () => sfx('message'), phoneDead: () => vitals.stats.phone <= 0, phoneAway: () => !!pocket?.data.state.dock?.phone,
     opened: (on) => { if (on) { keys.clear(); jumpPressed = false; releaseMouse(); } },
     canShow: (thread) => !(pocket?.app === 'messages' && world.chat.threadWith(pocket.contact === 'group' ? null : pocket.contact) === thread),
   });
@@ -3491,7 +3546,7 @@ async function startPeople() {
   };
   world.drops.onChange = () => { dropsSyncedAt = -Infinity; foot?.dropsChanged(); };
   world.drops.onLost = (drop) => { // someone else picked it up in the same moment
-    pocket?.data.takeFromBag(drop.name);
+    pocket?.data.takeCount(drop.name, 1, drop.loaded);
     notice(`Someone else got the ${drop.name.toLowerCase()} first.`, 3000);
   };
   world.buildings.onRefused = (id, floor, op, why) => {

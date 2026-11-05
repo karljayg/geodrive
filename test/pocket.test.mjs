@@ -112,7 +112,7 @@ test('what played earlier: newest first, no repeat of the current one, and a lim
 });
 
 test('everything that can reach the bag has its own picture, and anything new still gets one', () => {
-  const names = new Set([...Object.values(GAME.finds).flat(), ...Object.values(GAME.machines).flatMap((m) => m.give), ...Object.keys(GAME.consumables), 'Flashlight', 'Cash', 'Ticket', GAME.weapons.handgun.item, GAME.calibers['9mm'].item]);
+  const names = new Set([...Object.values(GAME.finds).flat(), ...Object.values(GAME.machines).flatMap((m) => m.give), ...Object.keys(GAME.consumables), 'Flashlight', 'Cash', 'Ticket', ...Object.values(GAME.weapons).map((weapon) => weapon.item), ...Object.values(GAME.calibers).map((caliber) => caliber.item)]);
   for (const item of Object.keys(ITEMS)) {
     const actions = actionsOf(item);
     if (actions.includes('pick up')) names.add(useThing([item, ITEMS[item].models[0], 0, 0, 0, 0, 0, 1], {}, 1, 'x', actions[1] === 'pick up').give);
@@ -133,6 +133,37 @@ test('things saved under an old name take the new one, and join any already ther
   const given = new Set([GAME.hammer.item, GAME.weapons.handgun.item, GAME.calibers['9mm'].item]);
   assert.deepEqual(data.car.filter((i) => !given.has(i.id)).map((i) => [i.id, i.name]), [['Sneakers', 'Sneakers']]);
   assert.ok(GAME.consumables['Band-Aids'] && hasItemIcon('Sneakers') && hasItemIcon('Can of beans') && hasItemIcon('Silverware'));
+});
+
+test('an empty water bottle fills into a full one, and a full bag keeps the empty one', () => {
+  const data = new PocketData(memory());
+  assert.equal(GAME.consumables['Bottle of water'].leaves, 'Water bottle');
+  assert.equal(data.fillVessel('Water bottle', 'Bottle of water'), false);
+  data.addToBag({ id: 'Water bottle', name: 'Water bottle', count: 2 });
+  assert.equal(data.fillVessel('Water bottle', 'Bottle of water'), true);
+  assert.equal(data.bag.find((item) => item.id === 'Water bottle').count, 1);
+  assert.equal(data.bag.find((item) => item.id === 'Bottle of water').count, 1);
+  while (data.bag.length < BAG_SLOTS) data.addToBag({ id: `Odd ${data.bag.length}`, name: 'Odd', count: 1 });
+  const before = data.bag.find((item) => item.id === 'Water bottle').count;
+  assert.equal(data.roomFor('Bottle of water', 'Water bottle'), true);
+  data.addToBag({ id: 'Water bottle', name: 'Water bottle', count: 1 });
+  assert.equal(data.fillVessel('Water bottle', 'Bottle of water'), true);
+  assert.equal(data.bag.find((item) => item.id === 'Bottle of water').count, 2);
+  assert.ok(data.bag.find((item) => item.id === 'Water bottle').count < before + 1);
+  const packed = new PocketData(memory());
+  packed.addToBag({ id: 'Water bottle', name: 'Water bottle', count: 3 });
+  packed.setHotbar(3, 'Water bottle');
+  while (packed.bag.length < BAG_SLOTS) packed.addToBag({ id: `Odd ${packed.bag.length}`, name: 'Odd', count: 1 });
+  assert.equal(packed.fillVessel('Water bottle', 'Bottle of water'), true);
+  assert.equal(packed.bag.find((item) => item.id === 'Water bottle').count, 2);
+  assert.equal(packed.bag.find((item) => item.id === 'Bottle of water').count, 1);
+  assert.equal(packed.state.hotbar[3], 'Water bottle');
+  packed.fillVessel('Water bottle', 'Bottle of water');
+  assert.equal(packed.fillVessel('Water bottle', 'Bottle of water'), true);
+  assert.equal(packed.bag.find((item) => item.id === 'Water bottle'), undefined);
+  assert.equal(packed.bag.find((item) => item.id === 'Bottle of water').count, 3);
+  assert.equal(packed.state.hotbar[3], 'Bottle of water');
+  assert.equal(packed.bag.length, BAG_SLOTS);
 });
 
 test('the left hand starts on the flashlight, and a saved bar is kept, including cleared', () => {

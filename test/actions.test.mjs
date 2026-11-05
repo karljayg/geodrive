@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { actionsOf, coreQuestions, houseGunIn, pushFits, pushTarget, pushThing, inertNear, lookLine, questionsFor, thingsNear, uniqueChoices, usableNear, useThing, withoutTaken, switchNeedsKey, switchSpots, useSwitch } from '../public/js/footActions.js';
+import { actionsOf, armoryIn, claimOpened, coreQuestions, houseGunIn, pushFits, pushTarget, pushThing, inertNear, lookLine, questionsFor, releaseOpened, thingsNear, uniqueChoices, usableNear, useThing, withoutTaken, switchNeedsKey, switchSpots, useSwitch } from '../public/js/footActions.js';
 import { SAYINGS } from '../public/js/sayingsConfig.js';
 import { SOUNDS, bagSound, bakeOrder, footfall, lengthOf, play, stepSound, takesOf, useSound } from '../public/js/sounds.js';
 import { GAME } from '../public/js/gameConfig.js';
@@ -55,14 +55,27 @@ test('picking something up gives it and keeps it gone, even if the floor is read
   assert.deepEqual(JSON.parse(JSON.stringify(plan)).state[2].taken.length, 1);
 });
 
-test('opening something finds at most one thing, the same every time for that building, and it stays searched', () => {
+test('opening something finds at most one thing, the same every time, and it stays until it is taken', () => {
   const finds = new Set();
   for (let n = 0; n < 40; n++) {
     const plan = {}, fridge = entry('fridge', n, 0), first = useThing(fridge, plan, 1, 'b'), again = useThing(fridge, plan, 1, 'b');
-    assert.ok(SAYINGS.nothingElse.some((l) => l.replace('{name}', 'fridge') === again.say), again.say);
-    assert.equal(again.give, undefined);
     assert.equal(useThing(fridge, {}, 1, 'b').give, first.give, 'the same for this building');
-    if (first.give) finds.add(first.give);
+    if (first.give) {
+      assert.equal(first.offer, true);
+      assert.equal(first.take, `Take the ${first.give.toLowerCase()}?`);
+      assert.equal(again.give, first.give, 'still there until taken');
+      assert.equal(claimOpened(plan, 1, fridge), true);
+      assert.equal(claimOpened(plan, 1, fridge), false);
+      const after = useThing(fridge, plan, 1, 'b');
+      assert.ok(SAYINGS.nothingElse.some((l) => l.replace('{name}', 'fridge') === after.say), after.say);
+      assert.equal(after.give, undefined);
+      releaseOpened(plan, 1, fridge);
+      assert.equal(useThing(fridge, plan, 1, 'b').give, first.give, 'a full bag puts it back');
+      finds.add(first.give);
+    } else {
+      assert.ok(SAYINGS.nothingElse.some((l) => l.replace('{name}', 'fridge') === again.say), again.say);
+      assert.equal(again.give, undefined);
+    }
   }
   assert.ok(finds.size >= 2, 'some variety');
 });
@@ -279,39 +292,87 @@ test('pushing and driving are offered, and say so', () => {
   assert.equal(questionsFor(entry('bin'))[0].label, 'Search the trash can?');
 });
 
-test('about one house in four hides a handgun and 10 casings upstairs, in one drawer', () => {
-  const stand = (u) => ['nightstand', 'cabinetBedDrawer', u, 1, 0, 0, 0, 1];
-  const desk = ['desk', 'desk', 5, 1, 0, 0, 0, 1];
-  const items = [stand(0), stand(2), desk];
-  let houses = 0;
-  for (let n = 0; n < 400; n++) {
+test('about one house in four hides a gun in a bedroom wardrobe, cabinet or nightstand, on any floor', () => {
+  const zones = [['bedroom'], ['living'], ['bathroom']];
+  const stand = ['nightstand', 'cabinetBedDrawer', 0, 1, 0, 0, 0, 1];
+  const livingStand = ['nightstand', 'cabinetBedDrawer', 4, 1, 0, 0, 1, 1];
+  const wardrobe = ['wardrobe', 'bookcaseClosedDoors', 2, 1, 0, 0, 0, 1];
+  const cabinet = ['bathCabinet', 'bathroomCabinet', 6, 1, 0, 0, 2, 1];
+  const desk = ['desk', 'desk', 8, 1, 0, 0, 0, 1];
+  const items = [stand, livingStand, wardrobe, cabinet, desk];
+  let houses = 0, floor1 = 0;
+  const guns = {};
+  for (let n = 0; n < 800; n++) {
     const plan = { type: 'home', floors: 3 }, id = `house${n}`;
     const hits = [];
     for (const floor of [1, 2, 3]) for (const piece of items) {
-      const found = houseGunIn(plan, id, floor, items, piece);
+      const found = houseGunIn(plan, id, floor, items, piece, GAME.houseGun, zones);
       if (found) hits.push({ floor, piece, found });
     }
     if (!hits.length) continue;
     houses++;
     assert.equal(hits.length, 1, id);
-    assert.ok(hits[0].floor >= 2, hits[0].floor);
-    assert.equal(hits[0].piece[0], 'nightstand');
-    assert.equal(hits[0].found.found[0].id, 'Handgun');
-    assert.equal(hits[0].found.found[0].loaded, 8);
-    assert.equal(hits[0].found.found[1].count, 10);
-    const opened = useThing(hits[0].piece, plan, hits[0].floor, id, false, items);
-    assert.equal(opened.found[1].id, '9mm bullets');
-    assert.equal(useThing(hits[0].piece, plan, hits[0].floor, id, false, items).found, undefined);
-    assert.equal(houseGunIn(plan, id, hits[0].floor, items, hits[0].piece).found[0].id, 'Handgun', 'the same drawer next time');
+    assert.ok(hits[0].piece === stand || hits[0].piece === wardrobe, hits[0].piece[0]);
+    if (hits[0].floor === 1) floor1++;
+    const weapon = Object.values(GAME.weapons).find((w) => w.item === hits[0].found.found[0].id);
+    const ammo = GAME.calibers[weapon.caliber];
+    assert.equal(hits[0].found.found[0].loaded, weapon.magazine);
+    assert.equal(hits[0].found.found[1].count, ammo.feed === 'round' ? GAME.houseGun.rounds : GAME.houseGun.boxes);
+    guns[weapon.item] = (guns[weapon.item] || 0) + 1;
+    const opened = useThing(hits[0].piece, plan, hits[0].floor, id, false, items, zones);
+    assert.equal(opened.found[0].id, weapon.item);
+    assert.equal(opened.offer, true);
+    assert.ok(opened.take.startsWith(`Take the ${weapon.item.toLowerCase()} and `), opened.take);
+    assert.equal(useThing(hits[0].piece, plan, hits[0].floor, id, false, items, zones).found[0].id, weapon.item);
+    assert.equal(claimOpened(plan, hits[0].floor, hits[0].piece), true);
+    assert.equal(useThing(hits[0].piece, plan, hits[0].floor, id, false, items, zones).found, undefined);
   }
-  assert.ok(houses > 70 && houses < 130, houses);
+  assert.ok(houses > 150 && houses < 250, houses);
+  assert.ok(floor1 > 30, floor1);
+  const common = guns.Handgun + guns.Revolver + guns['.45 Handgun'];
+  const rare = (guns.SMG || 0) + (guns.Shotgun || 0) + (guns['Hunting Rifle'] || 0) + (guns['AR-15'] || 0) + (guns['Sniper Rifle'] || 0);
+  assert.ok(guns.Handgun > (guns.SMG || 0) * 2, JSON.stringify(guns));
+  assert.ok(guns.Revolver > (guns.Shotgun || 0) * 2, JSON.stringify(guns));
+  assert.ok(guns['.45 Handgun'] > (guns['Sniper Rifle'] || 0) * 2, JSON.stringify(guns));
+  assert.ok(common > rare, JSON.stringify(guns));
   let cottage = null;
-  for (let n = 0; n < 80 && !cottage; n++) if (houseGunIn({ type: 'home', floors: 1 }, `cot${n}`, 1, items, stand(0))) cottage = `cot${n}`;
+  for (let n = 0; n < 80 && !cottage; n++) if (houseGunIn({ type: 'home', floors: 1 }, `cot${n}`, 1, items, stand, GAME.houseGun, zones)) cottage = `cot${n}`;
   assert.ok(cottage);
-  assert.equal(houseGunIn({ type: 'home', floors: 1 }, cottage, 2, items, stand(0)), null);
-  assert.equal(houseGunIn({ type: 'office', floors: 4 }, 'office', 2, items, stand(0)), null);
-  const onlyDesk = [desk, ['wardrobe', 'bookcaseClosedDoors', 1, 3, 0, 0, 0, 1]];
-  let hidIn = null;
-  for (let n = 0; n < 80 && !hidIn; n++) hidIn = onlyDesk.find((piece) => houseGunIn({ type: 'home', floors: 2 }, `plain${n}`, 2, onlyDesk, piece));
-  assert.equal(hidIn[0], 'desk');
+  assert.equal(houseGunIn({ type: 'home', floors: 1 }, cottage, 2, items, stand, GAME.houseGun, zones), null);
+  assert.equal(houseGunIn({ type: 'office', floors: 4 }, 'office', 2, items, stand, GAME.houseGun, zones), null);
+  const skipGround = (floor) => floor !== 1;
+  let onGround = 0, upstairs = 0;
+  for (let n = 0; n < 200; n++) {
+    const plan = { type: 'home', floors: 3 }, id = `old${n}`;
+    for (const floor of [1, 2, 3]) for (const piece of items) {
+      const found = houseGunIn(plan, id, floor, items, piece, GAME.houseGun, zones, skipGround);
+      if (!found) continue;
+      if (floor === 1) onGround++;
+      else upstairs++;
+    }
+  }
+  assert.equal(onGround, 0);
+  assert.ok(upstairs > 20, upstairs);
+});
+
+test('a police station, some shops and some malls stock a gun and a pile of its ammunition', () => {
+  const cabinet = (u) => ['filingCabinet', 'filingCabinet', u, 1, 0, 0, 0, 1];
+  const shelf = (u) => ['storeShelf', 'storeShelf', u, 1, 0, 0, 0, 1];
+  const police = [cabinet(0), cabinet(2), cabinet(4), cabinet(6), cabinet(8)];
+  const plan = { type: 'police', floors: 2 };
+  const hits = police.filter((piece) => armoryIn(plan, 'station', 1, police, piece));
+  assert.equal(hits.length, 4);
+  const first = armoryIn(plan, 'station', 1, police, hits[0]);
+  assert.equal(first.found[0].count, 1);
+  assert.equal(first.found[1].count, 24);
+  assert.equal(armoryIn(plan, 'station', 1, police, hits[0]).found[0].id, first.found[0].id);
+  assert.equal(armoryIn({ type: 'office', floors: 2 }, 'station', 1, police, cabinet(0)), null);
+  let shop = null;
+  for (let n = 0; n < 80 && !shop; n++) if (armoryIn({ type: 'shop', floors: 1 }, `shop${n}`, 1, [shelf(0)], shelf(0))) shop = `shop${n}`;
+  assert.ok(shop);
+  assert.equal(armoryIn({ type: 'shop', floors: 1 }, shop, 1, [shelf(0)], shelf(0)).found[1].count, 30);
+  let mall = null;
+  for (let n = 0; n < 80 && !mall; n++) if (armoryIn({ type: 'mall', floors: 2 }, `mall${n}`, 1, [shelf(1)], shelf(1))) mall = `mall${n}`;
+  assert.ok(mall);
+  assert.equal(armoryIn({ type: 'mall', floors: 2 }, mall, 1, [shelf(1)], shelf(1)).found[1].count, 20);
 });

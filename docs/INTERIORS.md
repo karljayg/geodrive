@@ -97,7 +97,7 @@ A shop or restaurant POI in a building of 5 or more floors fills the ground floo
 Reviewed 2026-11-02 against what real buildings are like, with an audit of every type.
 - **A way in.** A door in an outside wall of the entrance room (lobby, hall, foyer, reception), or failing that the first public room, never a bedroom, toilet or kitchen. Pressing L anywhere at a building brings you in there.
 - **Stairs and lifts.** In a corner for garages, warehouses, halls and other big open spaces, in the middle only for towers (offices, hotels, apartments, hospitals, dorms, care homes), and at a wall otherwise. The lobby is the room nearest them with an outside wall, and they're kept out of toilets and stock rooms.
-- **Homes.** Rooms run from the front door in: hall, living room, dining, kitchen, then bathroom and bedrooms furthest. With an upstairs, the bedrooms are all up there.
+- **Homes.** Rooms run from the front door in: hall, living room, dining, kitchen, then bathroom and bedrooms furthest. With an upstairs, the other bedrooms are up there, and the ground floor keeps one bedroom when the floor has room for it.
 - **Banks.** A lobby of their own, the teller hall, little offices, and a vault sealed on every side.
 - **Corridors.** Apartments, hotel and dorm floors, care home floors and schools have rooms off corridors, each with a front door. A hotel room has its own bathroom.
 - **Shape and share.** Rooms stay within about 4.5 times as long as wide where possible, and a room gets a share of what a floor can hold by its size, so no room is left empty.
@@ -154,7 +154,7 @@ Zones are chosen in order until the floor's area runs out, so a small home gets 
 | Airport terminal | Check-in, security, baggage claim, shops | Gates with seat rows, shops, food court, lounge |
 
 ### How a home's floor is divided
-Each room has a target in m²: living 28, kitchen 15, dining 14, bedroom 16, study 10, bathroom, hall and laundry 6. Targets add up to at most 75% of the floor, and the rest makes rooms roomier. The floor is cut in two again and again by those shares. Rooms are in order of need, so when they don't all fit, the last goes and the floor is tried again; living rooms, kitchens and bedrooms also need a minimum width. A single-storey home gets its bedrooms downstairs. Measured over 200 layouts each of 5 shapes, about 1 to 3 ms a floor and 2 to 5 KB saved.
+Each room has a target in m²: living 28, kitchen 15, dining 14, bedroom 16, study 10, bathroom, hall and laundry 6. Targets add up to at most 75% of the floor, and the rest makes rooms roomier. The floor is cut in two again and again by those shares. Rooms are in order of need, so when they don't all fit, the last goes and the floor is tried again; living rooms, kitchens and bedrooms also need a minimum width. A single-storey home gets its bedrooms downstairs. A home with an upstairs also keeps one bedroom downstairs when it fits. Measured over 200 layouts each of 5 shapes, about 1 to 3 ms a floor and 2 to 5 KB saved.
 
 Known gaps in those layouts: a very small home (30 m²) misses a sink in about 1 in 6, and about 1 L-shaped home in 12 has a bedroom with no bed. The likely reason for the second is that a bent room's rectangle includes space outside the footprint, but that hasn't been confirmed.
 

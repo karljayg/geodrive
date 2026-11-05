@@ -6,7 +6,7 @@ import { tintAt } from './daylight.js';
 import { FootGl, bearing, lookAt, multiply, perspective, swing, translate } from './footGl.js';
 import { Place, fromLocal, parseTile, toLocal } from './footData.js';
 import { SIT_FRAME, personFloats } from './footPerson.js';
-import { SWITCH_REACH, thingKey, actionsOf, breakThrough, canClimb, climbQuestion, wallAhead, outletSpots, switchNeedsKey, switchSpots, useSwitch, poseSpot, coreQuestions, modelNamed, inertNear, lookLine, pushFits, pushTarget, pushThing, questionsFor, thingsNear, uniqueChoices, useThing, withoutTaken } from './footActions.js';
+import { SWITCH_REACH, thingKey, actionsOf, breakThrough, canClimb, claimOpened, climbQuestion, wallAhead, outletSpots, releaseOpened, stashSpots, switchNeedsKey, switchSpots, tapWorks, useSwitch, poseSpot, coreQuestions, modelNamed, inertNear, lookLine, pushFits, pushTarget, pushThing, questionsFor, thingsNear, uniqueChoices, useThing, withoutTaken } from './footActions.js';
 import { CORE_SCHEME, roomMesh } from './footScene.js';
 import { FURNISHED, colourFor, coreNear, coreOf, frameOf as buildingFrame, layoutFloor, plainFloor, solidsOf, upgradeFloor, worldBearing } from './furnish.js';
 import { parseFurniture } from './furniture.js';
@@ -319,7 +319,9 @@ export class Foot {
   }
 
   // Leaves something a step ahead, or at their feet if that's through a wall. Returns its id.
-  placeDrop(name) {
+  placeDrop(what) {
+    const item = typeof what === 'string' ? { name: what } : what, name = item.name;
+    const extra = Number.isFinite(item.loaded) ? { loaded: item.loaded } : {};
     const w = this.walker, building = w.inside?.buildingId === undefined ? null : w.inside, facing = w.facing;
     const taken = this.dropsInReach().map((drop) => (building ? buildingFrame(building.pieces, drop.axis).toWorld(drop.u, drop.v) : toLocal(this.origin, drop.lat, drop.lng)));
     // Off to one side, as straight ahead is behind them from the camera.
@@ -328,11 +330,11 @@ export class Foot {
     const aheadX = spot.x, aheadY = spot.y;
     if (!building) {
       const { lat, lng } = fromLocal(this.origin, aheadX, aheadY);
-      return this.drops.add({ name, lat, lng, facing });
+      return this.drops.add({ name, ...extra, lat, lng, facing });
     }
     const clear = this.place.footprintAt(aheadX, aheadY) === building, axis = this.room?.furnishing?.record.axis ?? 0;
     const { u, v } = buildingFrame(building.pieces, axis).toFrame(clear ? aheadX : w.x, clear ? aheadY : w.y);
-    const id = this.drops.add({ name, buildingId: building.buildingId, floor: this.level, axis, u, v, facing });
+    const id = this.drops.add({ name, ...extra, buildingId: building.buildingId, floor: this.level, axis, u, v, facing });
     if (this.room) this.room.stale = true;
     return id;
   }
@@ -389,7 +391,8 @@ export class Foot {
   }
 
   pickUpDrop(drop) {
-    if (this.onFound && !this.onFound(drop.name)) return say('bagFull');
+    const found = Number.isFinite(drop.loaded) ? { id: drop.name, name: drop.name, count: 1, loaded: drop.loaded } : drop.name;
+    if (this.onFound && !this.onFound(found)) return say('bagFull');
     this.removeDrop(drop.id);
     this.onSound?.('pickup');
     this.onDropsChanged?.();
@@ -427,11 +430,22 @@ export class Foot {
     if (!building.plan || !record || !furniture) return uniqueChoices([...list, out]);
     for (const { label, down } of coreQuestions(this.coreHere(), this.level, building.plan.floors, GROUND_FLOOR)) list.push({ label, run: () => { this.pressBuilding(down); return ''; } });
     if (this.switchHere()) list.push({ label: this.roomLightsOn() ? 'Turn off the lights?' : 'Turn on the lights?', run: () => this.useLightSwitch() });
-    if (this.outletHere()) list.push({ label: this.charging ? 'Unplug?' : 'Plug in here?', run: () => this.useOutlet() });
+    const outlet = this.outletHere();
+    if (outlet) {
+      const dock = this.getDock?.() || null;
+      const here = dock && this.dockedAt(dock, outlet);
+      if (here && dock.phone) list.push({ label: 'Pick up your phone?', run: () => this.unplug('phone') });
+      else if (dock?.phone) list.push({ label: 'Your phone is still charging', run: () => say('stillCharging') });
+      else list.push({ label: 'Leave your phone charging?', run: () => this.plug('phone') });
+      if (here && dock.flash) list.push({ label: 'Pick up your flashlight?', run: () => this.unplug('flash') });
+      else if (dock?.flash) list.push({ label: 'Your flashlight is still charging', run: () => say('stillCharging') });
+      else if (this.hasFlash?.()) list.push({ label: 'Leave your flashlight charging?', run: () => this.plug('flash') });
+    }
     const near = thingsNear(record, buildingFrame(building.pieces, record.axis), furniture.models, this.walker.x, this.walker.y, this.walker.facing);
     for (const entry of near) {
       const cook = cookOffer(entry[0], this.canCook?.());
       if (cook) list.push({ label: cook, run: () => this.cookRaw?.() ?? '' });
+      if ((entry[0] === 'sink' || entry[0] === 'basin') && this.hasEmptyBottle?.() && tapWorks(building.buildingId, this.level, entry)) list.push({ label: 'Fill a water bottle?', run: () => this.fillAt() });
       for (const { label, second } of questionsFor(entry)) list.push({ label, run: () => this.useEntry(entry, second) });
     }
     const climb = this.climbHere();
@@ -481,13 +495,24 @@ export class Foot {
 
   // Does what was confirmed. Returns what to say.
   useEntry(entry, second) {
-    const building = this.walker.inside, { plan } = building, result = useThing(entry, plan, this.level, building.buildingId, second, this.room?.furnishing?.record.items);
+    const building = this.walker.inside, { plan } = building, record = this.room?.furnishing?.record;
+    const spotOnFloor = (floor) => {
+      const rec = floor === this.level ? record : this.saved.floor(building.buildingId, floor);
+      if (!rec?.items) return null;
+      return stashSpots(rec.items, rec.zones, GAME.houseGun.hideIn).length > 0;
+    };
+    const result = useThing(entry, plan, this.level, building.buildingId, second, record?.items, record?.zones, spotOnFloor);
     if (result.pose) {
       this.onSound?.(result.sound);
       return this.takePose(entry, result);
     }
     if (result.push) return this.pushEntry(entry, result);
     if (result.effect) this.onUsed?.(result.effect, result.count);
+    if (result.offer) {
+      this.onSound?.(result.sound);
+      const held = entry, offer = result;
+      return { note: result.say, choices: [{ label: result.take, run: () => this.takeOffer(held, offer) }] };
+    }
     if (result.give && this.onFound && !this.onFound(result.found || result.give)) {
       if (result.taken) plan.state[this.level].taken.pop();
       this.onSound?.('ack');
@@ -502,6 +527,25 @@ export class Foot {
     }
     this.saved.saveIndex();
     return result.say;
+  }
+
+  // Yes to taking what a container just showed. The bag being full leaves it where it was.
+  takeOffer(entry, offer) {
+    const plan = this.walker.inside?.plan;
+    if (!plan) return '';
+    if (!claimOpened(plan, this.level, entry)) {
+      this.onSound?.('ack');
+      return say('nothingElse', { name: offer.where });
+    }
+    if (this.onFound && !this.onFound(offer.found || offer.give)) {
+      releaseOpened(plan, this.level, entry);
+      this.onSound?.('ack');
+      return say('bagFull');
+    }
+    this.gave.set(thingKey(entry), offer.found || offer.give);
+    this.onSound?.('pickup');
+    this.saved.saveIndex();
+    return say('pickUp', { name: String(offer.give).toLowerCase() });
   }
 
   // Away from the person, if there's room for it there.
@@ -808,25 +852,45 @@ export class Foot {
     return outletSpots(record, building.plan.core, building.buildingId, this.level).find((spot) => Math.hypot(spot.u - u, spot.v - v) <= GAME.outlets.reach) || null;
   }
 
-  // F at a power point: plugged in until F again or walking away.
-  useOutlet() {
+  // The outlet this phone or flashlight was left on.
+  dockedAt(dock, spot) {
+    const building = this.walker.inside;
+    return !!building && dock.buildingId === building.buildingId && dock.floor === this.level && Math.hypot(dock.u - spot.u, dock.v - spot.v) <= 0.25;
+  }
+
+  // Leave the phone or flashlight on this outlet and walk off. It keeps charging until you come back for it.
+  plug(which) {
+    const spot = this.outletHere();
+    if (!spot) return '';
+    if (!spot.works) return say('outletDead');
+    const building = this.walker.inside;
+    const dock = this.getDock?.() || null;
+    if (dock && (dock.phone || dock.flash) && !this.dockedAt(dock, spot)) return say('stillCharging');
+    if (which === 'flash' && !this.hasFlash?.()) return say('flashlightNotInBag');
+    const next = {
+      buildingId: building.buildingId, floor: this.level, u: spot.u, v: spot.v,
+      phone: which === 'phone' || !!dock?.phone, flash: which === 'flash' || !!dock?.flash,
+    };
+    this.setDock?.(next, which);
     this.onSound?.('plugIn');
-    if (this.charging) {
-      this.charging = false;
-      return say('unplugged');
-    }
-    if (!this.outletHere().works) return say('outletDead');
-    this.charging = true;
     return say('charging');
   }
 
-  // Whether something is plugged in, which walking out of reach ends.
-  chargingNow() {
-    if (this.charging && !this.outletHere()) {
-      this.charging = false;
-      return false;
-    }
-    return !!this.charging;
+  // Take back what was left here. The charge is whatever it reached.
+  unplug(which) {
+    const dock = { ...(this.getDock?.() || {}) };
+    if (which === 'phone') dock.phone = false;
+    else dock.flash = false;
+    if (this.setDock?.(!dock.phone && !dock.flash ? null : dock, null) === false) return say('bagFull');
+    this.onSound?.('plugIn');
+    return say('pickedUp', { name: which === 'phone' ? 'phone' : 'flashlight', percent: this.chargeOf?.(which) ?? 0 });
+  }
+
+  // An empty bottle from the bag, filled at a tap that runs.
+  fillAt() {
+    if (!this.fillBottle?.()) return say('bottleEmpty');
+    this.onSound?.('water');
+    return say('filledBottle');
   }
 
   // Feet on the ground, leaving it and coming back to it.
@@ -943,7 +1007,8 @@ export class Foot {
         if (this.level >= plan.floors) return `Press L to go downstairs${also}`;
         return (this.level > GROUND_FLOOR ? 'L upstairs, Shift+L downstairs' : 'Press L to go upstairs') + also;
       }
-      if (offered) return `${this.charging ? 'Charging · ' : ''}${offered}`;
+      const dock = this.getDock?.(), spot = this.outletHere();
+      if (offered) return `${dock && spot && this.dockedAt(dock, spot) ? 'Charging · ' : ''}${offered}`;
       return this.level > GROUND_FLOOR ? 'Find the stairs to go down' : 'Press L to go back out';
     }
     if (this.canGetIn()) return `Press L to get in · ${this.fHint()}`;

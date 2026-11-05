@@ -48,6 +48,28 @@ export const thingKey = (entry) => entry[8] ?? `${entry[0]}|${entry[2]}|${entry[
 const key = thingKey;
 const stateOf = (plan, floor) => ((plan.state ||= {})[floor] ||= { taken: [], opened: [] });
 
+// Marks a container searched, once its contents are actually taken. False if it already was.
+export function claimOpened(plan, floor, entry) {
+  const state = stateOf(plan, floor), id = key(entry);
+  if (state.opened.includes(id)) return false;
+  state.opened.push(id);
+  return true;
+}
+
+// Puts a container back, when the bag had no room for what was just claimed.
+export function releaseOpened(plan, floor, entry) {
+  const state = plan.state?.[floor];
+  if (!state?.opened) return;
+  const id = key(entry);
+  state.opened = state.opened.filter((other) => other !== id);
+}
+
+// The question after a container has shown what it holds. A gun names its ammunition too.
+function takeAsk(give, found) {
+  if (Array.isArray(found) && found[1]) return `Take the ${String(give).toLowerCase()} and ${found[1].count} ${found[1].name.toLowerCase()}?`;
+  return `Take the ${String(give).toLowerCase()}?`;
+}
+
 // A floor as the person has left it: without what they've picked up.
 export function withoutTaken(record, plan, floor) {
   const taken = plan.state?.[floor]?.taken, moved = plan.state?.[floor]?.moved, holes = plan.state?.[floor]?.holes;
@@ -295,35 +317,102 @@ export function uniqueChoices(choices) {
   return choices.filter((choice) => !seen.has(choice.label) && seen.add(choice.label)).slice(0, MOST_CHOICES);
 }
 
-// About one home in four. The same drawer, desk or cabinet every time, upstairs when the house has one.
-export function houseGunIn(plan, buildingId, floor, items, entry, config = GAME.houseGun) {
-  if (!config || plan?.type !== 'home' || !items?.length || !entry) return null;
-  const roll = dice(hashText(`${buildingId}:housegun`));
-  if (roll() >= config.chance) return null;
+const BEDROOMS = new Set(['bedroom', 'hotelRoom', 'dormRoom', 'bunkRoom', 'careRoom']);
+
+// Wardrobes, cabinets and nightstands that stand in a bedroom. With no zone list, every hideIn piece counts.
+export function stashSpots(items, zones, hideIn) {
+  if (!items?.length) return [];
+  return items.filter((item) => {
+    if (!hideIn.includes(item[0])) return false;
+    if (!zones?.length) return true;
+    return BEDROOMS.has(zones[item[6]]?.[0]);
+  });
+}
+
+// The floor that keeps the house's one gun. knownSpot(floor) is true, false, or null when that floor hasn't been seen.
+function stashFloor(plan, buildingId, knownSpot) {
   const floors = plan.floors || 1;
-  const where = floors < 2 ? 1 : 2 + Math.floor(dice(hashText(`${buildingId}:housegun:floor`))() * (floors - 1));
-  if (floor !== where) return null;
-  const kind = config.hideIn.find((name) => items.some((item) => item[0] === name));
-  if (!kind) return null;
-  const spots = items.filter((item) => item[0] === kind);
+  const start = Math.floor(dice(hashText(`${buildingId}:housegun:floor`))() * floors);
+  for (let i = 0; i < floors; i++) {
+    const floor = (start + i) % floors + 1;
+    const known = knownSpot?.(floor);
+    if (known == null || known) return floor;
+  }
+  return null;
+}
+
+function pickedWeapon(buildingId, config) {
+  const weighted = [];
+  for (const key of config.common) for (let n = 0; n < config.commonWeight; n++) weighted.push(key);
+  for (const key of config.rare) for (let n = 0; n < config.rareWeight; n++) weighted.push(key);
+  return GAME.weapons[weighted[Math.floor(dice(hashText(`${buildingId}:housegun:which`))() * weighted.length)]];
+}
+
+function gunFound(weapon, count) {
+  const ammo = GAME.calibers[weapon.caliber];
+  return [
+    { id: weapon.item, name: weapon.item, count: 1, loaded: weapon.magazine },
+    { id: ammo.item, name: ammo.item, count },
+  ];
+}
+
+// About one home in four, in one bedroom wardrobe, cabinet or nightstand, on any floor that has one.
+// A handgun, revolver or .45 is four times as likely as each rarer gun.
+export function houseGunIn(plan, buildingId, floor, items, entry, config = GAME.houseGun, zones = null, knownSpot = null) {
+  if (!config || plan?.type !== 'home' || !entry) return null;
+  if (dice(hashText(`${buildingId}:housegun`))() >= config.chance) return null;
+  if (floor !== stashFloor(plan, buildingId, knownSpot)) return null;
+  const spots = stashSpots(items, zones, config.hideIn);
+  if (!spots.length) return null;
   const chosen = spots[Math.floor(dice(hashText(`${buildingId}:housegun:spot`))() * spots.length)];
   if (thingKey(chosen) !== thingKey(entry)) return null;
-  const weapon = GAME.weapons.handgun, ammo = GAME.calibers[weapon.caliber].item;
-  const found = [
-    { id: weapon.item, name: weapon.item, count: 1, loaded: weapon.magazine },
-    { id: ammo, name: ammo, count: config.casings },
-  ];
-  return { give: weapon.item, found, say: line('foundGun', { name: nameOf(entry[0]), casings: config.casings }) };
+  const weapon = pickedWeapon(buildingId, config);
+  const ammo = GAME.calibers[weapon.caliber];
+  const count = ammo.feed === 'round' ? config.rounds : config.boxes;
+  const found = gunFound(weapon, count);
+  return { give: weapon.item, found, say: line('foundGun', { name: nameOf(entry[0]), gun: weapon.item, count, ammo: ammo.item }) };
+}
+
+// A tap that runs. The same roll as using the sink, so a dry one stays dry.
+export function tapWorks(buildingId, floor, entry) {
+  const effect = GAME.uses[entry?.[0]];
+  if (!effect || effect.works === undefined) return !!effect;
+  return dice(hashText(`${buildingId}:${floor}:${thingKey(entry)}:works`))() < effect.works;
+}
+
+// Police, about one shop in ten, and about one mall in four. The first few lockers or shelves on a floor each hold one gun and a stack of its ammunition.
+export function armoryKind(plan, buildingId, config = GAME.armory) {
+  if (!config || !plan) return null;
+  if (plan.type === 'police') return 'police';
+  if (plan.type === 'shop' && dice(hashText(`${buildingId}:gunshop`))() < config.gunShopChance) return 'gunShop';
+  if (plan.type === 'mall' && dice(hashText(`${buildingId}:gunmall`))() < config.mallChance) return 'mall';
+  return null;
+}
+
+export function armoryIn(plan, buildingId, floor, items, entry, config = GAME.armory) {
+  const kind = armoryKind(plan, buildingId, config);
+  const spec = kind && config[kind];
+  if (!spec || !items?.length || !entry || floor == null) return null;
+  const spots = items.filter((item) => spec.hideIn.includes(item[0])).sort((a, b) => (thingKey(a) < thingKey(b) ? -1 : 1));
+  const index = spots.findIndex((item) => thingKey(item) === thingKey(entry));
+  if (index < 0 || index >= spec.guns) return null;
+  const keys = Object.keys(GAME.weapons);
+  const shift = Math.floor(dice(hashText(`${buildingId}:armory`))() * keys.length);
+  const weapon = GAME.weapons[keys[(index + shift) % keys.length]];
+  const found = gunFound(weapon, spec.amount);
+  return { give: weapon.item, found, say: line('foundArmory', { name: nameOf(entry[0]), gun: weapon.item, count: spec.amount, ammo: found[1].name }) };
 }
 
 // Does it, and says which sound goes with it. second: Shift was held. items: the floor's furniture, so a house gun can pick one of them.
-export function useThing(entry, plan, floor, buildingId, second = false, items = null) {
-  const actions = actionsOf(entry[0]), action = actions[second && actions[1] ? 1 : 0], result = doThing(entry, action, plan, floor, buildingId, items);
+// zones: the floor's rooms, so the gun stays in a bedroom. knownSpot(floor): whether that floor has a bedroom hiding place.
+export function useThing(entry, plan, floor, buildingId, second = false, items = null, zones = null, knownSpot = null) {
+  const actions = actionsOf(entry[0]), action = actions[second && actions[1] ? 1 : 0], result = doThing(entry, action, plan, floor, buildingId, items, zones, knownSpot);
   return { ...result, sound: useSound(entry[0], action, result) };
 }
 
 // Returns what happened: { say } always, with { give: name of a thing for the bag }, { taken: true } if the thing has gone from the room, { pose: 'sit' | 'sleep' }, or { empty } or { dry } if it had nothing to give.
-function doThing(entry, action, plan, floor, buildingId, items) {
+// { offer } means the find is still in there: say what's inside, then ask. It stays until someone takes it.
+function doThing(entry, action, plan, floor, buildingId, items, zones = null, knownSpot = null) {
   const item = entry[0], name = nameOf(item), state = stateOf(plan, floor), id = key(entry);
   if (action === 'sit' || action === 'sleep') return { pose: action, say: action === 'sleep' ? 'You lie down.' : '' };
   if (action === 'pick up') {
@@ -332,14 +421,16 @@ function doThing(entry, action, plan, floor, buildingId, items) {
   }
   if (action === 'open' || action === 'search') {
     if (state.opened.includes(id)) return { say: line('nothingElse', { name }) };
-    state.opened.push(id);
-    const stashed = houseGunIn(plan, buildingId, floor, items, entry);
-    if (stashed) return stashed;
+    const stashed = houseGunIn(plan, buildingId, floor, items, entry, GAME.houseGun, zones, knownSpot) || armoryIn(plan, buildingId, floor, items, entry);
+    if (stashed) return { ...stashed, offer: true, where: name, take: takeAsk(stashed.give, stashed.found) };
     const finds = GAME.finds[item], chance = GAME.findChance[item] ?? GAME.findChance.default;
     const roll = dice(hashText(`${buildingId}:${floor}:${id}`));
-    if (!finds || roll() >= chance) return { say: line('emptyThing', { name }) };
+    if (!finds || roll() >= chance) {
+      state.opened.push(id);
+      return { say: line('emptyThing', { name }) };
+    }
     const found = finds[Math.floor(roll() * finds.length)];
-    return { give: found, say: line('foundIn', { name, found: found.toLowerCase() }) };
+    return { give: found, offer: true, where: name, take: takeAsk(found), say: line('foundIn', { name, found: found.toLowerCase() }) };
   }
   if (action === 'move' || action === 'drive') return { push: action === 'drive' ? GAME.push.driveStep : GAME.push.step, say: line(action === 'drive' ? 'droveIt' : 'pushed', { name }), stuck: line('pushStuck', { name }) };
   if (action === 'switch') return { say: SWITCHES[item] };
@@ -347,15 +438,17 @@ function doThing(entry, action, plan, floor, buildingId, items) {
   const machine = GAME.machines[item];
   if (machine) {
     if (state.opened.includes(id)) return { say: line(machine.empty), empty: true };
-    state.opened.push(id);
     const roll = dice(hashText(`${buildingId}:${floor}:${id}`));
-    if (roll() >= machine.chance) return { say: line(machine.empty), empty: true };
+    if (roll() >= machine.chance) {
+      state.opened.push(id);
+      return { say: line(machine.empty), empty: true };
+    }
     const give = machine.give[Math.floor(roll() * machine.give.length)];
-    return { say: line(machine.say, { found: give.toLowerCase() }), give };
+    return { say: line(machine.say, { found: give.toLowerCase() }), give, offer: true, where: name, take: takeAsk(give) };
   }
   const effect = GAME.uses[item];
   if (effect) {
-    if (effect.works !== undefined && dice(hashText(`${buildingId}:${floor}:${id}:works`))() >= effect.works) return { say: line(effect.dry), dry: true };
+    if (effect.works !== undefined && !tapWorks(buildingId, floor, entry)) return { say: line(effect.dry), dry: true };
     return { say: line(effect.say), effect, count: effect.count };
   }
   const use = USES[item];
