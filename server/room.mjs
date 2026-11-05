@@ -6,7 +6,7 @@ import { FLAGS, GROUP_THREAD, cleanLook, clockHour, dmThread, metresApart, nameK
 import { cleanCar, cleanStorage } from '../public/js/worldCars.js';
 import { carDamageAt, coastDistance, coastPlace, conditionLeft, drivable, healthLossHit, healthLossInCar, healthLossStrike } from '../public/js/carDamage.js';
 import { LIVES_MOST, isTunable, okValue, testToolsAllowed, tunedCopy } from '../public/js/testTools.js';
-import { applyFloorOp, cleanDrop, crashHoldsUp, crashOutcome, emptyFloorState, mergePlan, nextManagers, tileOfBuilding } from '../public/js/worldOps.js';
+import { applyFloorOp, cleanDrop, crashHoldsUp, crashOutcome, emptyFloorState, gunByItem, mergePlan, nextManagers, shotHoldsUp, shotWound, tileOfBuilding } from '../public/js/worldOps.js';
 
 const FAR = 3000;          // m; past this someone is only a dot on a phone
 const FAR_EVERY = 5000;    // ms between passing on the place of someone that far off
@@ -235,7 +235,7 @@ export class Room {
     const client = connection.client;
     if (!client || !message || typeof message !== 'object') return;
     const answer = (result) => { if (message.id !== undefined) client.send({ t: result.why ? 'no' : 'ok', id: message.id, ...result }); };
-    const handler = { invite: 'makeInvite', setBackup: 'chooseBackup', say: 'say', sleep: 'sleep', save: 'savePlayer', where: 'where', area: 'area', claimPlan: 'claimPlan', claimFloor: 'claimFloor', floorOp: 'floorOp', switchesOn: 'switchesOn', dropAdd: 'dropAdd', dropTake: 'dropTake', getIn: 'getIn', getOut: 'getOut', carStore: 'carStore', plantCar: 'plantCar', bump: 'bump', crash: 'crash', slide: 'slide', speak: 'speak', carWear: 'carWear', succumb: 'succumb', tune: 'tune', setLives: 'setLives', spawnCar: 'spawnCar', setHour: 'setHour', repairCar: 'repairCar', testRejoin: 'testRejoin' }[message.t];
+    const handler = { invite: 'makeInvite', setBackup: 'chooseBackup', say: 'say', sleep: 'sleep', save: 'savePlayer', where: 'where', area: 'area', claimPlan: 'claimPlan', claimFloor: 'claimFloor', floorOp: 'floorOp', switchesOn: 'switchesOn', dropAdd: 'dropAdd', dropTake: 'dropTake', getIn: 'getIn', getOut: 'getOut', carStore: 'carStore', plantCar: 'plantCar', bump: 'bump', crash: 'crash', shot: 'shot', down: 'down', slide: 'slide', speak: 'speak', carWear: 'carWear', succumb: 'succumb', tune: 'tune', setLives: 'setLives', spawnCar: 'spawnCar', setHour: 'setHour', repairCar: 'repairCar', testRejoin: 'testRejoin' }[message.t];
     if (!handler) return answer({ why: 'unknown' });
     answer(this[handler](client, message) ?? {});
   }
@@ -342,6 +342,49 @@ export class Room {
     return {};
   }
 
+  // A shot. Everyone near hears it. A hit counts only when the other person is about where it was aimed, and within that gun's range.
+  shot(client, { weapon, lat, lng, aimLat, aimLng, to }) {
+    const gun = typeof weapon === 'string' ? gunByItem(weapon) : null;
+    if (!gun || !Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) return { why: 'bad' };
+    const now = this.now();
+    if (now - (client.firedAt ?? 0) < gun.fireIntervalMs * 0.7) return { why: 'fast' };
+    const at = { lat, lng };
+    if (!this.recent(client).some((place) => metresApart(place, at) <= this.game.crash.withinMetres)) return { why: 'far' };
+    client.firedAt = now;
+    const hear = this.game.shots.hearMetres;
+    for (const other of this.clients.values()) {
+      if (other === client || !other.at) continue;
+      const sameFloor = client.building && client.building === other.building && client.floor === other.floor;
+      if (!sameFloor && metresApart(other.at, at) > hear) continue;
+      other.send({ t: 'gunshot', from: client.id, lat, lng, heading: client.heading ?? 0, sound: gun.sound });
+    }
+    const target = typeof to === 'string' ? this.clients.get(to) : null;
+    if (!target?.at || target === client || !Number.isFinite(aimLat) || !Number.isFinite(aimLng)) return {};
+    const rangeMetres = gun.effectiveRangeFeet / this.game.aim.feetPerMetre;
+    const { aimSlack, rangeSlack } = this.game.shots;
+    if (!shotHoldsUp({ shooter: at, target: target.at, aim: { lat: aimLat, lng: aimLng }, rangeMetres, aimSlack, rangeSlack }, metresApart)) return {};
+    const indoors = (who) => (who.flags ?? 0) & FLAGS.indoors;
+    if (indoors(client) !== indoors(target)) return {};
+    if (indoors(client) && (client.building !== target.building || client.floor !== target.floor)) return {};
+    const { lost } = shotWound(gun.damage);
+    target.hitAt = now;
+    target.hitBy = client.id;
+    target.send({ t: 'injured', how: 'shot', lost, by: client.id });
+    client.send({ t: 'shotLanded', to: target.id, lost });
+    return {};
+  }
+
+  // Their game says that shot finished them. Only straight after one the server already counted, so a message alone can't do it.
+  down(client) {
+    const now = this.now();
+    if ((this.store.member(client.id)?.lives ?? 0) <= 0) return { why: 'dead' };
+    if (!client.hitAt || now - client.hitAt > 4000) return { why: 'none' };
+    const by = client.hitBy;
+    client.hitAt = 0;
+    this.killMember(client, { how: 'shot', by, at: client.at });
+    return {};
+  }
+
   // Where someone was in the last while, however they said so.
   recent(client) {
     const now = this.now();
@@ -381,6 +424,16 @@ export class Room {
       person.send({ t: 'injured', how: victim ? 'hit' : (glancing ? 'strike' : 'crash'), lost: victim ? struck : (glancing ? nicked : inCar) });
     }
     for (const person of killed) this.killMember(person, { how, by: kind === 'person' ? client.id : null, at });
+    // A wreck or a death is the explosion everyone already hears. Any other crash is a blow, for anyone close who isn't in one of the cars.
+    if (!outcome.kill.length && !outcome.wreck.length) {
+      const skip = new Set([client.id]);
+      if (target && !((target.flags ?? 0) & FLAGS.onFoot)) skip.add(target.id);
+      const sound = outcome.mph >= 12 ? 'carHit' : 'thud';
+      for (const other of this.clients.values()) {
+        if (skip.has(other.id) || !other.at || metresApart(other.at, at) > this.game.shots.hearMetres) continue;
+        other.send({ t: 'impact', lat, lng, sound });
+      }
+    }
     return { outcome: outcome.kill.length ? 'dead' : 'hurt' };
   }
 
