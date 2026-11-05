@@ -581,3 +581,48 @@ test('a spawned car runs, and is known to others', () => harness(async ({ create
   const repaired = await karl.ask({ t: 'repairCar', car: 'x_test-1' });
   assert.equal(repaired.car.condition, 100);
 }));
+
+test('gunfire wears a car down, hits whoever is inside, and the shot after 0 blows it up with them in it', () => harness(async ({ create, invited, clock }) => {
+  const karl = await create(), dana = await invited(karl, 'Dana');
+  const car = { lat: 38.95, lng: -77.45 }, from = { lat: 38.95, lng: -77.4502 }; // about 17 m west
+  const planted = { id: 'x_shot-1', ...car, heading: 0, fuel: 100, type: 'truck', colour: '#112233', runs: true, why: null, storage: [] };
+  await karl.ask({ t: 'spawnCar', planted });
+  dana.socket.send(packPresence({ ...car }));
+  const seated = await dana.ask({ t: 'getIn', car: planted.id });
+  assert.ok(seated.car, JSON.stringify(seated));
+  const fire = async () => {
+    clock.now += 2000;
+    karl.socket.send(packPresence({ ...from, flags: FLAGS.onFoot }));
+    dana.socket.send(packPresence({ ...car }));
+    await new Promise((r) => setTimeout(r, 30));
+    karl.send({ t: 'shot', weapon: 'Sniper Rifle', ...from, aimLat: car.lat, aimLng: car.lng, car: planted.id });
+    return karl.next('carHit');
+  };
+  for (const left of [75, 50, 25, 0]) {
+    const hit = await fire();
+    assert.equal(hit.condition, left);
+    assert.equal(hit.rider, dana.memberId, 'one person inside, and the dice at 0, so she is hit');
+    const hurt = await dana.next((m) => m.t === 'injured');
+    assert.equal(hurt.how, 'shot');
+  }
+  const blast = await fire();
+  assert.equal(blast.blew, true);
+  assert.equal((await dana.next('carBlown')).car, planted.id);
+  const died = await dana.next((m) => m.t === 'died' && m.member === dana.memberId);
+  assert.equal(died.how, 'burned');
+  assert.equal(died.by, karl.memberId);
+  const wreck = await karl.next((m) => m.t === 'car' && m.car.wrecked);
+  assert.equal(wreck.car.id, planted.id);
+}, { random: () => 0 }));
+
+test('a shot at a car from out of range does nothing to it', () => harness(async ({ create, clock }) => {
+  const karl = await create(), car = { lat: 38.95, lng: -77.45 }, from = { lat: 38.95, lng: -77.452 }; // about 170 m: past a handgun
+  const planted = { id: 'x_shot-2', ...car, heading: 0, fuel: 100, type: 'truck', colour: '#112233', runs: true, why: null, storage: [] };
+  await karl.ask({ t: 'spawnCar', planted });
+  clock.now += 2000;
+  karl.socket.send(packPresence({ ...from, flags: FLAGS.onFoot }));
+  await new Promise((r) => setTimeout(r, 30));
+  karl.send({ t: 'shot', weapon: 'Handgun', ...from, aimLat: car.lat, aimLng: car.lng, car: planted.id });
+  await new Promise((r) => setTimeout(r, 60));
+  assert.ok(!karl.inbox.some((m) => m.t === 'carHit'));
+}));

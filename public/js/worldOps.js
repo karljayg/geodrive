@@ -155,3 +155,15 @@ export function shotHoldsUp({ shooter, target, aim, rangeMetres, aimSlack, range
   const reach = rangeMetres + rangeSlack;
   return apart(shooter, aim) <= reach && apart(shooter, target) <= reach && apart(target, aim) <= aimSlack;
 }
+
+// A round into a car. condition is what it has left, riders how many are inside, and roll and pick are each 0 to 1.
+// Each shot takes carPerDamage for each point of damage until it is at 0; a shot at 0 blows it up. The chance of hitting someone inside is
+// riderChance for each of them, at most certain, so with four inside every shot hits one. rider is which of them, or null; nobody is shot in a blast.
+export function carShot({ condition, damage, riders, roll, pick }, { carPerDamage, riderChance }) {
+  const before = Math.max(0, Number(condition ?? 100));
+  if (before <= 0) return { condition: 0, blew: true, rider: null };
+  const left = Math.max(0, before - carPerDamage * Math.max(1, Number(damage) || 1));
+  const chance = Math.min(1, riders * riderChance);
+  const rider = riders > 0 && roll < chance ? Math.min(riders - 1, Math.floor(pick * riders)) : null;
+  return { condition: left, blew: false, rider };
+}

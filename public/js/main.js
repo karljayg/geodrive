@@ -941,10 +941,9 @@ function tryFire() {
   nextShotAt = cooldownUntil(now, held.spec);
   sfx(held.spec.sound || 'gunshot');
   shotUntil = now + 220;
-  const aimed = shotTarget();
-  const person = aimed?.hit.kind === 'person' ? aimed.hit.id : null;
-  shareShot(held.spec, person && shotLands(aimed.chance) ? person : null);
-  if (aimed && aimed.hit.kind !== 'person' && shotLands(aimed.chance)) {
+  const aimed = shotTarget(), lands = !!aimed && shotLands(aimed.chance);
+  shareShot(held.spec, lands ? aimed.hit : null);
+  if (lands && aimed.hit.kind !== 'person' && aimed.hit.kind !== 'car') {
     const body = killAnimal(aimed.hit.id);
     if (body) notice(body.down || 'It is down.', 3000);
   }
@@ -959,11 +958,32 @@ function aimPlace() {
   return move(east.lat, east.lng, 0, point.y);
 }
 
-// Tell the world about a shot. to is someone the mark is on; a miss is still heard nearby.
-function shareShot(spec, to) {
+// Tell the world about a shot. hit is the person or car the mark is on, if it landed; a miss is still heard nearby.
+function shareShot(spec, hit) {
   if (!world.rules.people || !world.link || !foot) return;
   const at = foot.where(), aim = aimPlace();
-  world.link.send({ t: 'shot', weapon: spec.item, lat: at.lat, lng: at.lng, aimLat: aim.lat, aimLng: aim.lng, ...(to ? { to } : {}) });
+  const target = hit?.kind === 'person' ? { to: hit.id } : hit?.kind === 'car' ? { car: hit.id, planted: hit.record } : {};
+  world.link.send({ t: 'shot', weapon: spec.item, lat: at.lat, lng: at.lng, aimLat: aim.lat, aimLng: aim.lng, ...target });
+}
+
+// Cars a shot can meet: parked ones, yours among them, and those others are driving, where they are now. Two circles along each, as a car is long.
+function carsToShoot(now) {
+  const { carHeight } = GAME.shots, bodies = [];
+  const add = (record, at) => {
+    if (record.wrecked) return;
+    const { halfWidth, halfLength } = carShape(record.type), centre = foot.localOf(at.lat, at.lng), rad = (at.heading * Math.PI) / 180;
+    const along = { x: Math.sin(rad) * halfLength * 0.5, y: Math.cos(rad) * halfLength * 0.5 }, radius = Math.max(halfWidth, halfLength * 0.5) * 1.05;
+    for (const side of [1, -1]) bodies.push({ id: record.id, kind: 'car', record, x: centre.x + side * along.x, y: centre.y + side * along.y, radius, body: carHeight });
+  };
+  const here = foot.where();
+  for (const record of world.cars.around(here, 150, 40)) add(record, record);
+  for (const member of world.people.othersOnline) {
+    const there = world.people.nowAt(member.id, now);
+    if (!there || there.flags & (FLAGS.onFoot | FLAGS.indoors)) continue;
+    const driven = [...world.cars.records.values()].find((known) => known.driver === member.id);
+    if (driven) add(driven, there);
+  }
+  return bodies;
 }
 
 let shotFlash = 0;
@@ -1006,6 +1026,7 @@ function shotTarget() {
       bodies.push({ ...animal, x: at.x, y: at.y, radius: animal.shotRadius || animal.radius, body: animal.shotBody || animal.body || 1 });
     }
   }
+  if (world.rules.people && !foot.walker.inside) bodies.push(...carsToShoot(performance.now()));
   if (world.rules.people) {
     const { bodyRadius, bodyHeight } = GAME.shots;
     if (foot.walker.inside) {
@@ -3464,7 +3485,7 @@ async function iDied({ lives, how, by, at }) {
   fsd = false;
   car.speed = 0;
   if (lives > 0) {
-    const why = how === 'injuries' ? 'You died of your injuries' : how === 'shot' ? `${world.nameOf(by) || 'Someone'} shot you` : 'You died';
+    const why = how === 'injuries' ? 'You died of your injuries' : how === 'burned' ? 'You burned in the car' : how === 'shot' ? `${world.nameOf(by) || 'Someone'} shot you` : 'You died';
     notice(`${why}. ${lives} ${lives === 1 ? 'life' : 'lives'} left.`, GAME.crash.respawnSeconds * 1000);
     setTimeout(async () => {
       const others = world.people.othersOnline.map((member) => world.people.lastKnown(member.id)).filter(Boolean);
@@ -3511,7 +3532,7 @@ async function leaveBelongings(place) {
 function showFinalDeath({ how, by, days, walked }) {
   world.link.close();
   world.forgetHere(browserStorage());
-  const cause = how === 'hit' ? `You were hit by ${world.nameOf(by) ?? 'a car'}.` : how === 'shot' ? `${world.nameOf(by) ?? 'Someone'} shot you.` : how === 'injuries' ? 'You died of your injuries.' : how === 'removed' ? 'Your lives were set to none.' : 'You died in a crash.';
+  const cause = how === 'hit' ? `You were hit by ${world.nameOf(by) ?? 'a car'}.` : how === 'shot' ? `${world.nameOf(by) ?? 'Someone'} shot you.` : how === 'burned' ? `${world.nameOf(by) ?? 'Someone'} shot up your car and it blew up with you in it.` : how === 'injuries' ? 'You died of your injuries.' : how === 'removed' ? 'Your lives were set to none.' : 'You died in a crash.';
   const managers = world.managerNames.filter((name) => name !== world.you.name).join(' or ');
   const box = el('worldEntry');
   box.innerHTML = '<div class="startBox"><h1>You\'re dead</h1><p data-cause></p><dl id="tripStats"><div><dt>Days lived</dt><dd data-days></dd></div><div><dt>Walked</dt><dd data-walked></dd></div></dl><p data-ask></p><div class="row"><button class="primary" type="button" data-sandbox>Play in my sandbox</button></div></div>';
@@ -3627,7 +3648,7 @@ async function startPeople() {
   world.on.died = ({ member, lives, how, by, at }) => {
     if (world.you.id !== member) {
       if (at && how === 'crash') { sfxNear(at); peopleView.explode(at); }
-      const shotBy = how === 'shot' ? `was shot by ${world.nameOf(by) || 'someone'}` : null;
+      const shotBy = how === 'shot' ? `was shot by ${world.nameOf(by) || 'someone'}` : how === 'burned' ? 'burned in a car that was shot up' : null;
       notice(`${world.nameOf(member)} ${shotBy || (how === 'hit' ? 'was hit by a car' : how === 'injuries' ? 'died of their injuries' : how === 'removed' ? 'was given no lives' : 'died in a crash')}${lives > 0 ? '.' : ', for good.'}`, 5000);
       return;
     }
@@ -3642,6 +3663,16 @@ async function startPeople() {
     if (metresApart(here, { lat, lng }) < 40) flashScreen('shotNear');
   };
   world.on.shotLanded = ({ to }) => notice(say('shotThem', { name: world.nameOf(to) || 'them' }), 2000);
+  world.on.carHit = ({ condition, blew, rider }) => {
+    if (blew) return notice(say('shotCarBlown'), 3000);
+    sfx('clank');
+    notice(rider ? say('shotInCar', { name: world.nameOf(rider) || 'someone', left: Math.round(condition) }) : say(condition > 0 ? 'shotCar' : 'shotCarDone', { left: Math.round(condition) }), 2000);
+  };
+  world.on.carBlown = ({ lat, lng }) => {
+    sfxNear({ lat, lng });
+    peopleView?.explode({ lat, lng });
+    peopleView?.carsChanged();
+  };
   world.on.injured = ({ how, lost, by }) => {
     if (how === 'shot') return shotHitMe(lost, by);
     vitals.stats.health = Math.max(1, vitals.stats.health - lost);
@@ -3769,7 +3800,7 @@ async function boot() {
       foot: () => foot, settings, gearbox, saveTrip, engine, radio, map, model, ground: () => ground, match: () => match, onBridge: () => onBridge, placeCar, pressSignal,
       vitals, GAME, world, trip: () => trip, paused: () => paused, deer: () => animals, nav: () => ({ fsd, destination, route, routeIndex, signal, lane, laneNow }),
       crowdTest: async (options) => (await import('./crowdTest.js')).runCrowdTest({ maps3d, map, at: foot ? foot.where() : pos, glbUrl, log: perfLog, ...options }),
-      pocket: () => pocket, aim: () => ({ x: aim.x, y: aim.y, shot: lastShot, hand: aimHand, aiming }),
+      pocket: () => pocket, aim: () => ({ x: aim.x, y: aim.y, shot: lastShot, hand: aimHand, aiming }), shotTarget: () => shotTarget(),
     });
     if (world.rules.people && world.cars.mine()) takeSeat(world.cars.mine()); // they refreshed in a car
     else if (world.rules.startsOnFoot) await startWalking();

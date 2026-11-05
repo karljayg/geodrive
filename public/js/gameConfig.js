@@ -202,7 +202,9 @@ till: ['Cash', 'Bundle of cash'], produceStand: ['Apple', 'Banana', 'Orange', 'G
   aim: { backPace: 0.5, indoorRange: 0.45, rangeStepFeet: 50, feetPerMetre: 3.28084 },
   // A shot at another person. hearMetres: who hears it, outdoors. The body is the cylinder a shot can meet.
   // aimSlack: how far they can stand from where it was aimed, for lag. rangeSlack: extra metres on the gun's range, for the same reason.
-  shots: { hearMetres: 100, bodyRadius: 0.9, bodyHeight: 1.9, aimSlack: 4, rangeSlack: 8 },
+  // A car takes carPerDamage of its condition for each point of the gun's damage, so a handgun takes 20 shots and a sniper 4. At 0 the next shot blows it up and everyone inside dies in the fire.
+  // Each shot hits someone inside with a chance of riderChance for each person there, so with four inside every shot hits one of them. carSlack: how far from the aim the car's middle can be, as it is long.
+  shots: { hearMetres: 100, bodyRadius: 0.9, bodyHeight: 1.9, aimSlack: 4, rangeSlack: 8, carPerDamage: 5, riderChance: 0.25, carSlack: 3, carHeight: 1.5 },
   // magazine: rounds it holds. spare: boxes of its caliber given with the starter gun, in the car. A box fills whichever gun of that caliber you load, and only when it is empty.
   // Shells and precision rounds are one each. fireMode auto repeats while the button is held. damage is how hard one round hits a person: 1 takes four shots, 2 takes three, 3 takes two, and 4 or more takes one. An animal still goes down in one.
   weapons: {

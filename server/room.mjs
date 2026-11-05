@@ -6,7 +6,7 @@ import { FLAGS, GROUP_THREAD, cleanLook, clockHour, dmThread, metresApart, nameK
 import { cleanCar, cleanStorage } from '../public/js/worldCars.js';
 import { carDamageAt, coastDistance, coastPlace, conditionLeft, drivable, healthLossHit, healthLossInCar, healthLossStrike } from '../public/js/carDamage.js';
 import { LIVES_MOST, isTunable, okValue, testToolsAllowed, tunedCopy } from '../public/js/testTools.js';
-import { applyFloorOp, cleanDrop, crashHoldsUp, crashOutcome, emptyFloorState, gunByItem, mergePlan, nextManagers, shotHoldsUp, shotWound, tileOfBuilding } from '../public/js/worldOps.js';
+import { applyFloorOp, cleanDrop, crashHoldsUp, carShot, crashOutcome, emptyFloorState, gunByItem, mergePlan, nextManagers, shotHoldsUp, shotWound, tileOfBuilding } from '../public/js/worldOps.js';
 
 const FAR = 3000;          // m; past this someone is only a dot on a phone
 const FAR_EVERY = 5000;    // ms between passing on the place of someone that far off
@@ -29,8 +29,8 @@ const okFloor = (floor) => Number.isInteger(floor) && Math.abs(floor) <= FLOOR_M
 const publicMember = (member, online, building = null) => ({ building, id: member.id, name: member.name, order: member.order, lives: member.lives, figure: member.figure, colours: member.colours, lastSeen: member.lastSeen, online, lat: member.lat, lng: member.lng });
 
 export class Room {
-  constructor(store, { now = Date.now, config = GAME.world } = {}) {
-    Object.assign(this, { store, now, baseConfig: config });
+  constructor(store, { now = Date.now, config = GAME.world, random = Math.random } = {}) {
+    Object.assign(this, { store, now, random, baseConfig: config });
     this.retune();
     this.clients = new Map();      // member id: { id, send, sendBytes, close, order, at, said, sentAt, count, countFrom, asleep }
     this.clockAt = now();          // when the saved hour was true
@@ -343,7 +343,7 @@ export class Room {
   }
 
   // A shot. Everyone near hears it. A hit counts only when the other person is about where it was aimed, and within that gun's range.
-  shot(client, { weapon, lat, lng, aimLat, aimLng, to }) {
+  shot(client, { weapon, lat, lng, aimLat, aimLng, to, car, planted }) {
     const gun = typeof weapon === 'string' ? gunByItem(weapon) : null;
     if (!gun || !Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) return { why: 'bad' };
     const now = this.now();
@@ -358,6 +358,7 @@ export class Room {
       if (!sameFloor && metresApart(other.at, at) > hear) continue;
       other.send({ t: 'gunshot', from: client.id, lat, lng, heading: client.heading ?? 0, sound: gun.sound });
     }
+    if (typeof car === 'string' && Number.isFinite(aimLat) && Number.isFinite(aimLng)) return this.shotCar(client, gun, at, { lat: aimLat, lng: aimLng }, car, planted);
     const target = typeof to === 'string' ? this.clients.get(to) : null;
     if (!target?.at || target === client || !Number.isFinite(aimLat) || !Number.isFinite(aimLng)) return {};
     const rangeMetres = gun.effectiveRangeFeet / this.game.aim.feetPerMetre;
@@ -371,6 +372,36 @@ export class Room {
     target.hitBy = client.id;
     target.send({ t: 'injured', how: 'shot', lost, by: client.id });
     client.send({ t: 'shotLanded', to: target.id, lost });
+    return {};
+  }
+
+  // A round into a car, parked or driven: it wears down to 0, and the shot after that blows it up with whoever is inside. See carShot.
+  shotCar(client, gun, shooter, aim, id, planted) {
+    const car = this.known(id, planted);
+    if (!car || car.wrecked) return {};
+    const driver = car.driver ? this.clients.get(car.driver) : null, place = driver?.at ?? { lat: car.lat, lng: car.lng };
+    const { aimSlack, rangeSlack, carSlack } = this.game.shots, rangeMetres = gun.effectiveRangeFeet / this.game.aim.feetPerMetre;
+    if (!shotHoldsUp({ shooter, target: place, aim, rangeMetres, aimSlack: aimSlack + carSlack, rangeSlack }, metresApart)) return {};
+    const riders = [car.driver, ...(car.seats ?? [])].map((rider) => this.clients.get(rider)).filter((rider) => rider && rider !== client);
+    const out = carShot({ condition: car.condition, damage: gun.damage, riders: riders.length, roll: this.random(), pick: this.random() }, this.game.shots);
+    if (out.blew) {
+      this.wreck(car.id, planted, place);
+      this.tellAll({ t: 'carBlown', car: car.id, lat: place.lat, lng: place.lng, by: client.id });
+      for (const rider of riders) this.killMember(rider, { how: 'burned', by: client.id, at: place });
+      client.send({ t: 'carHit', car: car.id, condition: 0, blew: true });
+      return {};
+    }
+    car.condition = out.condition;
+    this.store.saveCar(car);
+    this.tellAll({ t: 'car', car });
+    for (const rider of riders) rider.send({ t: 'impact', lat: place.lat, lng: place.lng, sound: 'clank' });
+    const hit = out.rider == null ? null : riders[out.rider];
+    if (hit) {
+      hit.hitAt = this.now();
+      hit.hitBy = client.id;
+      hit.send({ t: 'injured', how: 'shot', lost: shotWound(gun.damage).lost, by: client.id });
+    }
+    client.send({ t: 'carHit', car: car.id, condition: out.condition, blew: false, ...(hit ? { rider: hit.id } : {}) });
     return {};
   }
 

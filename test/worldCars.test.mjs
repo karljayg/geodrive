@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { crashOutcome } from '../public/js/worldOps.js';
+import { carShot, crashOutcome } from '../public/js/worldOps.js';
 import { CAR_REASONS, cleanCar, cleanStorage, plantCars, rescueCar } from '../public/js/worldCars.js';
 import { GAME } from '../public/js/gameConfig.js';
 import { SAYINGS } from '../public/js/sayingsConfig.js';
@@ -346,4 +346,29 @@ test('hitting a building takes the car, not the building', () => {
   assert.deepEqual(kill, ['me']);
   assert.deepEqual(wreck, ['me']);
   assert.deepEqual(crashOutcome('building', 20, GAME.crash).hurt, ['me']);
+});
+
+test('each shot wears a car down to 0, and the shot after that blows it up', () => {
+  const rules = GAME.shots;
+  let condition = 100, shots = 0;
+  while (condition > 0) {
+    const out = carShot({ condition, damage: 1, riders: 0, roll: 0, pick: 0 }, rules);
+    assert.equal(out.blew, false);
+    condition = out.condition;
+    shots++;
+  }
+  assert.equal(shots, 100 / rules.carPerDamage, 'a handgun takes 20');
+  assert.equal(carShot({ condition: 7, damage: 5, riders: 0, roll: 0, pick: 0 }, rules).condition, 0, 'never below 0');
+  const blast = carShot({ condition: 0, damage: 1, riders: 3, roll: 0, pick: 0 }, rules);
+  assert.deepEqual(blast, { condition: 0, blew: true, rider: null }, 'nobody is shot in the blast: they burn');
+});
+
+test('someone inside is hit a quarter of the time for each person there, so four inside are hit every shot', () => {
+  const rules = GAME.shots, hit = (riders, roll, pick = 0) => carShot({ condition: 80, damage: 1, riders, roll, pick }, rules).rider;
+  assert.equal(hit(0, 0), null, 'an empty car');
+  assert.equal(hit(1, 0.24), 0);
+  assert.equal(hit(1, 0.26), null);
+  assert.equal(hit(2, 0.49, 0.99), 1, 'which of them by pick');
+  assert.equal(hit(2, 0.51), null);
+  assert.equal(hit(4, 0.999, 0.6), 2, 'four inside: always one of them');
 });

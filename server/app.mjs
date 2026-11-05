@@ -14,7 +14,7 @@ const MOST_BYTES = 2000000;               // in one message: a whole pocket at i
 const BEAT = 30000;                       // ms between checking a connection is still there
 const SIGN_IN_WITHIN = 120000;            // ms a connection may sit open without signing in
 
-export function startServer({ dir, port = 0, host = '127.0.0.1', origins = [], now = Date.now, config = GAME.world, signInWithin = SIGN_IN_WITHIN }) {
+export function startServer({ dir, port = 0, host = '127.0.0.1', origins = [], now = Date.now, config = GAME.world, signInWithin = SIGN_IN_WITHIN, random = Math.random }) {
   mkdirSync(dir, { recursive: true });
   const rooms = new Map(), madeToday = new Map();
   const fileOf = (id) => join(dir, `${id}.sqlite`);
@@ -25,7 +25,7 @@ export function startServer({ dir, port = 0, host = '127.0.0.1', origins = [], n
     if (typeof id !== 'string' || !WORLD_ID.test(id)) return null;
     if (rooms.has(id)) return rooms.get(id);
     if (!existsSync(fileOf(id))) return null;
-    const room = new Room(new WorldStore(fileOf(id)), { now, config });
+    const room = new Room(new WorldStore(fileOf(id)), { now, config, random });
     rooms.set(id, room);
     return room;
   }

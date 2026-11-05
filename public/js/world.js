@@ -319,6 +319,10 @@ export class PrivateWorld extends World {
       this.on.impact?.(message);
     } else if (message.t === 'shotLanded') {
       this.on.shotLanded?.(message);
+    } else if (message.t === 'carHit') {
+      this.on.carHit?.(message);
+    } else if (message.t === 'carBlown') {
+      this.on.carBlown?.(message);
     } else if (message.t === 'bumped') {
       this.on.bumped?.(message);
     } else if (message.t === 'car') {
