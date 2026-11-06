@@ -18,6 +18,8 @@ const MIGRATIONS = [`
   CREATE TABLE cars (id TEXT PRIMARY KEY, data TEXT NOT NULL);
 `, `
   CREATE TABLE overrides (path TEXT PRIMARY KEY, value REAL NOT NULL);
+`, `
+  CREATE TABLE fires (id TEXT PRIMARY KEY, data TEXT NOT NULL);
 `];
 
 const memberFrom = (row) => row && { id: row.id, name: row.name, secretHash: row.secret_hash, order: row.invite_order, lives: row.lives, figure: row.figure, colours: JSON.parse(row.colours), lastSeen: row.last_seen, lat: row.lat ?? null, lng: row.lng ?? null };
@@ -197,6 +199,19 @@ export class WorldStore {
 
   car(id) {
     return parsed(this.db.prepare('SELECT data FROM cars WHERE id = ?').get(id)?.data);
+  }
+
+  // Buildings shot at until they smoke or burn (burning.js).
+  fires() {
+    return this.db.prepare('SELECT data FROM fires').all().map((row) => JSON.parse(row.data));
+  }
+
+  fire(id) {
+    return parsed(this.db.prepare('SELECT data FROM fires WHERE id = ?').get(id)?.data);
+  }
+
+  saveFire(fire) {
+    this.db.prepare('INSERT INTO fires (id, data) VALUES (?, ?) ON CONFLICT (id) DO UPDATE SET data = excluded.data').run(fire.id, JSON.stringify(fire));
   }
 
   // Each save counts up, so a browser can tell an older word about a car from a newer one when they cross.

@@ -232,6 +232,7 @@ export class PrivateWorld extends World {
     this.buildings = new SharedBuildings(link);
     this.drops = new SharedDrops(link, welcome.you.id, welcome.drops ?? []);
     this.cars = new SharedCars(link, welcome.you.id, welcome.cars ?? []);
+    this.fires = new Map((welcome.fires ?? []).map((fire) => [fire.id, fire])); // buildings shot until they smoke or burn, kept by the server
     this.accept(welcome);
     link.onMessage = (message) => this.heard(message);
     link.onBytes = (bytes) => {
@@ -275,6 +276,7 @@ export class PrivateWorld extends World {
       this.accept(message);
       this.drops.setAll(message.drops ?? []);
       this.cars.setAll(message.cars ?? []);
+      this.fires = new Map((message.fires ?? []).map((fire) => [fire.id, fire]));
       this.inBuilding = undefined; // the server has forgotten, so it's said again
       this.buildings.rejoined();
       this.on.link?.('open');
@@ -323,6 +325,11 @@ export class PrivateWorld extends World {
       this.on.carHit?.(message);
     } else if (message.t === 'carBlown') {
       this.on.carBlown?.(message);
+    } else if (message.t === 'fire') {
+      this.fires.set(message.fire.id, message.fire);
+      this.on.fire?.(message);
+    } else if (message.t === 'buildingHit') {
+      this.on.buildingHit?.(message);
     } else if (message.t === 'bumped') {
       this.on.bumped?.(message);
     } else if (message.t === 'car') {

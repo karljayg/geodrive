@@ -1,7 +1,8 @@
 // Walking: the person, and what they can bump into, around the parked car. Outdoors the driving map is what you see, and main.js
 // moves its camera and the person's model from here. Only a room is drawn here, because the map has no insides.
 // The data, the person and the meshes are in footData, footWalker and footScene.
-import { dice, floorHeight, hashText, identify, isLocked, ownFrame, planLabel, typeName } from './buildings.js';
+import { buildingId, dice, floorHeight, hashText, identify, isLocked, ownFrame, planLabel, typeName } from './buildings.js';
+import { thinRing } from './burning.js';
 import { tintAt } from './daylight.js';
 import { FootGl, bearing, lookAt, multiply, perspective, swing, translate } from './footGl.js';
 import { Place, fromLocal, parseTile, toLocal } from './footData.js';
@@ -27,6 +28,7 @@ const MOVING = 0.5; // m/s, or feet aren't really landing, as when pressed again
 const TILE_REACH = 200;      // m around the person that buildings and water must be known
 const TERRAIN_ZOOM = 15;     // about 5 m a sample at these latitudes; the drive's zoom 12 is too coarse to walk on
 const LOOK_EVERY = 1000;     // ms between checking which tiles are wanted
+const UNMAPPED_TOP = 6.5; // m
 const RETRY_AFTER = 15000;   // ms before a tile that failed is tried again
 const ROOM_SKY = [0.42, 0.58, 0.76];
 const NEAR = 2, FAR = 400;   // m from the camera
@@ -983,6 +985,8 @@ export class Foot {
       }
       if (isLocked(plan)) return { locked: typeName(plan) };
     }
+    const burnt = near && this.burntOut?.(near.building);
+    if (burnt) return { burnt };
     const entered = enterBuilding(this.walker, this.world);
     if (entered) {
       this.onSound?.('door');
@@ -1031,6 +1035,22 @@ export class Foot {
     const building = this.walker.inside, axis = this.room?.furnishing?.record?.axis;
     if (!building?.pieces || axis === undefined) return {};
     return buildingFrame(building.pieces, axis).toFrame(this.walker.x, this.walker.y);
+  }
+
+  // A building as something that can burn: its id, middle and outlines on the map, and height. Null until all of it has loaded.
+  buildingShape(piece) {
+    const { pieces, missing } = this.place.wholeOf(piece);
+    if (missing.length) return null;
+    const minX = Math.min(...pieces.map((p) => p.minX)), maxX = Math.max(...pieces.map((p) => p.maxX)), minY = Math.min(...pieces.map((p) => p.minY)), maxY = Math.max(...pieces.map((p) => p.maxY));
+    const kept = pieces.slice(0, 6), each = Math.floor(120 / kept.length), round = (n) => Math.round(n * 1e7) / 1e7;
+    const rings = kept.map((p) => thinRing(p.rings[0].pts, each).map(({ x, y }) => {
+      const at = fromLocal(this.origin, x, y);
+      return [round(at.lat), round(at.lng)];
+    }));
+    const middle = fromLocal(this.origin, (minX + maxX) / 2, (minY + maxY) / 2);
+    // A height nobody mapped is a guess, and a burnt shell must stand above the map's own roof to hide it, so it's taken as a two-storey roof.
+    const height = Math.max(...pieces.map((p) => (p.known ? p.height : Math.max(p.height, UNMAPPED_TOP))));
+    return { id: buildingId(this.origin, { minX, maxX, minY, maxY }), lat: round(middle.lat), lng: round(middle.lng), rings, height };
   }
 
   localOf(lat, lng) {

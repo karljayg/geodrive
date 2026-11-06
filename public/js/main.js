@@ -8,7 +8,9 @@ import { keyListHtml } from './keyList.js';
 import { say } from './sayings.js';
 import { coastPedals, newCar, stepCar } from './physics.js';
 import { distance, easeAngle, leadDistance, move } from './camera.js';
-import { aimOf, firstInShot, screenOfGround, stepAim } from './aim.js';
+import { aimOf, firstInShot, firstWallInShot, screenOfGround, shotHits, stepAim } from './aim.js';
+import { FireView, burningNear } from './fireView.js';
+import { LocalFires, buildingStage, carFireStage, msPerHour } from './burning.js';
 import { placeCamera } from './footWalker.js';
 import { caliberOf, carried, cooldownUntil, gunToLoad, heldWeapon, hitChance, reload as reloadGun, shoot, shotLands, shotReady, weaponSpec } from './weapons.js';
 import { FLAG_ONEWAY, RoadNet } from './road.js';
@@ -770,6 +772,8 @@ function frame(t) {
   last = t;
   if (foot) runFoot(t, dt);
   peopleView?.update(foot ? foot.where() : pos, performance.now());
+  syncFires(performance.now());
+  drawGlows(performance.now());
   if (!debug.hold && !dialogOpen && !paused) tickAnimals(foot ? foot.where() : pos, dt, t);
   if (map && !foot && !debug.hold && !dialogOpen && !paused) {
     const driveBegan = performance.now();
@@ -915,7 +919,8 @@ function syncScope() {
   }
   const firing = performance.now() < shotUntil;
   mark.classList.toggle('fired', firing);
-  mark.classList.toggle('onTarget', shotTarget()?.chance === 1);
+  const target = shotTarget();
+  mark.classList.toggle('onTarget', target?.chance === 1 && target.hit.kind !== 'building');
   const svg = el('scopeShot');
   if (firing && lastShot) {
     const view = aimView(), from = screenOfGround(0, 0, view);
@@ -942,8 +947,11 @@ function tryFire() {
   sfx(held.spec.sound || 'gunshot');
   shotUntil = now + 220;
   const aimed = shotTarget(), lands = !!aimed && shotLands(aimed.chance);
-  shareShot(held.spec, lands ? aimed.hit : null);
-  if (lands && aimed.hit.kind !== 'person' && aimed.hit.kind !== 'car') {
+  const wall = aimed?.hit.kind === 'building' ? fromWalker(aimed.hit.x, aimed.hit.y) : null;
+  fx?.shot(foot.where(), wall ?? aimPlace());
+  shareShot(held.spec, lands ? aimed.hit : null, wall);
+  if (lands && aimed.hit.kind === 'building' && !world.rules.people) shotBuildingHere(aimed.hit, held.spec);
+  if (lands && aimed.hit.kind !== 'person' && aimed.hit.kind !== 'car' && aimed.hit.kind !== 'building') {
     const body = killAnimal(aimed.hit.id);
     if (body) notice(body.down || 'It is down.', 3000);
   }
@@ -958,11 +966,18 @@ function aimPlace() {
   return move(east.lat, east.lng, 0, point.y);
 }
 
-// Tell the world about a shot. hit is the person or car the mark is on, if it landed; a miss is still heard nearby.
-function shareShot(spec, hit) {
+// A place metres from the walker, on the map.
+function fromWalker(x, y) {
+  const at = foot.where(), east = move(at.lat, at.lng, 90, x - foot.walker.x);
+  return move(east.lat, east.lng, 0, y - foot.walker.y);
+}
+
+// Tell the world about a shot. hit is the person, car or building the mark is on, if it landed; a miss is still heard nearby.
+// aimAt: where a shot into a wall stopped, rather than the ground behind it.
+function shareShot(spec, hit, aimAt = null) {
   if (!world.rules.people || !world.link || !foot) return;
-  const at = foot.where(), aim = aimPlace();
-  const target = hit?.kind === 'person' ? { to: hit.id } : hit?.kind === 'car' ? { car: hit.id, planted: hit.record } : {};
+  const at = foot.where(), aim = aimAt ?? aimPlace(), shape = hit?.kind === 'building' ? foot.buildingShape(hit.piece) : null;
+  const target = hit?.kind === 'person' ? { to: hit.id } : hit?.kind === 'car' ? { car: hit.id, planted: hit.record } : shape ? { building: shape } : {};
   world.link.send({ t: 'shot', weapon: spec.item, lat: at.lat, lng: at.lng, aimLat: aim.lat, aimLng: aim.lng, ...target });
 }
 
@@ -1044,7 +1059,12 @@ function shotTarget() {
       }
     }
   }
-  const hit = firstInShot(cam.eye, end, bodies);
+  let hit = firstInShot(cam.eye, end, bodies);
+  // A wall in the way first: the round goes into the building.
+  if (!foot.walker.inside) {
+    const wall = firstWallInShot(cam.eye, end, foot.walker, (x, y) => foot.place.footprintAt(x, y), (building) => building.height);
+    if (wall && (!hit || wall.t < shotHits(cam.eye, end, hit, hit.radius, hit.body))) hit = { kind: 'building', piece: wall.building, x: wall.x, y: wall.y };
+  }
   const spec = heldNow()?.spec;
   if (!hit || !spec) return null;
   const metres = Math.hypot(hit.x - foot.walker.x, hit.y - foot.walker.y);
@@ -1431,6 +1451,7 @@ async function startWalking(leftCar = null) {
     await makePeople();
     (await pocketReady()).close();
     foot = new Foot({ onGetIn: () => (world.rules.ownCar ? stopFoot() : getInWorldCar(foot.carHere()?.record)), onOpenBag: () => { if (!pocket.bagOpen) pocket.toggleBag(); }, drops, onDropsChanged: () => { dropsSyncedAt = -Infinity; }, onSound: sfx, onUsed: (effect, count) => { vitals.apply(effect, count); }, hasKey: () => pocket.data.bagHas(BUILDING_KEY), hasHammer: () => pocket.data.bagHas(GAME.hammer.item), onSay: (text) => notice(text, 3000), onLocked: showLocked, onLoadCar: loadCar, onFound: (name) => pocket.collect(name), onSlept: sleepUntilMorning, roughChoices, canvas: el('foot'), origin: { lat: pos.lat, lng: pos.lng }, heading: car.heading, cars: footCars(), buildings, look, others: world.rules.people ? () => world.people.solidNow(performance.now()) : null, carsDriven: world.rules.people ? (at) => carsDrivenNear(at, performance.now()) : null, roomPeople: world.rules.people ? (building, floor) => world.peopleOnFloor(building, floor, performance.now()) : null, tiles, view: { tilt: CAMERAS[0].tilt, range: CAMERAS[0].range * FOOT_RANGE_SHARE, fov: FOV_Y, below: CAR_BELOW_CENTRE } });
+    foot.burntOut = (piece) => burntStage(piece);
     foot.meatHere = () => animalBodies(foot.where(), GAME.drops.reach).map((body) => ({ label: 'Take the meat?', run: () => { collectMeat(body, false); return ''; } }));
     foot.canCook = () => [GAME.deer, GAME.chicken, GAME.rabbit].some((kind) => pocket.data.bagHas(kind.raw));
     foot.cookRaw = () => cookFromBag();
@@ -2070,6 +2091,7 @@ function pressL() {
   if (foot.leaveHere()) return;
   const done = foot.pressBuilding(keys.has('shift'));
   if (done?.locked !== undefined) return showLocked(done.locked);
+  if (done?.burnt) return notice(say(done.burnt === 'fire' ? 'buildingOnFire' : 'buildingBurntOut'), 2500);
   if (done) return; // a building still being looked up goes in by itself, or says it's locked
   notice(say('walkUpFirst'), 2500);
 }
@@ -3458,6 +3480,97 @@ function animalStruck(other, closing, small) {
   notice(lost >= 1 ? say('struck') : (body.down || 'It is down.'), 4000);
 }
 
+// --- Fire ------------------------------------------------------------------------------------------------------
+
+// Wrecks burning for their first hours and buildings smoking, burning or burnt out, near here. A shared world's are the server's and its
+// clock; the sandbox keeps its own, in game hours on foot.
+let fx = null, firesChecked = -Infinity, firesNear = [];
+const localFires = new LocalFires(world.store), fireLocals = new Map();
+const fireTimes = () => (world.rules.people ? { now: Date.now() + (world.clock.offset ?? 0), perHour: msPerHour(true) } : { now: Date.now(), perHour: msPerHour(false) });
+const fireOf = (id) => (world.rules.people ? world.fires.get(id) : localFires.get(id)) ?? null;
+
+// A fire's outlines in metres from its middle, worked out once.
+function fireLocal(fire) {
+  if (!fireLocals.has(fire.id)) {
+    const east = 111320 * Math.cos((fire.lat * Math.PI) / 180);
+    fireLocals.set(fire.id, fire.rings.map((ring) => ring.map(([lat, lng]) => [(lng - fire.lng) * east, (lat - fire.lat) * 111320])));
+  }
+  return fireLocals.get(fire.id);
+}
+
+function syncFires(now) {
+  if (!fx) return;
+  if (now - firesChecked > 500) {
+    firesChecked = now;
+    const { now: clock, perHour } = fireTimes(), here = foot ? foot.where() : pos, { shownWithin, mostBurning } = GAME.burning;
+    const cars = world.rules.people ? [...world.cars.records.values()].filter((known) => known.wrecked).map((known) => ({ ...known, stage: carFireStage(known, clock, perHour) })) : [];
+    const fires = (world.rules.people ? [...world.fires.values()] : localFires.all()).map((fire) => ({ fire, stage: buildingStage(fire, clock, perHour), local: fireLocal(fire) }));
+    firesNear = burningNear(here, cars, fires, shownWithin, mostBurning);
+  }
+  fx.update(firesNear, now);
+}
+
+// Whether a building can't be gone into: 'fire' or 'charred', or null.
+function burntStage(piece) {
+  const shape = foot?.buildingShape(piece), fire = shape && fireOf(shape.id);
+  if (!fire) return null;
+  const { now, perHour } = fireTimes(), stage = buildingStage(fire, now, perHour);
+  return stage === 'fire' || stage === 'charred' ? stage : null;
+}
+
+// A round into a building in the sandbox. A shared world's server does this and answers with buildingHit.
+function shotBuildingHere(hit, spec) {
+  const shape = foot.buildingShape(hit.piece);
+  if (!shape) return;
+  const { now, perHour } = fireTimes(), { fire, changed } = localFires.shoot(shape, spec.damage, now, perHour);
+  firesChecked = -Infinity;
+  buildingShotSaid(buildingStage(fire, now, perHour), changed);
+}
+
+function buildingShotSaid(stage, changed) {
+  sfx('clack');
+  if (changed && stage === 'smoke') notice(say('buildingSmokes'), 3000);
+  else if (changed && stage === 'fire') notice(say('buildingBurns'), 3000);
+}
+
+// Light from shots, blasts and fires, drawn over the map where each is on screen: faint by day, strong at night.
+let glowShown = false;
+function drawGlows(now) {
+  const canvas = el('glow'), list = fx && !foot?.walker.inside ? fx.glows(now) : [];
+  if (!list.length) {
+    if (glowShown) {
+      canvas.style.display = 'none';
+      glowShown = false;
+    }
+    return;
+  }
+  mapBox ||= { width: el('map').clientWidth, height: el('map').clientHeight };
+  const { width, height } = mapBox;
+  if (canvas.width !== width || canvas.height !== height) { canvas.width = width; canvas.height = height; }
+  if (!glowShown) {
+    canvas.style.display = 'block';
+    glowShown = true;
+  }
+  const ctx = canvas.getContext('2d'), here = foot ? foot.where() : pos, turn = rad(camHeading), east = 111320 * Math.cos(rad(here.lat));
+  const view = { width, height, fovY: FOV_Y, below: CAR_BELOW_CENTRE, range, tilt }, gain = 0.3 + darknessAt(world.clock.hour) * 0.9;
+  ctx.clearRect(0, 0, width, height);
+  ctx.globalCompositeOperation = 'lighter';
+  for (const light of list) {
+    const dx = (light.lng - here.lng) * east, dy = (light.lat - here.lat) * 111320;
+    const ahead = dx * Math.sin(turn) + dy * Math.cos(turn), side = dx * Math.cos(turn) - dy * Math.sin(turn);
+    const at = screenOfGround(ahead, side, view), edge = screenOfGround(ahead, side + light.radius, view);
+    if (!at || !edge) continue;
+    const r = Math.max(8, Math.hypot(edge.x - at.x, edge.y - at.y)), alpha = Math.min(1, light.strength * gain);
+    if (alpha < 0.02 || at.x < -r || at.y < -r || at.x > width + r || at.y > height + r) continue;
+    const glow = ctx.createRadialGradient(at.x, at.y, 0, at.x, at.y, r);
+    glow.addColorStop(0, `rgba(${light.rgb},${alpha})`);
+    glow.addColorStop(0.35, `rgba(${light.rgb},${alpha * 0.45})`);
+    glow.addColorStop(1, `rgba(${light.rgb},0)`);
+    ctx.fillStyle = glow;
+    ctx.fillRect(at.x - r, at.y - r, r * 2, r * 2);
+  }
+}
+
 // An explosion is heard only by those near it.
 function sfxNear(at) {
   const here = foot ? foot.where() : pos;
@@ -3473,7 +3586,7 @@ async function iDied({ lives, how, by, at }) {
   keys.clear();
   const place = at ?? (foot ? foot.where() : pos), figures = { days: Math.floor(vitals.state.hours / 24) + 1, walked: walkFigures(vitals.state.walked).distance };
   if (how === 'crash') {
-    peopleView?.explode(place);
+    fx?.explode(place);
     sfx('explosion');
   }
   await leaveBelongings(place);
@@ -3647,7 +3760,7 @@ async function startPeople() {
   world.on.tuned = () => { testWindows.changed('config', 'appear'); replantFrequency(); };
   world.on.died = ({ member, lives, how, by, at }) => {
     if (world.you.id !== member) {
-      if (at && how === 'crash') { sfxNear(at); peopleView.explode(at); }
+      if (at && how === 'crash') { sfxNear(at); fx?.explode(at); }
       const shotBy = how === 'shot' ? `was shot by ${world.nameOf(by) || 'someone'}` : how === 'burned' ? 'burned in a car that was shot up' : null;
       notice(`${world.nameOf(member)} ${shotBy || (how === 'hit' ? 'was hit by a car' : how === 'injuries' ? 'died of their injuries' : how === 'removed' ? 'was given no lives' : 'died in a crash')}${lives > 0 ? '.' : ', for good.'}`, 5000);
       return;
@@ -3655,10 +3768,10 @@ async function startPeople() {
     iDied({ lives, how, by, at });
   };
   world.on.impact = ({ sound }) => sfx(sound);
-  world.on.gunshot = ({ lat, lng, sound }) => {
+  world.on.gunshot = ({ lat, lng, sound, aimLat, aimLng }) => {
     engine.preloadClip(sound);
     sfx(sound);
-    peopleView?.flashShot({ lat, lng });
+    fx?.shot({ lat, lng }, Number.isFinite(aimLat) && Number.isFinite(aimLng) ? { lat: aimLat, lng: aimLng } : null);
     const here = foot ? foot.where() : pos;
     if (metresApart(here, { lat, lng }) < 40) flashScreen('shotNear');
   };
@@ -3670,9 +3783,11 @@ async function startPeople() {
   };
   world.on.carBlown = ({ lat, lng }) => {
     sfxNear({ lat, lng });
-    peopleView?.explode({ lat, lng });
+    fx?.explode({ lat, lng });
     peopleView?.carsChanged();
   };
+  world.on.buildingHit = ({ stage, changed }) => buildingShotSaid(stage, changed);
+  world.on.fire = () => { firesChecked = -Infinity; };
   world.on.injured = ({ how, lost, by }) => {
     if (how === 'shot') return shotHitMe(lost, by);
     vitals.stats.health = Math.max(1, vitals.stats.health - lost);
@@ -3782,6 +3897,7 @@ async function boot() {
     applyGraphics();
     el('map').replaceChildren(map);
     testView.attach({ map, maps3d, glbUrl });
+    fx = new FireView({ maps3d, map, glbUrl });
     if (maps3d.Model3DElement && world.rules.ownCar) {
       model = new maps3d.Model3DElement({ position: { ...pos, altitude: 0 }, altitudeMode: 'RELATIVE_TO_GROUND', orientation: { heading: car.heading, tilt: 0, roll: 0 }, scale: carSize() });
       map.append(model);
@@ -3800,7 +3916,7 @@ async function boot() {
       foot: () => foot, settings, gearbox, saveTrip, engine, radio, map, model, ground: () => ground, match: () => match, onBridge: () => onBridge, placeCar, pressSignal,
       vitals, GAME, world, trip: () => trip, paused: () => paused, deer: () => animals, nav: () => ({ fsd, destination, route, routeIndex, signal, lane, laneNow }),
       crowdTest: async (options) => (await import('./crowdTest.js')).runCrowdTest({ maps3d, map, at: foot ? foot.where() : pos, glbUrl, log: perfLog, ...options }),
-      pocket: () => pocket, aim: () => ({ x: aim.x, y: aim.y, shot: lastShot, hand: aimHand, aiming }), shotTarget: () => shotTarget(),
+      pocket: () => pocket, aim: () => ({ x: aim.x, y: aim.y, shot: lastShot, hand: aimHand, aiming }), shotTarget: () => shotTarget(), fx: () => fx,
     });
     if (world.rules.people && world.cars.mine()) takeSeat(world.cars.mine()); // they refreshed in a car
     else if (world.rules.startsOnFoot) await startWalking();

@@ -80,3 +80,16 @@ export function firstInShot(eye, end, animals) {
   }
   return best;
 }
+
+// The first building a shot meets on its way down to the ground, from where it passes the person: { building, t, x, y }, t from 0 at the
+// camera to 1 at the ground as in shotHits, or null. footprintAt(x, y) is the building there or null; heightOf(b) is its top above end.z.
+export function firstWallInShot(eye, end, from, footprintAt, heightOf, step = 0.5) {
+  const dx = end.x - eye.x, dy = end.y - eye.y, dz = end.z - eye.z, len2 = dx * dx + dy * dy;
+  if (len2 < 1e-6) return null;
+  const start = Math.max(0, Math.min(1, ((from.x - eye.x) * dx + (from.y - eye.y) * dy) / len2)), n = Math.ceil((Math.sqrt(len2) * (1 - start)) / step);
+  for (let i = 1; i <= n; i++) {
+    const t = start + ((1 - start) * i) / n, x = eye.x + dx * t, y = eye.y + dy * t, building = footprintAt(x, y);
+    if (building && eye.z + dz * t - end.z <= heightOf(building)) return { building, t, x, y };
+  }
+  return null;
+}

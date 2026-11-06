@@ -5,6 +5,7 @@ import { GAME } from '../public/js/gameConfig.js';
 import { FLAGS, GROUP_THREAD, cleanLook, clockHour, dmThread, metresApart, nameKey, nameProblem, stampPresence, unpackPresence } from '../public/js/protocol.js';
 import { cleanCar, cleanStorage } from '../public/js/worldCars.js';
 import { carDamageAt, coastDistance, coastPlace, conditionLeft, drivable, healthLossHit, healthLossInCar, healthLossStrike } from '../public/js/carDamage.js';
+import { buildingStage, cleanFireShape, fireReach, msPerHour, shootBuilding } from '../public/js/burning.js';
 import { LIVES_MOST, isTunable, okValue, testToolsAllowed, tunedCopy } from '../public/js/testTools.js';
 import { applyFloorOp, cleanDrop, crashHoldsUp, carShot, crashOutcome, emptyFloorState, gunByItem, mergePlan, nextManagers, shotHoldsUp, shotWound, tileOfBuilding } from '../public/js/worldOps.js';
 
@@ -150,7 +151,7 @@ export class Room {
       t: 'welcome', you: { id: member.id, order: member.order, name: member.name, lives: member.lives, ...(secret ? { secret } : {}) },
       world: { id: world.id, name: world.name, mode: world.mode, creator: world.creator, owner: world.owner, backup: world.backup },
       members, clock: this.clock(), player: { pocket: player.pocket, vitals: player.vitals, trip: player.trip, lat: player.lat, lng: player.lng },
-      overrides: this.store.overrides(), chat: this.store.chatFor(member.id), near: this.appearNear(member.id), drops: this.store.drops(), cars: this.store.cars(),
+      overrides: this.store.overrides(), chat: this.store.chatFor(member.id), near: this.appearNear(member.id), drops: this.store.drops(), cars: this.store.cars(), fires: this.store.fires(),
     };
   }
 
@@ -343,7 +344,7 @@ export class Room {
   }
 
   // A shot. Everyone near hears it. A hit counts only when the other person is about where it was aimed, and within that gun's range.
-  shot(client, { weapon, lat, lng, aimLat, aimLng, to, car, planted }) {
+  shot(client, { weapon, lat, lng, aimLat, aimLng, to, car, planted, building }) {
     const gun = typeof weapon === 'string' ? gunByItem(weapon) : null;
     if (!gun || !Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) return { why: 'bad' };
     const now = this.now();
@@ -356,8 +357,9 @@ export class Room {
       if (other === client || !other.at) continue;
       const sameFloor = client.building && client.building === other.building && client.floor === other.floor;
       if (!sameFloor && metresApart(other.at, at) > hear) continue;
-      other.send({ t: 'gunshot', from: client.id, lat, lng, heading: client.heading ?? 0, sound: gun.sound });
+      other.send({ t: 'gunshot', from: client.id, lat, lng, heading: client.heading ?? 0, sound: gun.sound, ...(Number.isFinite(aimLat) && Number.isFinite(aimLng) ? { aimLat, aimLng } : {}) });
     }
+    if (building && Number.isFinite(aimLat) && Number.isFinite(aimLng)) return this.shotBuilding(client, gun, at, { lat: aimLat, lng: aimLng }, building);
     if (typeof car === 'string' && Number.isFinite(aimLat) && Number.isFinite(aimLng)) return this.shotCar(client, gun, at, { lat: aimLat, lng: aimLng }, car, planted);
     const target = typeof to === 'string' ? this.clients.get(to) : null;
     if (!target?.at || target === client || !Number.isFinite(aimLat) || !Number.isFinite(aimLng)) return {};
@@ -372,6 +374,21 @@ export class Room {
     target.hitBy = client.id;
     target.send({ t: 'injured', how: 'shot', lost, by: client.id });
     client.send({ t: 'shotLanded', to: target.id, lost });
+    return {};
+  }
+
+  // A round into a building: enough of them and it smokes, then burns, and everyone is told. The first shot's outline is kept.
+  shotBuilding(client, gun, shooter, aim, building) {
+    const shape = cleanFireShape(building);
+    if (!shape) return { why: 'bad' };
+    const known = this.store.fire(shape.id), kept = known ?? shape, { aimSlack, rangeSlack } = this.game.shots, rangeMetres = gun.effectiveRangeFeet / this.game.aim.feetPerMetre;
+    if (!shotHoldsUp({ shooter, target: aim, aim, rangeMetres, aimSlack, rangeSlack }, metresApart)) return {};
+    if (metresApart(aim, kept) > fireReach(kept) + aimSlack) return {};
+    const now = this.now(), perHour = msPerHour(true, this.game), { fire, changed } = shootBuilding(known, shape, gun.damage, now, perHour, this.game.burning);
+    if (fire === known && !changed) return {};
+    this.store.saveFire(fire);
+    if (changed) this.tellAll({ t: 'fire', fire });
+    client.send({ t: 'buildingHit', id: fire.id, stage: buildingStage(fire, now, perHour, this.game.burning), changed });
     return {};
   }
 
@@ -472,7 +489,7 @@ export class Room {
   wreck(id, planted, at) {
     const car = this.known(id, planted);
     if (!car) return;
-    Object.assign(car, { wrecked: true, driver: null, seats: [], lat: car.driver ? at.lat : car.lat, lng: car.driver ? at.lng : car.lng, runs: false, why: 'carWrecked', storage: [] });
+    Object.assign(car, { wrecked: true, wreckedAt: this.now(), driver: null, seats: [], lat: car.driver ? at.lat : car.lat, lng: car.driver ? at.lng : car.lng, runs: false, why: 'carWrecked', storage: [] });
     this.store.saveCar(car);
     this.tellAll({ t: 'car', car });
   }
@@ -582,7 +599,7 @@ export class Room {
     if (!this.mayTest(client)) return { why: 'not-allowed' };
     const car = this.known(id, planted);
     if (!car) return { why: 'bad' };
-    Object.assign(car, { condition: 100, fuel: 100, runs: true, why: null, wrecked: false });
+    Object.assign(car, { condition: 100, fuel: 100, runs: true, why: null, wrecked: false, wreckedAt: null });
     this.store.saveCar(car);
     this.tellAll({ t: 'car', car });
     return { car };

@@ -133,6 +133,8 @@ function geometry(shape) {
   return groups;
 }
 
+export const carGeometry = (type) => geometry(BODY_SHAPES[type] || BODY_SHAPES.sport);
+
 const partColors = (color) => ({ body: colorFactor(color), glass: [0.04, 0.09, 0.13, 1], tyre: [0.03, 0.03, 0.03, 1], head: [1, 0.95, 0.6, 1], tail: [0.9, 0.05, 0.05, 1], rim: [0.55, 0.58, 0.62, 1], trim: [0.02, 0.02, 0.025, 1] });
 
 // A glTF binary (.glb) as a Uint8Array.
@@ -148,7 +150,8 @@ export function buildPersonGlb(parts) {
   return glbOf(groups, colors);
 }
 
-function glbOf(groups, COLORS) {
+// looks: per part, { emissive: [r, g, b], alpha, both } for something that glows, shows through or is seen from either side.
+export function glbOf(groups, COLORS, looks = {}) {
   const names = Object.keys(groups);
   const chunks = [], views = [], accessors = [], primitives = [];
   let offset = 0;
@@ -169,11 +172,16 @@ function glbOf(groups, COLORS) {
   const gltf = {
     asset: { version: '2.0', generator: 'geodrive' },
     scene: 0, scenes: [{ nodes: [0] }], nodes: [{ mesh: 0 }], meshes: [{ primitives }],
-    materials: names.map((n) => ({
-      name: n,
-      pbrMetallicRoughness: { baseColorFactor: COLORS[n], metallicFactor: 0, roughnessFactor: n === 'glass' ? 0.2 : 0.6 },
-      ...(n === 'head' || n === 'tail' ? { emissiveFactor: COLORS[n].slice(0, 3) } : {}),
-    })),
+    materials: names.map((n) => {
+      const look = looks[n] ?? {}, alpha = look.alpha ?? 1;
+      return {
+        name: n,
+        pbrMetallicRoughness: { baseColorFactor: [...COLORS[n].slice(0, 3), alpha], metallicFactor: 0, roughnessFactor: n === 'glass' ? 0.2 : look.rough ?? 0.6 },
+        ...(look.emissive ? { emissiveFactor: look.emissive } : n === 'head' || n === 'tail' ? { emissiveFactor: COLORS[n].slice(0, 3) } : {}),
+        ...(alpha < 1 ? { alphaMode: 'BLEND' } : {}),
+        ...(look.both ? { doubleSided: true } : {}),
+      };
+    }),
     buffers: [{ byteLength: offset }], bufferViews: views, accessors,
   };
   const json = new TextEncoder().encode(JSON.stringify(gltf));

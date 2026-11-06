@@ -40,9 +40,10 @@ body.shotHit::after { background: #c4282838; }
 #scopeShot { position: absolute; inset: 0; width: 100%; height: 100%; }
 #scopeShot line { stroke: #ffe08a; stroke-width: 2; stroke-linecap: round; }
 /* Evening and headlights: a tint over the map with the beams cut out of it. */
-#night, #beam, #tails, #viewFx { position: absolute; left: 0; top: 0; width: 100%; height: calc(100% - var(--dash)); pointer-events: none; display: none; }
+#night, #beam, #tails, #glow, #viewFx { position: absolute; left: 0; top: 0; width: 100%; height: calc(100% - var(--dash)); pointer-events: none; display: none; }
 #night { mix-blend-mode: multiply; z-index: 1; }
 #beam { mix-blend-mode: screen; z-index: 1; }
+#glow { mix-blend-mode: screen; z-index: 1; }
 #tails { display: block; z-index: 1; }
 /* The abandoned look, a trial: the map and rooms graded towards dusty olive, with a fixed grime and vignette layer.
    Both are static, so the compositor does the same work every frame and nothing is redrawn by us. */

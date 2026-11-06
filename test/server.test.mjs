@@ -626,3 +626,26 @@ test('a shot at a car from out of range does nothing to it', () => harness(async
   await new Promise((r) => setTimeout(r, 60));
   assert.ok(!karl.inbox.some((m) => m.t === 'carHit'));
 }));
+
+test('shooting a building makes it smoke and then burn, for everyone, and others see where each shot went', () => harness(async ({ create, invited, clock }) => {
+  const karl = await create(), dana = await invited(karl, 'Dana');
+  const house = { id: '1950300_-3870232', lat: 39.006, lng: -77.4046, rings: [[[39.00603, -77.40455], [39.00608, -77.40462], [39.00598, -77.40474], [39.00593, -77.40467]]], height: 6.5 };
+  const from = { lat: 39.0061, lng: -77.4046 }; // about 11 m north
+  dana.socket.send(packPresence({ ...from, flags: FLAGS.onFoot }));
+  const fire = async () => {
+    clock.now += 2000;
+    karl.socket.send(packPresence({ ...from, flags: FLAGS.onFoot }));
+    await new Promise((r) => setTimeout(r, 30));
+    karl.send({ t: 'shot', weapon: 'Sniper Rifle', ...from, aimLat: house.lat, aimLng: house.lng, building: house });
+    return karl.next('buildingHit');
+  };
+  const stages = [];
+  for (let i = 0; i < 7; i++) stages.push((await fire()).stage);
+  assert.deepEqual(stages, [null, null, 'smoke', 'smoke', 'smoke', 'smoke', 'fire'], 'a sniper round is 5: smoke at 15, fire at 35');
+  const told = await dana.next((m) => m.t === 'fire' && Number.isFinite(m.fire.fireAt));
+  assert.equal(told.fire.id, house.id);
+  const shot = await dana.next('gunshot');
+  assert.equal(shot.aimLat, house.lat, 'where it was aimed, for the streak');
+  const late = await invited(karl, 'Ann');
+  assert.equal(late.welcome.fires[0].id, house.id, 'someone arriving later sees it burning too');
+}));
